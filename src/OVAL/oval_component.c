@@ -38,6 +38,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <stdbool.h>
 
 #include "oval_definitions_impl.h"
 #include "adt/oval_collection_impl.h"
@@ -47,10 +48,13 @@
 #if defined(OVAL_PROBES_ENABLED)
 #include "oval_probe.h"
 #include "oval_probe_session.h"
+#include "oval_probe_impl.h"
 #endif
 #include "common/util.h"
 #include "common/debug_priv.h"
 #include "common/_error.h"
+#include "common/oscap_string.h"
+#include "oval_glob_to_regex.h"
 #if defined USE_REGEX_PCRE
 #include <pcre.h>
 #elif defined USE_REGEX_POSIX
@@ -167,6 +171,13 @@ typedef struct oval_component_SPLIT {
 	char *delimiter;	/*type==OVAL_COMPONENT_SPLIT */
 } oval_component_SPLIT_t;
 
+typedef struct oval_component_GLOB {
+	struct oval_definition_model *model;
+	oval_component_type_t type;
+	struct oval_collection *function_components;	/*type==OVAL_COMPONENT_FUNCTION */
+	bool glob_noescape;	/*type==OVAL_COMPONENT_GLOB */
+} oval_component_GLOB_t;
+
 typedef struct oval_component_SUBSTRING {
 	struct oval_definition_model *model;
 	oval_component_type_t type;
@@ -205,6 +216,8 @@ void oval_component_to_print(struct oval_component *component, char *indent, int
 	OVAL_FUNCTION_REGEX_CAPTURE = OVAL_FUNCTION + 8,
 	OVAL_FUNCTION_ARITHMETIC = OVAL_FUNCTION + 9
 	OVAL_FUNCTION_COUNT = OVAL_FUNCTION + 10,
+	OVAL_FUNCTION_GLOB_TO_REGEX = OVAL_FUNCTION + 12,
+
  */
 static const struct oscap_string_map _OVAL_COMPONENT_MAP[] = {
 	{OVAL_COMPONENT_LITERAL, "literal_component"},
@@ -225,6 +238,7 @@ static const struct oscap_string_map _OVAL_FUNCTION_MAP[] = {
 	{OVAL_FUNCTION_ARITHMETIC, "arithmetic"},
 	{OVAL_FUNCTION_COUNT, "count"},
 	{OVAL_FUNCTION_UNIQUE, "unique"},
+	{OVAL_FUNCTION_GLOB_TO_REGEX, "glob_to_regex"},
 	{0, NULL}
 };
 
@@ -325,7 +339,7 @@ void oval_component_set_record_field(struct oval_component *component, char *fie
 	__attribute__nonnull__(component);
 
 	if (oval_component_get_type(component) != OVAL_COMPONENT_OBJECTREF) {
-		dW("Wrong component type: %d.\n", oval_component_get_type(component));
+		dW("Wrong component type: %d.", oval_component_get_type(component));
 		return;
 	}
 
@@ -453,6 +467,30 @@ void oval_component_set_split_delimiter(struct oval_component *component, char *
 	if (component->type == OVAL_FUNCTION_SPLIT) {
 		oval_component_SPLIT_t *split = (oval_component_SPLIT_t *) component;
 		split->delimiter = oscap_strdup(delimeter);
+	}
+}
+
+bool oval_component_get_glob_to_regex_glob_noescape(struct oval_component *component)
+{
+	__attribute__nonnull__(component);
+
+	/* type == OVAL_COMPONENT_GLOB */
+	bool glob_noescape;
+	if (component->type == OVAL_FUNCTION_GLOB_TO_REGEX) {
+		oval_component_GLOB_t *glob_to_regex = (oval_component_GLOB_t *) component;
+		glob_noescape = glob_to_regex->glob_noescape;
+	} else
+		glob_noescape = false;
+	return glob_noescape;
+}
+
+void oval_component_set_glob_to_regex_glob_noescape(struct oval_component *component, bool glob_noescape) {
+	__attribute__nonnull__(component);
+
+	/* type == OVAL_COMPONENT_GLOB */
+	if (component->type == OVAL_FUNCTION_GLOB_TO_REGEX) {
+		oval_component_GLOB_t *glob_to_regex = (oval_component_GLOB_t *) component;
+		glob_to_regex->glob_noescape = glob_noescape;
 	}
 }
 
@@ -651,6 +689,15 @@ struct oval_component *oval_component_new(struct oval_definition_model *model, o
 					split->delimiter = NULL;
 				};
 				break;
+			case OVAL_FUNCTION_GLOB_TO_REGEX:{
+					oval_component_GLOB_t *glob_to_regex = (oval_component_GLOB_t *)
+					    (function = (oval_component_FUNCTION_t *)
+					     oscap_alloc(sizeof(oval_component_GLOB_t)));
+					if (glob_to_regex == NULL)
+						return NULL;
+					glob_to_regex->glob_noescape = false;
+				};
+				break;
 			case OVAL_FUNCTION_SUBSTRING:{
 					oval_component_SUBSTRING_t *substring = (oval_component_SUBSTRING_t *)
 					    (function = (oval_component_FUNCTION_t *)
@@ -774,6 +821,11 @@ struct oval_component *oval_component_clone(struct oval_definition_model *new_mo
 				oval_component_set_split_delimiter(new_component, delimiter);
 		}
 		break;
+	case OVAL_FUNCTION_GLOB_TO_REGEX:{
+			bool glob_noescape = oval_component_get_glob_to_regex_glob_noescape(old_component);
+			oval_component_set_glob_to_regex_glob_noescape(new_component, glob_noescape);
+		}
+		break;
 	case OVAL_FUNCTION_SUBSTRING:{
 			int length = oval_component_get_substring_length(old_component);
 			oval_component_set_substring_length(new_component, length);
@@ -847,6 +899,7 @@ void oval_component_free(struct oval_component *component)
 			regex->pattern = NULL;
 		};
 		break;
+	case OVAL_FUNCTION_GLOB_TO_REGEX:
 	case OVAL_FUNCTION_CONCAT:
 	case OVAL_FUNCTION_COUNT:
 	case OVAL_FUNCTION_UNIQUE:
@@ -1001,6 +1054,19 @@ static int _oval_component_parse_SPLIT_tag(xmlTextReaderPtr reader,
 	return _oval_component_parse_FUNCTION_tag(reader, context, component);
 }
 
+static int _oval_component_parse_GLOB_TO_REGEX_tag(xmlTextReaderPtr reader,
+					   struct oval_parser_context *context, struct oval_component *component)
+{
+
+	__attribute__nonnull__(component);
+
+	oval_component_GLOB_t *glob_to_regex = (oval_component_GLOB_t *) component;
+	glob_to_regex->glob_noescape = oval_parser_boolean_attribute(reader, "glob_noescape", 0);
+
+	return _oval_component_parse_FUNCTION_tag(reader, context, component);
+}
+
+
 static int _oval_component_parse_SUBSTRING_tag(xmlTextReaderPtr reader,
 					       struct oval_parser_context *context, struct oval_component *component)
 {
@@ -1094,6 +1160,9 @@ int oval_component_parse_tag(xmlTextReaderPtr reader,
 	} else if (strcmp(tagname, "escape_regex") == 0) {
 		component = oval_component_new(model, OVAL_FUNCTION_ESCAPE_REGEX);
 		return_code = _oval_component_parse_FUNCTION_tag(reader, context, component);
+	} else if (strcmp(tagname, "glob_to_regex") == 0) {
+		component = oval_component_new(model, OVAL_FUNCTION_GLOB_TO_REGEX);
+		return_code = _oval_component_parse_GLOB_TO_REGEX_tag(reader, context, component);
 	} else if (strcmp(tagname, "split") == 0) {
 		component = oval_component_new(model, OVAL_FUNCTION_SPLIT);
 		return_code = _oval_component_parse_SPLIT_tag(reader, context, component);
@@ -1107,7 +1176,7 @@ int oval_component_parse_tag(xmlTextReaderPtr reader,
 		component = oval_component_new(model, OVAL_FUNCTION_REGEX_CAPTURE);
 		return_code = _oval_component_parse_REGEX_CAPTURE_tag(reader, context, component);
 	} else {
-		oscap_dlprintf(DBG_I, "Tag <%s> not handled, line: %d.\n", tagname,
+		dI("Tag <%s> not handled, line: %d.", tagname,
                               xmlTextReaderGetParserLineNumber(reader));
 		return_code = oval_parser_skip_tag(reader, context);
 	}
@@ -1115,7 +1184,7 @@ int oval_component_parse_tag(xmlTextReaderPtr reader,
 		(*consumer) (component, user);
 
 	if (return_code != 0 ) {
-		dW("Parsing of <%s> terminated by an error at line %d.\n", tagname, xmlTextReaderGetParserLineNumber(reader));
+		dW("Parsing of <%s> terminated by an error at line %d.", tagname, xmlTextReaderGetParserLineNumber(reader));
 	}
 	oscap_free(tagname);
 	return return_code;
@@ -1217,6 +1286,14 @@ xmlNode *oval_component_to_dom(struct oval_component *component, xmlDoc * doc, x
 			char * delimiter = oval_component_get_split_delimiter(component);
 			xmlNewProp(component_node, BAD_CAST "delimiter", BAD_CAST delimiter);
 		} break;
+	case OVAL_FUNCTION_GLOB_TO_REGEX:{
+			bool glob_noescape = oval_component_get_glob_to_regex_glob_noescape(component);
+			if (glob_noescape) {
+				xmlNewProp(component_node, BAD_CAST "glob_noescape", BAD_CAST "true");
+			} else {
+				xmlNewProp(component_node, BAD_CAST "glob_noescape", BAD_CAST "false");
+			}
+		} break;
 	case OVAL_FUNCTION_CONCAT:
 	case OVAL_FUNCTION_ESCAPE_REGEX:
 		break;
@@ -1266,6 +1343,9 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_OBJECTREF(oval_ar
 	if (!object)
 		return flag;
 
+	const char *obj_id = oval_object_get_id(object);
+	dI("Variable component references to object '%s'.", obj_id);
+
 	if (argu->mode == OVAL_MODE_QUERY) {
 #if defined(OVAL_PROBES_ENABLED)
 		if (oval_probe_query_object(argu->u.sess, object, 0, &syschar) != 0)
@@ -1274,9 +1354,6 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_OBJECTREF(oval_ar
 		return SYSCHAR_FLAG_ERROR;
 #endif
 	} else {
-		char *obj_id;
-
-		obj_id = oval_object_get_id(object);
 		syschar = oval_syschar_model_get_syschar(argu->u.sysmod, obj_id);
 	}
 
@@ -1290,6 +1367,9 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_OBJECTREF(oval_ar
 		while (oval_sysitem_iterator_has_more(sysitems)) {
 			struct oval_sysitem *sysitem = oval_sysitem_iterator_next(sysitems);
 			struct oval_sysent_iterator *sysent_itr = oval_sysitem_get_sysents(sysitem);
+			const char *oval_sysitem_id = oval_sysitem_get_id(sysitem);
+			const char *oval_sysitem_subtype = oval_subtype_to_str(oval_sysitem_get_subtype(sysitem));
+			bool entity_matched = false;
 			while (oval_sysent_iterator_has_more(sysent_itr)) {
 				oval_datatype_t dt;
 				struct oval_sysent *sysent = oval_sysent_iterator_next(sysent_itr);
@@ -1298,14 +1378,28 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_OBJECTREF(oval_ar
 				if (strcmp(ifield_name, sysent_name))
 					continue;
 
+				entity_matched = true;
 				dt = oval_sysent_get_datatype(sysent);
-				if ((dt == OVAL_DATATYPE_RECORD && rfield_name == NULL)
-				    || (dt != OVAL_DATATYPE_RECORD && rfield_name != NULL))
-					/* todo: throw error */
-					continue;
+				if (dt == OVAL_DATATYPE_RECORD && rfield_name == NULL) {
+					oscap_seterr(OSCAP_EFAMILY_OVAL,
+							"Unexpected record data type in %s_item (id: %s) specified by object '%s'.",
+							oval_sysitem_subtype, oval_sysitem_id, obj_id);
+					oval_sysent_iterator_free(sysent_itr);
+					oval_sysitem_iterator_free(sysitems);
+					return SYSCHAR_FLAG_ERROR;
+				}
+				if (dt != OVAL_DATATYPE_RECORD && rfield_name != NULL) {
+					oscap_seterr(OSCAP_EFAMILY_OVAL,
+							"Expected record data type, but found %s data type in %s entity in %s_item (id: %s) specified by object '%s'.",
+							oval_datatype_get_text(dt), ifield_name, oval_sysitem_subtype, oval_sysitem_id, obj_id);
+					oval_sysent_iterator_free(sysent_itr);
+					oval_sysitem_iterator_free(sysitems);
+					return SYSCHAR_FLAG_ERROR;
+				}
 
 				if (dt == OVAL_DATATYPE_RECORD) {
 					struct oval_record_field_iterator *rf_itr;
+					bool field_matched = false;
 
 					rf_itr = oval_sysent_get_record_fields(sysent);
 					while (oval_record_field_iterator_has_more(rf_itr)) {
@@ -1318,13 +1412,23 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_OBJECTREF(oval_ar
 						if (strcmp(rfield_name, txtval))
 							continue;
 
+						field_matched = true;
 						dt = oval_record_field_get_datatype(rf);
 						txtval = oval_record_field_get_value(rf);
 						val = oval_value_new(dt, txtval);
 						oval_collection_add(value_collection, val);
 					}
+					/* throw error if none matched */
+					if (!field_matched) {
+						oscap_seterr(OSCAP_EFAMILY_OVAL,
+								"Record field '%s' has not been found in %s_item (id: %s) specified by object '%s'.",
+								rfield_name, oval_sysitem_subtype, oval_sysitem_id, obj_id);
+						oval_record_field_iterator_free(rf_itr);
+						oval_sysent_iterator_free(sysent_itr);
+						oval_sysitem_iterator_free(sysitems);
+						return SYSCHAR_FLAG_ERROR;
+					}
 					oval_record_field_iterator_free(rf_itr);
-					/* todo: throw error if none matched */
 				} else {
 					char *txtval;
 					struct oval_value *val;
@@ -1334,8 +1438,16 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_OBJECTREF(oval_ar
 					oval_collection_add(value_collection, val);
 				}
 			}
+			/* throw error if none matched */
+			if (!entity_matched) {
+				oscap_seterr(OSCAP_EFAMILY_OVAL,
+						"Entity '%s' has not been found in %s_item (id: %s) specified by object '%s'.",
+						ifield_name, oval_sysitem_subtype, oval_sysitem_id, obj_id);
+				oval_sysent_iterator_free(sysent_itr);
+				oval_sysitem_iterator_free(sysitems);
+				return SYSCHAR_FLAG_ERROR;
+			}
 			oval_sysent_iterator_free(sysent_itr);
-			/* todo: throw error if none matched */
 		}
 		oval_sysitem_iterator_free(sysitems);
 	}
@@ -1799,23 +1911,23 @@ static long unsigned int _parse_datetime(char *datetime, const char *fmt[], size
         size_t    i;
         char     *r;
 
-        dI("Parsing datetime string \"%s\"\n", datetime);
+        dI("Parsing datetime string \"%s\"", datetime);
 
         for (i = 0; i < fmtcnt; ++i) {
-                dI("%s\n", fmt[i]);
+                dI("%s", fmt[i]);
                 memset(&t, 0, sizeof t);
                 r = strptime(datetime, fmt[i], &t);
 
                 if (r != NULL) {
                         if (*r == '\0') {
-                                dI("Success!\n");
+                                dI("Success!");
                                 return _comp_sec(t.tm_year, t.tm_mon, t.tm_mday,
                                                  t.tm_hour, t.tm_min, t.tm_sec);
                         }
                 }
         }
 
-        dE("Unable to interpret \"%s\" as a datetime string\n");
+        dE("Unable to interpret \"%s\" as a datetime string");
 
         return (0);
 }
@@ -1837,6 +1949,49 @@ static long unsigned int _parse_fmt_sse(char *dt)
 		t -= 3600;
 
 	return (long unsigned int) t;
+}
+
+static bool _match(const char *pattern, const char *string)
+{
+	bool match = false;
+#if defined USE_REGEX_PCRE
+	pcre *re;
+	const char *error;
+	int erroffset = -1, ovector[60], ovector_len = sizeof (ovector) / sizeof (ovector[0]);
+	re = pcre_compile(pattern, PCRE_UTF8, &error, &erroffset, NULL);
+	match = (pcre_exec(re, NULL, string, strlen(string), 0, 0, ovector, ovector_len) >= 0);
+	pcre_free(re);
+#elif defined USE_REGEX_POSIX
+	regex_t re;
+	regcomp(&re, pattern, REG_EXTENDED);
+	match = (regexec(&re, string, 0, NULL, 0) == 0);
+	regfree(&re);
+#endif
+	return match;
+}
+
+static long unsigned int _parse_fmt_cim(char *dt)
+{
+	const char *pattern1 = "^[0-9]{14}\\.[0-9]{6}[+-][0-9]{3}$"; // yyyymmddHHMMSS.mmmmmmsUUU
+	const char *fmt_str1 = "%4u%2u%2u%2u%2u%2u.%*6u%*[+-]%*3u";
+	const char *pattern2 = "^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{3}$"; // yyyy-mm-dd HH:MM:SS:mmm
+	const char *fmt_str2 = "%4d-%2d-%2d %2d:%2d:%2d:%*3d";
+	const char *pattern3 = "^[0-9]{2}-[0-9]{2}-[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{3}$"; // mm-dd-yyyy hh:mm:ss:mmm
+	const char *fmt_str3 = "%2d-%2d-%4d %2d:%2d:%2d:%*3d";
+	int year, month, day, hour, minute, second, r = 0;
+	const int number_of_items = 6;
+	if (_match(pattern1, dt)) {
+		r = sscanf(dt, fmt_str1, &year, &month, &day, &hour, &minute, &second);
+	} else if (_match(pattern2, dt)) {
+		r = sscanf(dt, fmt_str2, &year, &month, &day, &hour, &minute, &second);
+	} else if (_match(pattern3, dt)) {
+		r = sscanf(dt, fmt_str3, &month, &day, &year, &hour, &minute, &second);
+	}
+	if (r != number_of_items) {
+		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Unable to interpret \"%s\" as a cim_datetime string\n", dt);
+		return 0;
+	}
+	return _comp_sec(year, month, day, hour, minute, second);
 }
 
 static long unsigned int _parse_fmt(struct oval_value *val, oval_datetime_format_t fmt)
@@ -1861,6 +2016,9 @@ static long unsigned int _parse_fmt(struct oval_value *val, oval_datetime_format
 		break;
 	case OVAL_DATETIME_SECONDS_SINCE_EPOCH:
 		v = _parse_fmt_sse(sv);
+		break;
+	case OVAL_DATETIME_CIM_DATETIME:
+		v = _parse_fmt_cim(sv);
 		break;
 	default:
 		break;
@@ -1986,6 +2144,41 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_ESCAPE_REGEX(oval
 	return flag;
 }
 
+
+
+
+
+static oval_syschar_collection_flag_t _oval_component_evaluate_GLOB_TO_REGEX(oval_argu_t *argu,
+										struct oval_component *component,
+										struct oval_collection *value_collection)
+{
+	oval_syschar_collection_flag_t flag = SYSCHAR_FLAG_UNKNOWN;
+	bool glob_noescape = oval_component_get_glob_to_regex_glob_noescape(component);
+	struct oval_component_iterator *subcomps = oval_component_get_function_components(component);
+	if (oval_component_iterator_has_more(subcomps)) {	//Only first component is considered
+		struct oval_component *subcomp = oval_component_iterator_next(subcomps);
+		struct oval_collection *subcoll = oval_collection_new();
+		flag = oval_component_eval_common(argu, subcomp, subcoll);
+		struct oval_value_iterator *values = (struct oval_value_iterator *)oval_collection_iterator(subcoll);
+		while (oval_value_iterator_has_more(values)) {
+			struct oval_value *value = oval_value_iterator_next(values);
+			char *text = oval_value_get_text(value);
+			char *string = oval_glob_to_regex(text, glob_noescape);
+			if (string == NULL) {
+				flag = SYSCHAR_FLAG_ERROR;
+				break;
+			}
+			value = oval_value_new(OVAL_DATATYPE_STRING, string);
+			oscap_free(string);
+			oval_collection_add(value_collection, value);
+		}
+		oval_value_iterator_free(values);
+		oval_collection_free_items(subcoll, (oscap_destruct_func) oval_value_free);
+	}
+	oval_component_iterator_free(subcomps);
+	return flag;
+}
+
 static oval_syschar_collection_flag_t _oval_component_evaluate_REGEX_CAPTURE(oval_argu_t *argu,
 									     struct oval_component *component,
 									     struct oval_collection *value_collection)
@@ -2002,7 +2195,7 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_REGEX_CAPTURE(ova
 	pattern = oval_component_get_regex_pattern(component);
 	re = pcre_compile(pattern, PCRE_UTF8, &error, &erroffset, NULL);
 	if (re == NULL) {
-		oscap_dlprintf(DBG_E, "pcre_compile() failed: \"%s\".\n", error);
+		dE("pcre_compile() failed: \"%s\".", error);
 		return SYSCHAR_FLAG_ERROR;
 	}
 #elif defined USE_REGEX_POSIX
@@ -2010,7 +2203,7 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_REGEX_CAPTURE(ova
 
 	pattern = oval_component_get_regex_pattern(component);
 	if ((rc = regcomp(&re, pattern, REG_EXTENDED | REG_NEWLINE)) != 0) {
-		oscap_dlprintf(DBG_E, "regcomp() failed: %d.\n", rc);
+		dE("regcomp() failed: %d.", rc);
 		return SYSCHAR_FLAG_ERROR;
 	}
 #endif
@@ -2032,7 +2225,7 @@ static oval_syschar_collection_flag_t _oval_component_evaluate_REGEX_CAPTURE(ova
 
 			rc = pcre_exec(re, NULL, text, strlen(text), 0, 0, ovector, ovector_len);
 			if (rc < -1) {
-				oscap_dlprintf(DBG_E, "pcre_exec() failed: %d.\n", rc);
+				dE("pcre_exec() failed: %d.", rc);
 				flag = SYSCHAR_FLAG_ERROR;
 				break;
 			}
@@ -2230,7 +2423,8 @@ static _oval_component_evaluator *_component_evaluators[] = {
 	_oval_component_evaluate_ARITHMETIC,
 	_oval_component_evaluate_COUNT,
 	_oval_component_evaluate_UNIQUE,
-	NULL
+	_oval_component_evaluate_GLOB_TO_REGEX,
+	NULL,
 };
 
 static oval_syschar_collection_flag_t oval_component_eval_common(oval_argu_t *argu,

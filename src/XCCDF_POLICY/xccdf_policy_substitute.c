@@ -36,6 +36,7 @@
 
 struct _xccdf_text_substitution_data {
 	struct xccdf_policy *policy;
+	struct xccdf_rule_result *rule_result;
 	enum {
 		_TAILORING_TYPE = 1,
 		_DOCUMENT_GENERATION_TYPE = 2,
@@ -58,7 +59,7 @@ static int _xccdf_text_substitution_cb(xmlNode **node, void *user_data)
 
 	if (oscap_streq((const char *) (*node)->name, "sub") && xccdf_is_supported_namespace((*node)->ns)) {
 		if ((*node)->children != NULL)
-			dW("The xccdf:sub element SHALL NOT have any content.\n");
+			dW("The xccdf:sub element SHALL NOT have any content.");
 		char *sub_idref = (char *) xmlGetProp(*node, BAD_CAST "idref");
 		if (oscap_streq(sub_idref, NULL)) {
 			oscap_seterr(OSCAP_EFAMILY_XCCDF, "The xccdf:sub MUST have a single @idref attribute.");
@@ -93,7 +94,7 @@ static int _xccdf_text_substitution_cb(xmlNode **node, void *user_data)
 				oscap_text_iterator_free(title_it);
 			} else {
 				if (!oscap_streq(sub_use, "value"))
-					dW("xccdf:sub/@idref='%s' has incorrect @use='%s'! Using @use='value' instead.\n", sub_idref, sub_use);
+					dW("xccdf:sub/@idref='%s' has incorrect @use='%s'! Using @use='value' instead.", sub_idref, sub_use);
 				result = xccdf_policy_get_value_of_item(data->policy, value);
 			}
 			oscap_free(sub_use);
@@ -134,7 +135,7 @@ static int _xccdf_text_substitution_cb(xmlNode **node, void *user_data)
 			} else {
 				result = xccdf_benchmark_get_plain_text(benchmark, value_id);
 				if (result == NULL) {
-					dW("Text substitution for xccdf:fact is not supported!\n"); // TODO.
+					dW("Text substitution for xccdf:fact is not supported!"); // TODO.
 				}
 			}
 		}
@@ -153,7 +154,7 @@ static int _xccdf_text_substitution_cb(xmlNode **node, void *user_data)
 		else {
 			// Let's not consider this as an error. Since in similar cases NISTIR-7275r4
 			// suggests to retain the <object> element.
-			dW("Unsupported XCCDF uri: xhtml:object/@data='%s'\n", object_data);
+			dW("Unsupported XCCDF uri: xhtml:object/@data='%s'", object_data);
 			free(object_data);
 			return 0;
 		}
@@ -163,17 +164,40 @@ static int _xccdf_text_substitution_cb(xmlNode **node, void *user_data)
 		xmlFreeNode(*node);
 		*node = new_node;
 		return 0;
+	} else if (oscap_streq((const char *) (*node)->name, "instance") && xccdf_is_supported_namespace((*node)->ns)) {
+		const char *result;
+		// <instance> elements
+		if ((*node)->children != NULL)
+			dW("The xccdf:instance element SHALL NOT have any content.");
+		if (data->rule_result == NULL)
+			return 1;
+		struct xccdf_instance_iterator *instances = xccdf_rule_result_get_instances(data->rule_result);
+		if (xccdf_instance_iterator_has_more(instances)) {
+			struct xccdf_instance *instance = xccdf_instance_iterator_next(instances);
+			result = xccdf_instance_get_content(instance);
+			xccdf_instance_iterator_free(instances);
+		}
+		else {
+			xccdf_instance_iterator_free(instances);
+			dW("The xccdf:rule-result/xccdf:instance element was not found.");
+			return 1;
+		}
+		xmlNode *new_node = xmlNewText(BAD_CAST result);
+		xmlReplaceNode(*node, new_node);
+		xmlFreeNode(*node);
+		*node = new_node;
+		return 0;
 	} else {
-		// TODO: <instance> elements
 		return 0;
 	}
 }
 
-int xccdf_policy_resolve_fix_substitution(struct xccdf_policy *policy, struct xccdf_fix *fix, struct xccdf_result *test_result)
+int xccdf_policy_resolve_fix_substitution(struct xccdf_policy *policy, struct xccdf_fix *fix, struct xccdf_rule_result *rule_result, struct xccdf_result *test_result)
 {
 	struct _xccdf_text_substitution_data data;
 	data.policy = policy;
 	data.processing_type = _DOCUMENT_GENERATION_TYPE | _ASSESSMENT_TYPE;
+	data.rule_result = rule_result;
 
 	char *result = NULL;
 	int res = xml_iterate_dfs(xccdf_fix_get_content(fix), &result, _xccdf_text_substitution_cb, &data);
@@ -186,6 +210,7 @@ int xccdf_policy_resolve_fix_substitution(struct xccdf_policy *policy, struct xc
 char* xccdf_policy_substitute(const char *text, struct xccdf_policy *policy) {
 	struct _xccdf_text_substitution_data data;
 	data.policy = policy;
+	data.rule_result = NULL;
 	/* We cannot anticipate processing type. But <title>'s are least probable. */
 	data.processing_type = _DOCUMENT_GENERATION_TYPE | _ASSESSMENT_TYPE;
 

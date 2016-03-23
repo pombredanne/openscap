@@ -45,9 +45,12 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#if defined(__linux__)
 #include <sys/prctl.h>
+#endif
 #include <limits.h>
 #include <unistd.h>
+#include <libgen.h>
 
 struct sce_check_result
 {
@@ -369,7 +372,11 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 
 		char* name = xccdf_value_binding_get_name(binding);
 		xccdf_value_type_t type = xccdf_value_binding_get_type(binding);
-		char* value = xccdf_value_binding_get_value(binding);
+		char* value = xccdf_value_binding_get_setvalue(binding);
+		if (value == NULL)
+		{
+			value = xccdf_value_binding_get_value(binding);
+		}
 		xccdf_operator_t operator = xccdf_value_binding_get_operator(binding);
 
 		char* type_str;

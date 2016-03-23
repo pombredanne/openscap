@@ -36,6 +36,8 @@ EXTRA_DIST = test_api_oval.sh \
               results-good.xml
 
 SUBDIRS = \
+	glob_to_regex \
+	schema_version \
 	report_variable_values \
 	unittests \
 	validate

@@ -1,4 +1,4 @@
-.TH OSCAP "8" "Dec 2012" "Red Hat" "System Administration Utilities"
+.TH OSCAP "8" "Jan 2016" "Red Hat" "System Administration Utilities"
 
 .SH NAME
 oscap \- OpenSCAP command line tool
@@ -72,7 +72,7 @@ Select a particular profile from XCCDF document.
 .TP
 \fB\-\-tailoring-file TAILORING_FILE\fR
 .RS
-Use given file for XCCDF tailoring. If both --tailoring-file and --tailoring-id are specified, --tailoring files takes priority!
+Use given file for XCCDF tailoring. If both --tailoring-file and --tailoring-id are specified, --tailoring-file takes priority!
 .RE
 .TP
 \fB\-\-tailoring-id COMPONENT_ID\fR
@@ -142,7 +142,17 @@ Allow download of remote OVAL content referenced from XCCDF by check-content-ref
 .TP
 \fB\-\-remediate\fR
 .RS
-Execute XCCDF remediatation in the process of XCCDF evaluation. This option automatically executes content of XCCDF fix elements for failed rules, and thus this shall be avoided unless for trusted content. Use of this option is always at your own risk.
+Execute XCCDF remediation in the process of XCCDF evaluation. This option automatically executes content of XCCDF fix elements for failed rules, and thus this shall be avoided unless for trusted content. Use of this option is always at your own risk.
+.RE
+.TP
+\fB\-\-verbose VERBOSITY_LEVEL\fR
+.RS
+Turn on verbose mode at specified verbosity level. VERBOSITY_LEVEL is one of: DEVEL, INFO, WARNING, ERROR.
+.RE
+.TP
+\fB\-\-verbose-log-file FILE\fR
+.RS
+Set filename to write additional information.
 .RE
 .RE
 .TP
@@ -152,7 +162,7 @@ This module provides post-scan remediation. It assumes that the INPUT_FILE is re
 .TP
 \fB\-\-result-id ID
 .RS
-ID of the XCCDF TestResult element which shall be remediated. If this option is missing the last TestResult (in top-down processing) will be remediated.
+ID of the XCCDF TestResult element which shall be remedied. If this option is missing the last TestResult (in top-down processing) will be remedied.
 .RE
 .TP
 \fB\-\-skip-valid\fR
@@ -352,6 +362,12 @@ Takes component ref with given ID from checks. This allows to select a particula
 .TP
 \fB\-\-skip-valid\fR
 Do not validate input/output files.
+.TP
+\fB\-\-verbose VERBOSITY_LEVEL\fR
+Turn on verbose mode at specified verbosity level. VERBOSITY_LEVEL is one of: DEVEL, INFO, WARNING, ERROR.
+.TP
+\fB\-\-verbose-log-file FILE\fR
+Set filename to write additional information.
 .RE
 
 .TP
@@ -371,6 +387,12 @@ Write OVAL System Characteristic into file.
 .TP
 \fB\-\-skip-valid\fR
 Do not validate input/output files.
+.TP
+\fB\-\-verbose VERBOSITY_LEVEL\fR
+Turn on verbose mode at specified verbosity level. VERBOSITY_LEVEL is one of: DEVEL, INFO, WARNING, ERROR.
+.TP
+\fB\-\-verbose-log-file FILE\fR
+Set filename to write additional information.
 .RE
 
 .TP
@@ -386,6 +408,12 @@ Use OVAL Directives content to specify desired results content.
 .TP
 \fB\-\-skip-valid\fR
 Do not validate input/output files.
+.TP
+\fB\-\-verbose VERBOSITY_LEVEL\fR
+Turn on verbose mode at specified verbosity level. VERBOSITY_LEVEL is one of: DEVEL, INFO, WARNING, ERROR.
+.TP
+\fB\-\-verbose-log-file FILE\fR
+Set filename to write additional information.
 .RE
 
 .TP
@@ -494,9 +522,12 @@ AR:[ND|L|M|H]         E   Availability requirement: Not Defined, Low, Medium, Hi
 
 .SH DS OPERATIONS
 .TP
-.B \fBsds-compose\fR SOURCE_XCCDF TARGET_SDS
+.B \fBsds-compose\fR [\fIoptions\fR] SOURCE_XCCDF TARGET_SDS
 .RS
 Creates a source datastream from the XCCDF file given in SOURCE_XCCDF and stores the result in TARGET_SDS. Dependencies like OVAL files are automatically detected and bundled in target source datastream.
+.TP
+\fB\-\-skip-valid
+Do not validate input/output files.
 .RE
 .TP
 .B \fBsds-add\fR [\fIoptions\fR] NEW_COMPONENT EXISTING_SDS
@@ -505,6 +536,9 @@ Adds given NEW_COMPONENT file to the existing source datastream (EXISTING_SDS). 
 .TP
 \fB\-\-datastream-id DATASTREAM_ID\fR
 Uses a datastream with that particular ID from the given datastream collection. If not given the first datastream is used.
+.TP
+\fB\-\-skip-valid
+Do not validate input/output files.
 .RE
 .TP
 .B \fBsds-split\fR [\fIoptions\fR] SOURCE_DS TARGET_DIR
@@ -516,6 +550,9 @@ Uses a datastream with that particular ID from the given datastream collection. 
 .TP
 \fB\-\-xccdf-id XCCDF_ID\fR
 Takes component ref with given ID from checklists. This allows to select a particular XCCDF component even in cases where there are 2 XCCDFs in one datastream.
+.TP
+\fB\-\-skip-valid
+Do not validate input/output files.
 .RE
 .TP
 .B \fBsds-validate\fR SOURCE_DS
@@ -523,14 +560,20 @@ Takes component ref with given ID from checklists. This allows to select a parti
 Validate given source datastream file against a XML schema. Every found error is printed to the standard error. Return code is 0 if validation succeeds, 1 if validation could not be performed due to some error, 2 if the source datastream is not valid.
 .RE
 .TP
-.B \fBrds-create\fR SDS TARGET_ARF XCCDF_RESULTS [OVAL_RESULTS [OVAL_RESULTS ..]]
+.B \fBrds-create\fR [\fIoptions\fR] SDS TARGET_ARF XCCDF_RESULTS [OVAL_RESULTS [OVAL_RESULTS ..]]
 .RS
 Takes given source datastream, XCCDF and OVAL results and creates a result datastream (in Asset Reporting Format) and saves it to file given in TARGET_ARF.
+.TP
+\fB\-\-skip-valid
+Do not validate input/output files.
 .RE
 .TP
-.B \fBrds-split\fR [--report-id REPORT_ID] RDS TARGET_DIR
+.B \fBrds-split\fR [\fIoptions\fR] [--report-id REPORT_ID] RDS TARGET_DIR
 .RS
 Takes given result datastream (also called ARF = asset reporting format) and splits given report and its respective report-request to given target directory. If no report-id is given, we assume user wants the first applicable report in top-down order in the file.
+.TP
+\fB\-\-skip-valid
+Do not validate input/output files.
 .RE
 .TP
 .B \fBrds-validate\fR SOURCE_RDS

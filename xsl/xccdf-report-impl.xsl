@@ -33,6 +33,8 @@ Authors:
     xmlns:arf="http://scap.nist.gov/schema/asset-reporting-format/1.1"
     exclude-result-prefixes="xsl cdf ovalres sceres exsl">
 
+<xsl:key name="references" match="//cdf:Rule/cdf:reference" use="@href"/>
+
 <xsl:include href="xccdf-branding.xsl" />
 <xsl:include href="xccdf-resources.xsl" />
 <xsl:include href="xccdf-share.xsl" />
@@ -45,14 +47,29 @@ Authors:
     indent="no"
     omit-xml-declaration="yes"/>
 
+<xsl:template name="introduction">
+    <xsl:param name="benchmark"/>
+    <xsl:param name="profile"/>
+
+    <div id="introduction">
+        <div class="row">
+            <xsl:call-template name="show-title-front-matter-description-notices">
+                <xsl:with-param name="benchmark" select="$benchmark"/>
+                <xsl:with-param name="profile" select="$profile"/>
+            </xsl:call-template>
+        </div>
+    </div>
+</xsl:template>
+
 <xsl:template name="characteristics">
     <xsl:param name="testresult"/>
     <xsl:param name="benchmark"/>
+    <xsl:param name="profile"/>
 
     <div id="characteristics">
         <h2>Evaluation Characteristics</h2>
         <div class="row">
-            <div class="col-md-5 well well-lg">
+            <div class="col-md-5 well well-lg horizontal-scroll">
                 <table class="table table-bordered">
                     <tr>
                         <th>Target machine</th>
@@ -112,7 +129,7 @@ Authors:
                     </tr>
                 </table>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-3 horizontal-scroll">
                 <h4>CPE Platforms</h4>
                 <ul class="list-group">
                     <!-- all the applicable platforms first -->
@@ -135,7 +152,7 @@ Authors:
                     </xsl:for-each>
                 </ul>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-4 horizontal-scroll">
                 <h4>Addresses</h4>
                 <ul class="list-group">
                     <!-- the second predicate ensures that we don't print duplicates -->
@@ -269,6 +286,40 @@ Authors:
     </div>
 </xsl:template>
 
+<xsl:template name="references-to-json">
+    <xsl:param name="item"/>
+    <xsl:text>{</xsl:text>
+    <xsl:for-each select="$item/cdf:reference">
+        <xsl:sort select="@href"/>
+        <xsl:variable name="href" select="@href"/>
+        <xsl:if test="not(preceding-sibling::cdf:reference[@href=$href]) and @href">
+            <xsl:if test="position() != 1">
+                <xsl:text>,</xsl:text>
+            </xsl:if>
+            <xsl:text>"</xsl:text>
+            <xsl:value-of select="$href"/>
+            <xsl:text>":[</xsl:text>
+            <xsl:for-each select="$item/cdf:reference[@href=$href]">
+                <xsl:text>"</xsl:text>
+                <xsl:choose>
+                    <xsl:when test="normalize-space(.)">
+                        <xsl:value-of select="."/>
+                    </xsl:when>
+                    <xsl:otherwise>
+                        <xsl:text>unknown</xsl:text>
+                    </xsl:otherwise>
+                </xsl:choose>
+                <xsl:text>"</xsl:text>
+                <xsl:if test="position() != last()">
+                    <xsl:text>,</xsl:text>
+                </xsl:if>
+            </xsl:for-each>
+            <xsl:text>]</xsl:text>
+        </xsl:if>
+    </xsl:for-each>
+    <xsl:text>}</xsl:text>
+</xsl:template>
+
 <xsl:template name="rule-overview-leaf">
     <xsl:param name="testresult"/>
     <xsl:param name="item"/>
@@ -282,23 +333,27 @@ Authors:
         <xsl:attribute name="data-tt-parent-id">
             <xsl:value-of select="$item/parent::cdf:*/@id"/>
         </xsl:attribute>
+        <xsl:attribute name="data-references">
+            <xsl:call-template name="references-to-json">
+                <xsl:with-param name="item" select="$item"/>
+            </xsl:call-template>
+        </xsl:attribute>
         <xsl:if test="$result = 'fail' or $result = 'error' or $result = 'unknown'">
             <xsl:attribute name="class">rule-overview-leaf rule-overview-leaf-<xsl:value-of select="$result"/> rule-overview-needs-attention</xsl:attribute>
         </xsl:if>
 
-        <td style="padding-left: {$indent * 19}px">
-            <a href="#rule-detail-{generate-id($ruleresult)}" onclick="return openRuleDetailsDialog('{generate-id($ruleresult)}')">
-                <xsl:call-template name="item-title">
-                    <xsl:with-param name="item" select="$item"/>
-                    <xsl:with-param name="testresult" select="$testresult"/>
-                    <xsl:with-param name="profile" select="$profile"/>
-                </xsl:call-template>
+        <td style="padding-left: {$indent * 19}px"><a href="#rule-detail-{generate-id($ruleresult)}" onclick="return openRuleDetailsDialog('{generate-id($ruleresult)}')">
+            <xsl:call-template name="item-title">
+                <xsl:with-param name="item" select="$item"/>
+                <xsl:with-param name="testresult" select="$testresult"/>
+                <xsl:with-param name="profile" select="$profile"/>
+            </xsl:call-template>
             </a>
             <xsl:if test="$ruleresult/cdf:override">
                 &#160;<span class="label label-warning">waived</span>
             </xsl:if>
         </td>
-        <td style="text-align: center"><xsl:value-of select="$ruleresult/@severity"/></td>
+        <td class="rule-severity" style="text-align: center"><xsl:value-of select="$ruleresult/@severity"/></td>
         <td class="rule-result rule-result-{$result}">
             <xsl:variable name="result_tooltip">
                 <xsl:call-template name="rule-result-tooltip">
@@ -377,6 +432,32 @@ Authors:
     </xsl:for-each>
 </xsl:template>
 
+<xsl:template name="get-all-references">
+    <xsl:for-each select="//cdf:Rule/cdf:reference[generate-id(.) = generate-id(key('references',@href)[1])]">
+        <xsl:if test="normalize-space(@href) and @href != 'https://github.com/OpenSCAP/scap-security-guide/wiki/Contributors'">
+            <option>
+                <xsl:attribute name="value">
+                    <xsl:value-of select="@href"/>
+                </xsl:attribute>
+                <xsl:choose>
+                    <xsl:when test="@href = 'http://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r4.pdf'">
+                        NIST SP 800-53 ID
+                    </xsl:when>
+                    <xsl:when test="@href = 'http://iase.disa.mil/stigs/cci/Pages/index.aspx'">
+                        DISA ID
+                    </xsl:when>
+                    <xsl:when test="@href = 'https://www.pcisecuritystandards.org/documents/PCI_DSS_v3.pdf'">
+                        PCI DSS Requirement
+                    </xsl:when>
+                    <xsl:otherwise>
+                        <xsl:value-of select="@href"/>
+                    </xsl:otherwise>
+                </xsl:choose>
+            </option>
+        </xsl:if>
+    </xsl:for-each>
+</xsl:template>
+
 <xsl:template name="rule-overview">
     <xsl:param name="testresult"/>
     <xsl:param name="benchmark"/>
@@ -385,7 +466,7 @@ Authors:
     <div id="rule-overview">
         <h2>Rule Overview</h2>
 
-        <div class="form-group js-only">
+        <div class="form-group js-only hidden-print">
             <div class="row">
                 <div title="Filter rules by their XCCDF result">
                     <div class="col-sm-2 toggle-rule-display-success">
@@ -433,11 +514,18 @@ Authors:
                         </div>
                     </div>
                     <p id="search-matches"></p>
+                    Group rules by:
+                    <select name="groupby" onchange="groupRulesBy(value)">
+                        <option value="default" selected="selected">Default</option>
+                        <option value="severity">Severity</option>
+                        <option value="result">Result</option>
+                        <xsl:call-template name="get-all-references"/>
+                    </select>
                 </div>
             </div>
         </div>
 
-        <table class="treetable table table-striped table-bordered">
+        <table class="treetable table table-bordered">
             <thead>
                 <tr>
                     <th>Title</th>
@@ -460,6 +548,7 @@ Authors:
 <xsl:template name="check-system-details-oval5">
     <xsl:param name="check"/>
     <xsl:param name="oval-tmpl"/>
+    <xsl:param name="result"/>
 
     <xsl:variable name="filename">
         <xsl:choose>
@@ -474,6 +563,7 @@ Authors:
         <xsl:if test="$filename != ''">
             <xsl:apply-templates select="document($filename)/ovalres:oval_results" mode="brief">
                 <xsl:with-param name='definition-id' select='$check/cdf:check-content-ref/@name'/>
+                <xsl:with-param name='result' select='$result'/>
             </xsl:apply-templates>
         </xsl:if>
 
@@ -501,6 +591,7 @@ Authors:
         -->
         <xsl:apply-templates select="$arf_results" mode="brief">
             <xsl:with-param name='definition-id' select='$check/cdf:check-content-ref/@name'/>
+            <xsl:with-param name='result' select='$result'/>
         </xsl:apply-templates>
     </xsl:variable>
 
@@ -534,7 +625,7 @@ Authors:
         <xsl:otherwise>
             <xsl:variable name="filename">
                 <xsl:choose>
-                    <xsl:when test='contains($sce-tmpl, "%")'><xsl:value-of select='concat(substring-before($sce-tmpl, "%"), $check/@href, substring-after($sce-tmpl, "%"))'/></xsl:when>
+                    <xsl:when test='contains($sce-tmpl, "%")'><xsl:value-of select='concat(substring-before($sce-tmpl, "%"), $check/cdf:check-content-ref/@href, substring-after($sce-tmpl, "%"))'/></xsl:when>
                     <xsl:otherwise><xsl:value-of select='$sce-tmpl'/></xsl:otherwise>
                 </xsl:choose>
             </xsl:variable>
@@ -557,12 +648,14 @@ Authors:
     <xsl:param name="check"/>
     <xsl:param name="oval-tmpl"/>
     <xsl:param name="sce-tmpl"/>
+    <xsl:param name="result"/>
 
     <xsl:choose>
         <xsl:when test="$check/@system = 'http://oval.mitre.org/XMLSchema/oval-definitions-5'">
             <xsl:call-template name="check-system-details-oval5">
                 <xsl:with-param name="check" select="$check"/>
                 <xsl:with-param name="oval-tmpl" select="$oval-tmpl"/>
+                <xsl:with-param name="result" select="$result"/>
             </xsl:call-template>
         </xsl:when>
         <xsl:when test="$check/@system = 'http://open-scap.org/page/SCE'">
@@ -593,6 +686,7 @@ Authors:
                 <xsl:with-param name="profile" select="$profile"/>
             </xsl:call-template>
             <xsl:value-of select="concat($item/@id, ' ')"/>
+            <xsl:value-of select="$ruleresult/@severity"/>
             <xsl:for-each select="$ruleresult/cdf:ident">
                 <xsl:value-of select="concat(text(), ' ')"/>
             </xsl:for-each>
@@ -651,41 +745,100 @@ Authors:
                             </xsl:for-each>
                         </td></tr>
                     </xsl:if>
-                    <tr><td colspan="2"><div class="description">
-                        <p>
-                            <xsl:apply-templates mode="sub-testresult" select="$item/cdf:description">
-                                <xsl:with-param name="testresult" select="$testresult"/>
-                                <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
-                                <xsl:with-param name="profile" select="$profile"/>
-                            </xsl:apply-templates>
-                        </p>
-                    </div></td></tr>
-                    <xsl:if test="$result = 'fail' or $result = 'error' or $result = 'unknown'">
-                        <xsl:variable name="check_system_details_ret">
-                            <xsl:call-template name="check-system-details">
-                                <xsl:with-param name="check" select="$ruleresult/cdf:check"/>
-                                <xsl:with-param name="oval-tmpl" select="$oval-tmpl"/>
-                                <xsl:with-param name="sce-tmpl" select="$sce-tmpl"/>
-                            </xsl:call-template>
-                        </xsl:variable>
+                    <xsl:if test="$item/cdf:description">
+                        <tr><td>Description</td><td><div class="description">
+                            <p>
+                                <xsl:apply-templates mode="sub-testresult" select="$item/cdf:description">
+                                    <xsl:with-param name="testresult" select="$testresult"/>
+                                    <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
+                                    <xsl:with-param name="profile" select="$profile"/>
+                                </xsl:apply-templates>
+                            </p>
+                        </div></td></tr>
+                    </xsl:if>
+                    <xsl:if test="$item/cdf:rationale">
+                        <tr><td>Rationale</td><td><div class="rationale">
+                            <p>
+                                <xsl:apply-templates mode="sub-testresult" select="$item/cdf:rationale">
+                                    <xsl:with-param name="testresult" select="$testresult"/>
+                                    <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
+                                    <xsl:with-param name="profile" select="$profile"/>
+                                </xsl:apply-templates>
+                            </p>
+                        </div></td></tr>
+                    </xsl:if>
+                    <xsl:if test="$item/cdf:warning">
+                        <tr><td>Warnings</td><td>
+                            <xsl:for-each select="$item/cdf:warning">
+                                <div class="panel panel-warning">
+                                    <div class="panel-heading">
+                                        <span class="label label-warning">warning</span>&#160;
+                                        <xsl:apply-templates mode="sub-testresult" select=".">
+                                            <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
+                                            <xsl:with-param name="profile" select="$profile"/>
+                                        </xsl:apply-templates>
+                                    </div>
+                                </div>
+                            </xsl:for-each>
+                        </td></tr>
+                    </xsl:if>
+                    <xsl:variable name="check_system_details_ret">
+                        <xsl:call-template name="check-system-details">
+                            <xsl:with-param name="check" select="$ruleresult/cdf:check"/>
+                            <xsl:with-param name="oval-tmpl" select="$oval-tmpl"/>
+                            <xsl:with-param name="sce-tmpl" select="$sce-tmpl"/>
+                            <xsl:with-param name="result" select="$result"/>
+                        </xsl:call-template>
+                    </xsl:variable>
 
-                        <xsl:if test="normalize-space($check_system_details_ret)">
-                            <tr><td colspan="2"><div class="check-system-details">
-                                <xsl:copy-of select="$check_system_details_ret"/>
-                            </div></td></tr>
-                        </xsl:if>
-                        <xsl:if test="$item/cdf:fix">
-                            <tr><td colspan="2"><div class="remediation">
-                                <span class="label label-success">Remediation script:</span>
-                                <pre><code>
-                                    <xsl:apply-templates mode="sub-testresult" select="$item/cdf:fix">
+                    <xsl:if test="normalize-space($check_system_details_ret)">
+                        <tr><td colspan="2"><div class="check-system-details">
+                            <xsl:copy-of select="$check_system_details_ret"/>
+                        </div></td></tr>
+                    </xsl:if>
+                    <xsl:if test="$ruleresult/cdf:message">
+                        <tr><td colspan="2"><div class="evaluation-messages">
+                            <span class="label label-default"><abbr title="Messages taken from rule-result">Evaluation messages</abbr></span>
+                            <div class="panel panel-default">
+                                <div class="panel-body">
+                                    <xsl:for-each select="$ruleresult/cdf:message">
+                                        <xsl:if test="./@severity">
+                                            <span class="label label-primary"><xsl:value-of select="./@severity"/></span>&#160;
+                                        </xsl:if>
+                                        <pre><xsl:apply-templates mode="sub-testresult" select=".">
+                                            <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
+                                            <xsl:with-param name="profile" select="$profile"/>
+                                        </xsl:apply-templates></pre>
+                                    </xsl:for-each>
+                                </div>
+                            </div>
+                        </div></td></tr>
+                    </xsl:if>
+                    <xsl:if test="$result = 'fail' or $result = 'error' or $result = 'unknown'">
+                        <xsl:for-each select="$item/cdf:fixtext">
+                            <tr><td colspan="2"><div class="remediation-description">
+                                <span class="label label-success">Remediation description:</span>
+                                <div class="panel panel-default"><div class="panel-body">
+                                    <xsl:call-template name="show-fixtext">
+                                        <xsl:with-param name="fixtext" select="."/>
                                         <xsl:with-param name="testresult" select="$testresult"/>
                                         <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
                                         <xsl:with-param name="profile" select="$profile"/>
-                                    </xsl:apply-templates>
-                                </code></pre>
+                                    </xsl:call-template>
+                                </div></div>
                             </div></td></tr>
-                        </xsl:if>
+                        </xsl:for-each>
+                        <xsl:for-each select="$item/cdf:fix">
+                            <tr><td colspan="2"><div class="remediation">
+                                <span class="label label-success">Remediation script:</span>
+                                <xsl:call-template name="show-fix">
+                                    <xsl:with-param name="fix" select="."/>
+                                    <xsl:with-param name="testresult" select="$testresult"/>
+                                    <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
+                                    <xsl:with-param name="profile" select="$profile"/>
+                                </xsl:call-template>
+                            </div></td></tr>
+                        </xsl:for-each>
                     </xsl:if>
                 </tbody>
             </table>
@@ -720,7 +873,7 @@ Authors:
     <xsl:param name="benchmark"/>
     <xsl:param name="profile"/>
 
-    <div class="js-only">
+    <div class="js-only hidden-print">
         <button type="button" class="btn btn-info" onclick="return toggleResultDetails(this)">Show all result details</button>
     </div>
     <div id="result-details">
@@ -756,6 +909,10 @@ Authors:
     <xsl:call-template name="xccdf-report-header"/>
 
     <div class="container"><div id="content">
+        <xsl:call-template name="introduction">
+            <xsl:with-param name="benchmark" select="$benchmark"/>
+            <xsl:with-param name="profile" select="$profile"/>
+        </xsl:call-template>
         <xsl:call-template name="characteristics">
             <xsl:with-param name="testresult" select="$testresult"/>
             <xsl:with-param name="benchmark" select="$benchmark"/>
@@ -773,6 +930,10 @@ Authors:
         </xsl:call-template>
         <xsl:call-template name="result-details">
             <xsl:with-param name="testresult" select="$testresult"/>
+            <xsl:with-param name="benchmark" select="$benchmark"/>
+            <xsl:with-param name="profile" select="$profile"/>
+        </xsl:call-template>
+        <xsl:call-template name="rear-matter">
             <xsl:with-param name="benchmark" select="$benchmark"/>
             <xsl:with-param name="profile" select="$profile"/>
         </xsl:call-template>

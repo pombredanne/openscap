@@ -20,7 +20,10 @@ test_run "Assert for environment better" $OSCAP oval eval --id oval:moc.elpmaxe.
 #
 # General XCCDF Tests. (Mostly, oscap xccdf eval)
 #
+test_run "Test unscored roles" $srcdir/test_xccdf_role_unscored.sh
+test_run "Fix containing unresolved elements" $srcdir/test_remediate_unresolved.sh
 test_run "Empty XCCDF variable element" $srcdir/test_empty_variable.sh
+test_run "Test xccdf:fix/xccdf:instance elements" $srcdir/test_fix_instance.sh
 test_run "Escaping of xml &amp within xccdf:value" $srcdir/test_xccdf_xml_escaping_value.sh
 test_run "check/@negate" $srcdir/test_xccdf_check_negate.sh
 test_run "check/@multi-check import/export" $srcdir/test_xccdf_check_multi_check.sh
@@ -29,6 +32,7 @@ test_run "check/@multi-check that has zero definitions" $srcdir/test_xccdf_check
 test_run "xccdf:check-content-ref without @name" $srcdir/test_xccdf_check_content_ref_without_name_attr.sh
 test_run "without xccdf:check-content-refs" $srcdir/test_xccdf_check_without_content_refs.sh
 test_run "xccdf:refine-rule/@weight shall not be exported" $srcdir/test_xccdf_refine_rule.sh
+test_run "xccdf:refine-rule shall refine rules" $srcdir/test_xccdf_refine_rule_refine.sh
 test_run "xccdf:fix/@distruption|@complexity shall not be exported" $srcdir/test_xccdf_fix_attr_export.sh
 test_run "xccdf:complex-check/@operator=AND -- notchecked" $srcdir/test_xccdf_complex_check_and_notchecked.sh
 test_run "Check Processing Algorithm -- complex-check priority" $srcdir/test_xccdf_check_processing_complex_priority.sh
@@ -36,6 +40,8 @@ test_run "Check Processing Algorithm -- bad refine must select check without @se
 test_run "Check Processing Algorithm -- none selected for candidate" $srcdir/test_xccdf_check_processing_selector_empty.sh
 test_run "Check Processing Algorithm -- none check-content-ref resolvable." $srcdir/test_xccdf_check_processing_invalid_content_refs.sh
 test_run "Check Processing Algorithm -- always include xccdf:check" $srcdir/test_xccdf_notchecked_has_check.sh
+test_run "Check Processing Algorithm -- notchecked & unselected" $srcdir/test_xccdf_role_unchecked.sh
+test_run "Load OVAL using relative path" $srcdir/test_xccdf_oval_relative_path.sh
 test_run "xccdf:select and @cluster-id -- disable group" $srcdir/test_xccdf_selectors_cluster1.sh
 test_run "xccdf:select and @cluster-id -- enable a set of items" $srcdir/test_xccdf_selectors_cluster2.sh
 test_run "xccdf:select and @cluster-id -- complex example" $srcdir/test_xccdf_selectors_cluster3.sh
@@ -48,6 +54,9 @@ test_run "Unsupported Check System" $srcdir/test_xccdf_check_unsupported_check_s
 test_run "Multiple xccdf:TestResult elements" $srcdir/test_xccdf_multiple_testresults.sh
 test_run "default selector for xccdf value" $srcdir/test_default_selector.sh
 test_run "inherit selector for xccdf value" $srcdir/test_inherit_selector.sh
+test_run "incorrect selector for xccdf value" $srcdir/test_xccdf_refine_value_bad.sh
+test_run "test xccdf resolve" $srcdir/test_xccdf_resolve.sh
+test_run "Exported arf results from xccdf without reference to oval" $srcdir/test_xccdf_results_arf_no_oval.sh
 test_run "XCCDF Substitute within Title" $srcdir/test_xccdf_sub_title.sh
 
 test_run "libxml errors handled correctly" $srcdir/test_unfinished.sh

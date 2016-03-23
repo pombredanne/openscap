@@ -61,7 +61,7 @@
 
 #define FILE_SEPARATOR '/'
 
-oval_version_t over;
+oval_schema_version_t over;
 
 #if defined USE_REGEX_PCRE
 static int get_substrings(char *str, int *ofs, pcre *re, int want_substrs, char ***substrings) {
@@ -81,7 +81,8 @@ static int get_substrings(char *str, int *ofs, pcre *re, int want_substrs, char 
 #endif
 
 	if (rc < -1) {
-		return -1;
+		dE("Function pcre_exec() failed to match a regular expression with return code %d on string '%s'.", rc, str);
+		return rc;
 	} else if (rc == -1) {
 		/* no match */
 		return 0;
@@ -172,18 +173,18 @@ static SEXP_t *create_item(const char *path, const char *filename, char *pattern
 	char *text;
 
         if (strlen(path) + strlen(filename) + 1 > PATH_MAX) {
-                dE("path+filename too long\n");
+                dE("path+filename too long");
                 return (NULL);
         }
 
-	if (oval_version_cmp(over, OVAL_VERSION(5.4)) < 0) {
+	if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.4)) < 0) {
 		pattern = text = NULL;
 		se_instance = NULL;
 	} else {
 		text = substrs[0];
 		se_instance = SEXP_number_newu_64((int64_t) instance);
 	}
-	if (oval_version_cmp(over, OVAL_VERSION(5.6)) < 0) {
+	if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.6)) < 0) {
 		se_filepath = NULL;
 	} else {
 		se_filepath = SEXP_string_newf("%s%c%s", path, FILE_SEPARATOR, filename);
@@ -305,6 +306,18 @@ static int process_file(const char *path, const char *file, void *arg)
 		SEXP_free(next_inst);
 		substr_cnt = get_substrings(buf, &ofs, pfd->compiled_regex, want_instance, &substrs);
 
+		if (substr_cnt < 0) {
+			SEXP_t *msg;
+			msg = probe_msg_creatf(OVAL_MESSAGE_LEVEL_ERROR,
+				"Regular expression pattern match failed in file %s with error %d.",
+				whole_path, substr_cnt);
+			probe_cobj_add_msg(probe_ctx_getresult(pfd->ctx), msg);
+			SEXP_free(msg);
+			probe_cobj_set_flag(probe_ctx_getresult(pfd->ctx), SYSCHAR_FLAG_ERROR);
+			ret = -3;
+			goto cleanup;
+		}
+
 		if (substr_cnt > 0) {
 			++cur_inst;
 
@@ -365,7 +378,7 @@ int probe_main(probe_ctx *ctx, void *arg)
 
         probe_in = probe_ctx_getobject(ctx);
 
-	over = probe_obj_get_schema_version(probe_in);
+	over = probe_obj_get_platform_schema_version(probe_in);
         path_ent = probe_obj_getent(probe_in, "path",     1);
         file_ent = probe_obj_getent(probe_in, "filename", 1);
         inst_ent = probe_obj_getent(probe_in, "instance", 1);
@@ -495,7 +508,7 @@ int probe_main(probe_ctx *ctx, void *arg)
 	if (pfd.compiled_regex != NULL)
 		pcre_free(pfd.compiled_regex);
 #elif defined USE_REGEX_POSIX
-	regfree(re);
+	regfree(&_re);
 #endif
 	return ret;
 }

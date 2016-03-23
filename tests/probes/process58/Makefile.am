@@ -10,6 +10,8 @@ TESTS = all.sh
 
 EXTRA_DIST = \
 	all.sh \
+	capability.oval.xml \
+	capability.sh \
 	selinux_domain_label.oval.xml \
 	selinux_domain_label.sh \
 	dev_to_tty.oval.xml \
@@ -17,5 +19,7 @@ EXTRA_DIST = \
 	loginuid.oval.xml \
 	loginuid.sh \
 	sessionid.oval.xml \
-	sessionid.sh
-
+	sessionid.sh \
+	stopped_process.sh \
+	command_line.oval.xml \
+	command_line.sh

@@ -101,7 +101,7 @@ static struct rpmverify_global g_rpm;
 	do { \
 		int prev_cancel_state = -1; \
 		if (pthread_mutex_lock(&g_rpm.mutex) != 0) { \
-			dE("Can't lock mutex\n"); \
+			dE("Can't lock mutex"); \
 			return (-1); \
 		} \
 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &prev_cancel_state); \
@@ -111,7 +111,7 @@ static struct rpmverify_global g_rpm;
 	do { \
 		int prev_cancel_state = -1; \
 		if (pthread_mutex_unlock(&g_rpm.mutex) != 0) { \
-			dE("Can't unlock mutex. Aborting...\n"); \
+			dE("Can't unlock mutex. Aborting..."); \
 			abort(); \
 		} \
 		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &prev_cancel_state); \
@@ -251,23 +251,28 @@ static int rpmverify_collect(probe_ctx *ctx,
 		  fi = rpmfiNew(g_rpm.rpmts, pkgh, tag[i], 1);
 
 		  while (rpmfiNext(fi) != -1) {
-		    res.file   = rpmfiFN(fi);
+				res.file = oscap_strdup(rpmfiFN(fi));
 		    res.fflags = rpmfiFFlags(fi);
 		    res.oflags = omit;
 
 		    if (((res.fflags & RPMFILE_CONFIG) && (flags & RPMVERIFY_SKIP_CONFIG)) ||
-			((res.fflags & RPMFILE_GHOST)  && (flags & RPMVERIFY_SKIP_GHOST)))
-		      continue;
+					((res.fflags & RPMFILE_GHOST)  && (flags & RPMVERIFY_SKIP_GHOST))) {
+					oscap_free(res.file);
+					continue;
+				}
 
 		    switch(file_op) {
 		    case OVAL_OPERATION_EQUALS:
-		      if (strcmp(res.file, file) != 0)
-			continue;
-		      res.file = file;
+					if (strcmp(res.file, file) != 0) {
+						oscap_free(res.file);
+						continue;
+					}
 		      break;
 		    case OVAL_OPERATION_NOT_EQUAL:
-		      if (strcmp(res.file, file) == 0)
-			continue;
+					if (strcmp(res.file, file) == 0) {
+						oscap_free(res.file);
+						continue;
+					}
 		      break;
 		    case OVAL_OPERATION_PATTERN_MATCH:
 		      ret = pcre_exec(re, NULL, res.file, strlen(res.file), 0, 0, NULL, 0);
@@ -277,17 +282,20 @@ static int rpmverify_collect(probe_ctx *ctx,
 			break;
 		      case -1:
 			/* mismatch */
+			oscap_free(res.file);
 			continue;
 		      default:
-			dE("pcre_exec() failed!\n");
+			dE("pcre_exec() failed!");
 			ret = -1;
+			oscap_free(res.file);
 			goto ret;
 		      }
 		      break;
 		    default:
 		      /* unsupported operation */
-		      dE("Operation \"%d\" on `filepath' not supported\n", file_op);
+		      dE("Operation \"%d\" on `filepath' not supported", file_op);
 		      ret = -1;
+					oscap_free(res.file);
 		      goto ret;
 		    }
 
@@ -296,8 +304,10 @@ static int rpmverify_collect(probe_ctx *ctx,
 
 		    if (callback(ctx, &res) != 0) {
 			    ret = 0;
+					oscap_free(res.file);
 			    goto ret;
 		    }
+			oscap_free(res.file);
 		  }
 
 		  rpmfiFree(fi);
@@ -317,7 +327,7 @@ ret:
 void *probe_init (void)
 {
 	if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
-		dI("rpmReadConfigFiles failed: %u, %s.\n", errno, strerror (errno));
+		dI("rpmReadConfigFiles failed: %u, %s.", errno, strerror (errno));
 		return (NULL);
 	}
 
@@ -342,38 +352,67 @@ void probe_fini (void *ptr)
 	return;
 }
 
+static void _add_ent_from_cstr(SEXP_t *item, const char *name, const char *value)
+{
+	SEXP_t *sexp_str = SEXP_string_new(value, strlen(value));
+	probe_item_ent_add(item, name, NULL, sexp_str);
+	SEXP_free(sexp_str);
+}
+
+static void _add_ent_from_flag(SEXP_t *item, const char *name, struct rpmverify_res *res, int flag)
+{
+	const char *result;
+	if (res->oflags & flag || res->vflags & RPMVERIFY_FAILURES) {
+		result = "not performed";
+	} else if (res->vflags & flag) {
+		result = "fail";
+	} else {
+		result = "pass";
+	}
+	_add_ent_from_cstr(item, name, result);
+}
+
+static void _add_ent_bool_from_flag(SEXP_t *item, const char *name, struct rpmverify_res *res, int flag)
+{
+	SEXP_t *sexp_str;
+	sexp_str = SEXP_number_newb(res->fflags & flag);
+	probe_item_ent_add(item, name, NULL, sexp_str);
+	SEXP_free(sexp_str);
+}
+
 static int rpmverify_additem(probe_ctx *ctx, struct rpmverify_res *res)
 {
 	SEXP_t *item;
+	oval_schema_version_t oval_version;
 
-#define VF_RESULT(f) (res->oflags & (f) ? "not performed" : (res->vflags & RPMVERIFY_FAILURES ? "not performed" : (res->vflags & (f) ? "fail" : "pass")))
-#define FF_RESULT(f) (res->fflags & (f) ? true : false)
-
-	item = probe_item_create(OVAL_LINUX_RPMVERIFYFILE, NULL,
-				 "name",		OVAL_DATATYPE_STRING, res->name,
-				 "epoch", 		OVAL_DATATYPE_STRING, res->epoch,
-				 "version", 		OVAL_DATATYPE_STRING, res->version,
-				 "release", 	 	OVAL_DATATYPE_STRING, res->release,
-				 "arch", 		OVAL_DATATYPE_STRING, res->arch,
-				 "filepath",	    OVAL_DATATYPE_STRING, res->file,
-				 "extended_name", 	OVAL_DATATYPE_STRING, res->extended_name,
-				 "size_differs",	OVAL_DATATYPE_STRING, VF_RESULT(RPMVERIFY_FILESIZE),
-				 "mode_differs",	OVAL_DATATYPE_STRING, VF_RESULT(RPMVERIFY_MODE),
-				 "md5_differs",	 OVAL_DATATYPE_STRING, VF_RESULT(RPMVERIFY_MD5),
-				 "device_differs",      OVAL_DATATYPE_STRING, VF_RESULT(RPMVERIFY_RDEV),
-				 "link_mismatch",       OVAL_DATATYPE_STRING, VF_RESULT(RPMVERIFY_LINKTO),
-				 "ownership_differs",   OVAL_DATATYPE_STRING, VF_RESULT(RPMVERIFY_USER),
-				 "group_differs",       OVAL_DATATYPE_STRING, VF_RESULT(RPMVERIFY_GROUP),
-				 "mtime_differs",       OVAL_DATATYPE_STRING, VF_RESULT(RPMVERIFY_MTIME),
+	item = probe_item_create(OVAL_LINUX_RPMVERIFYFILE, NULL,NULL);
+	_add_ent_from_cstr(item, "name", res->name);
+	_add_ent_from_cstr(item, "epoch", res->epoch);
+	_add_ent_from_cstr(item, "version", res->version);
+	_add_ent_from_cstr(item, "release", res->release);
+	_add_ent_from_cstr(item, "arch", res->arch);
+	_add_ent_from_cstr(item, "filepath", res->file);
+	_add_ent_from_cstr(item, "extended_name", res->extended_name);
+	_add_ent_from_flag(item, "size_differs", res, RPMVERIFY_FILESIZE);
+	_add_ent_from_flag(item, "mode_differs", res, RPMVERIFY_MODE);
+	_add_ent_from_flag(item, "md5_differs", res, RPMVERIFY_MD5); // deprecated since OVAL 5.11.1
+	oval_version = probe_obj_get_platform_schema_version(probe_ctx_getobject(ctx));
+	if (oval_schema_version_cmp(oval_version, OVAL_SCHEMA_VERSION(5.11.1)) >= 0) {
+		_add_ent_from_flag(item, "filedigest_differs", res, RPMVERIFY_FILEDIGEST);
+	}
+	_add_ent_from_flag(item, "device_differs", res, RPMVERIFY_RDEV);
+	_add_ent_from_flag(item, "link_mismatch", res, RPMVERIFY_LINKTO);
+	_add_ent_from_flag(item, "ownership_differs", res, RPMVERIFY_USER);
+	_add_ent_from_flag(item, "group_differs", res, RPMVERIFY_GROUP);
+	_add_ent_from_flag(item, "mtime_differs", res, RPMVERIFY_MTIME);
 #ifndef HAVE_LIBRPM44
-				 "capabilities_differ", OVAL_DATATYPE_STRING, VF_RESULT(RPMVERIFY_CAPS),
+	_add_ent_from_flag(item, "capabilities_differ", res, RPMVERIFY_CAPS);
 #endif
-				 "configuration_file",  OVAL_DATATYPE_BOOLEAN, FF_RESULT(RPMFILE_CONFIG),
-				 "documentation_file",  OVAL_DATATYPE_BOOLEAN, FF_RESULT(RPMFILE_DOC),
-				 "ghost_file",	  OVAL_DATATYPE_BOOLEAN, FF_RESULT(RPMFILE_GHOST),
-				 "license_file",	OVAL_DATATYPE_BOOLEAN, FF_RESULT(RPMFILE_LICENSE),
-				 "readme_file",	 OVAL_DATATYPE_BOOLEAN, FF_RESULT(RPMFILE_README),
-				 NULL);
+	_add_ent_bool_from_flag(item, "configuration_file", res, RPMFILE_CONFIG);
+	_add_ent_bool_from_flag(item, "documentation_file", res, RPMFILE_DOC);
+	_add_ent_bool_from_flag(item, "ghost_file", res, RPMFILE_GHOST);
+	_add_ent_bool_from_flag(item, "license_file", res, RPMFILE_LICENSE);
+	_add_ent_bool_from_flag(item, "readme_file", res, RPMFILE_README);
 
 	return probe_item_collect(ctx, item) == 2 ? 1 : 0;
 }
@@ -385,7 +424,7 @@ typedef struct {
 
 const rpmverifyfile_bhmap_t rpmverifyfile_bhmap[] = {
 	{ "nolinkto",      (uint64_t)VERIFY_LINKTO    },
-	{ "nomd5",	 (uint64_t)VERIFY_MD5       },
+	{ "nomd5",	 (uint64_t)VERIFY_MD5       }, // deprecated since OVAL 5.11.1
 	{ "nosize",	(uint64_t)VERIFY_SIZE      },
 	{ "nouser",	(uint64_t)VERIFY_USER      },
 	{ "nogroup",       (uint64_t)VERIFY_GROUP     },
@@ -393,7 +432,9 @@ const rpmverifyfile_bhmap_t rpmverifyfile_bhmap[] = {
 	{ "nomode",	(uint64_t)VERIFY_MODE      },
 	{ "nordev",	(uint64_t)VERIFY_RDEV      },
 	{ "noconfigfiles", RPMVERIFY_SKIP_CONFIG      },
-	{ "noghostfiles",  RPMVERIFY_SKIP_GHOST       }
+	{ "noghostfiles",  RPMVERIFY_SKIP_GHOST       },
+	{ "nofiledigest", (uint64_t)VERIFY_FILEDIGEST },
+	{ "nocaps", (uint64_t)VERIFY_CAPS }
 };
 
 int probe_main (probe_ctx *ctx, void *arg)
@@ -413,7 +454,7 @@ int probe_main (probe_ctx *ctx, void *arg)
 	file_ent = probe_obj_getent(probe_in, "filepath", 1);
 
 	if (file_ent == NULL) {
-		dE("Missing \"filepath\" (%p) entity\n", file_ent);
+		dE("Missing \"filepath\" (%p) entity", file_ent);
 
 		SEXP_free(file_ent);
 
@@ -455,7 +496,7 @@ int probe_main (probe_ctx *ctx, void *arg)
 
 			if (aval != NULL) {
 				if (SEXP_strcmp(aval, "true") == 0) {
-					dI("omit verify attr: %s\n", rpmverifyfile_bhmap[i].a_name);
+					dI("omit verify attr: %s", rpmverifyfile_bhmap[i].a_name);
 					collect_flags |= rpmverifyfile_bhmap[i].a_flag;
 				}
 
@@ -466,7 +507,7 @@ int probe_main (probe_ctx *ctx, void *arg)
 		SEXP_free(bh_ent);
 	}
 
-	dI("Collecting rpmverifyfile data, query: f=\"%s\" (%d)\n",
+	dI("Collecting rpmverifyfile data, query: f=\"%s\" (%d)",
 	   file, file_op);
 
 	if (rpmverify_collect(ctx,
@@ -475,7 +516,7 @@ int probe_main (probe_ctx *ctx, void *arg)
 			      collect_flags,
 			      rpmverify_additem) != 0)
 	{
-		dE("An error ocured while collecting rpmverifyfile data\n");
+		dE("An error ocured while collecting rpmverifyfile data");
 		probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_ERROR);
 	}
 

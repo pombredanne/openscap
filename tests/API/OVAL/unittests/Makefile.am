@@ -19,6 +19,12 @@ EXTRA_DIST = \
 	deprecated_def.xml \
 	test_count_function.sh \
 	oval-def_count_function.xml \
+	comment.xml \
+	test_comment.sh \
+	test_cim_datetime.sh \
+	cim_datetime.xml \
+	test_directives.sh \
+	test_directives.xml \
 	test_int_comparison.oval.xml \
 	test_int_comparison.sh \
 	test_int_comparison.syschar.xml \
@@ -37,6 +43,8 @@ EXTRA_DIST = \
 	test_ipv6_super_set_of.oval.xml \
 	test_ipv6_super_set_of.sh \
 	test_ipv6_super_set_of.syschar.xml \
+	test_invalid_regex.sh \
+	test_invalid_regex.xml \
 	test_envvar_insensitive_equals.oval.xml \
 	test_envvar_insensitive_equals.sh \
 	test_envvar_insensitive_equals.syschar.xml \
@@ -46,14 +54,25 @@ EXTRA_DIST = \
 	test_evr_string_comparison.oval.xml \
 	test_evr_string_comparison.sh \
 	test_evr_string_comparison.syschar.xml \
+	test_external_variable.oval.xml \
+	test_external_variable.sh \
+	external_variables.xml \
 	test_filecontent_line.oval.xml \
 	test_filecontent_line.sh \
 	test_filecontent_line.syschar.xml \
 	test_float_comparison.oval.xml \
 	test_float_comparison.sh \
 	test_float_comparison.syschar.xml \
+	test_glob_to_regex.sh \
+	test_glob_to_regex.xml \
 	test_oval_empty_variable_evaluation.sh \
 	test_oval_empty_variable_evaluation.xml \
+	test_platform_version.sh \
+	test_platform_version.xml \
+	test_object_component_type.oval.xml \
+	test_object_component_type.sh \
+	test_skip_valid.sh \
+	test_skip_valid.oval.xml \
 	test_xmlns_missing.oval.xml \
 	test_xmlns_missing.sh \
 	test_xsinil_envv58_pid.oval.xml \
@@ -62,5 +81,7 @@ EXTRA_DIST = \
 	item_not_exist.xml \
 	anyxmlsyschar.xml \
 	anyxmloval.xml \
-	test_anyxml.sh
+	test_anyxml.sh \
+	test_state_check_existence.sh \
+	state_check_existence.xml
 

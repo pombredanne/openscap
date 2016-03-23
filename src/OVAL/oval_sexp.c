@@ -51,6 +51,7 @@
 #include "common/debug_priv.h"
 #include "common/_error.h"
 #include "public/oval_version.h"
+#include "public/oval_schema_version.h"
 
 
 SEXP_t *oval_value_to_sexp(struct oval_value *val, oval_datatype_t dtype)
@@ -60,6 +61,7 @@ SEXP_t *oval_value_to_sexp(struct oval_value *val, oval_datatype_t dtype)
 
 	switch (dtype) {
 	case OVAL_DATATYPE_EVR_STRING:
+	case OVAL_DATATYPE_DEBIAN_EVR_STRING:
 	case OVAL_DATATYPE_IPV4ADDR:
 	case OVAL_DATATYPE_IPV6ADDR:
 	case OVAL_DATATYPE_STRING:
@@ -165,7 +167,7 @@ static int oval_varref_attr_to_sexp(void *sess, struct oval_entity *entity, stru
 
 	var = oval_entity_get_variable(entity);
 	if (oval_probe_query_variable(sess, var) != 0) {
-		dE("Can't convert variable reference to SEXP.\n");
+		dE("Can't convert variable reference to SEXP.");
 		return -1;
 	}
 
@@ -188,7 +190,7 @@ static int oval_varref_attr_to_sexp(void *sess, struct oval_entity *entity, stru
 	}
 
 	if (ret) {
-		dW("%s\n", msg);
+		dW("%s", msg);
 		oval_syschar_add_new_message(syschar, msg, OVAL_MESSAGE_LEVEL_WARNING);
 		oval_syschar_set_flag(syschar, SYSCHAR_FLAG_DOES_NOT_EXIST);
 		return ret;
@@ -228,7 +230,7 @@ static int oval_varref_attr_to_sexp(void *sess, struct oval_entity *entity, stru
 	return 0;
 }
 
-static int oval_varref_elm_to_sexp(void *sess, struct oval_variable *var, oval_datatype_t dt, SEXP_t **out_sexp)
+static int oval_varref_elm_to_sexp(void *sess, struct oval_variable *var, oval_datatype_t dt, SEXP_t **out_sexp, struct oval_syschar *syschar)
 {
 	SEXP_t *val_lst;
 	struct oval_value_iterator *val_itr;
@@ -238,6 +240,16 @@ static int oval_varref_elm_to_sexp(void *sess, struct oval_variable *var, oval_d
 		return -1;
 
 	flag = oval_variable_get_collection_flag(var);
+	if (flag == SYSCHAR_FLAG_DOES_NOT_EXIST) {
+		char msg[100];
+		snprintf(msg, sizeof(msg), "Referenced variable has no values (%s).", oval_variable_get_id(var));
+		dW("%s", msg);
+		if (syschar != NULL)  {
+			oval_syschar_add_new_message(syschar, msg, OVAL_MESSAGE_LEVEL_WARNING);
+			oval_syschar_set_flag(syschar, SYSCHAR_FLAG_DOES_NOT_EXIST);
+		}
+		return 1;
+	}
 	if (flag != SYSCHAR_FLAG_COMPLETE
 	    && flag != SYSCHAR_FLAG_INCOMPLETE) {
 		*out_sexp = SEXP_list_new(NULL);
@@ -406,7 +418,7 @@ int oval_object_to_sexp(void *sess, const char *typestr, struct oval_syschar *sy
 	struct oval_object_content *content;
 	struct oval_entity *entity;
 
-	oval_version_t obj_over;
+	const char *obj_over;
 	char obj_name[128];
 	const char *obj_id;
 
@@ -421,11 +433,12 @@ int oval_object_to_sexp(void *sess, const char *typestr, struct oval_syschar *sy
 		return -1;
 	}
 
-	obj_over = oval_object_get_schema_version(object);
+	obj_over = oval_schema_version_to_cstr(oval_object_get_platform_schema_version(object));
 	obj_id   = oval_object_get_id(object);
 	obj_attr = probe_attr_creat("id", SEXP_string_new_r(&sm0, obj_id, strlen(obj_id)),
-	                            "oval_version", SEXP_number_newu_32_r(&sm1, obj_over),
+	                            "oval_version", SEXP_string_new_r(&sm1, obj_over, strlen(obj_over)),
 	                            NULL);
+	oscap_free(obj_over);
 
 	obj_sexp = probe_obj_new(obj_name, obj_attr);
 
@@ -466,6 +479,9 @@ int oval_object_to_sexp(void *sess, const char *typestr, struct oval_syschar *sy
 			ret = 0;
 			vr_type = oval_entity_get_varref_type(entity);
 			if (vr_type == OVAL_ENTITY_VARREF_ATTRIBUTE) {
+				const char *var_id = oval_variable_get_id(oval_entity_get_variable(entity));
+				const char *field_name = oval_object_content_get_field_name(content);
+				dI("Object '%s' references variable '%s' in '%s' field.", obj_id, var_id, field_name);
 				ret = oval_varref_attr_to_sexp(sess, entity, syschar, &stmp);
 
 				if (ret == 0) {
@@ -487,7 +503,7 @@ int oval_object_to_sexp(void *sess, const char *typestr, struct oval_syschar *sy
 
 				var = oval_entity_get_variable(entity);
 				dt = oval_entity_get_datatype(entity);
-				ret = oval_varref_elm_to_sexp(sess, var, dt, &val_lst);
+				ret = oval_varref_elm_to_sexp(sess, var, dt, &val_lst, syschar);
 
 				if (ret == 0) {
 					SEXP_list_add(elm, val_lst);
@@ -518,8 +534,16 @@ int oval_object_to_sexp(void *sess, const char *typestr, struct oval_syschar *sy
 			elm = oval_set_to_sexp(oval_object_content_get_setobject(content));
 			break;
 
-		case OVAL_OBJECTCONTENT_FILTER:
-			elm = oval_filter_to_sexp(oval_object_content_get_filter(content));
+		case OVAL_OBJECTCONTENT_FILTER: {
+			struct oval_filter *filter = oval_object_content_get_filter(content);
+			struct oval_state *ste = oval_filter_get_state(filter);
+			const char *ste_id = oval_state_get_id(ste);
+			oval_filter_action_t action = oval_filter_get_filter_action(filter);
+			const char *action_text = oval_filter_action_get_text(action);
+			dI("Object '%s' has a filter that %ss items conforming to state '%s'.",
+					obj_id, action_text, ste_id);
+			elm = oval_filter_to_sexp(filter);
+			}
 			break;
 
 		case OVAL_OBJECTCONTENT_UNKNOWN:
@@ -651,7 +675,7 @@ int oval_state_to_sexp(void *sess, struct oval_state *state, SEXP_t **out_sexp)
         subtype_name = oval_subtype_to_str(oval_state_get_subtype(state));
 
 	if (subtype_name == NULL) {
-		dI("FAIL: unknown subtype: %d\n", oval_state_get_subtype(state));
+		dI("FAIL: unknown subtype: %d", oval_state_get_subtype(state));
 		return (-1);
 	}
 
@@ -671,6 +695,7 @@ int oval_state_to_sexp(void *sess, struct oval_state *state, SEXP_t **out_sexp)
 	contents = oval_state_get_contents(state);
 	while (oval_state_content_iterator_has_more(contents)) {
 		oval_check_t ochk;
+		oval_existence_t oext;
 		oval_entity_varref_type_t vr_type;
 		struct oval_entity *ent;
 		struct oval_state_content *content = oval_state_content_iterator_next(contents);
@@ -707,6 +732,12 @@ int oval_state_to_sexp(void *sess, struct oval_state *state, SEXP_t **out_sexp)
 			SEXP_free(r0);
 		}
 
+		oext = oval_state_content_get_check_existence(content);
+		if (oext != OVAL_EXISTENCE_UNKNOWN) {
+			probe_ent_attr_add(ste_ent, "check_existence", r0 = SEXP_number_newu_32(oext));
+			SEXP_free(r0);
+		}
+
 		vr_type = oval_entity_get_varref_type(ent);
 		if (vr_type == OVAL_ENTITY_VARREF_ATTRIBUTE
 		    || vr_type == OVAL_ENTITY_VARREF_ELEMENT) {
@@ -717,7 +748,7 @@ int oval_state_to_sexp(void *sess, struct oval_state *state, SEXP_t **out_sexp)
 			var = oval_entity_get_variable(ent);
 			dt = oval_entity_get_datatype(ent);
 
-			if (oval_varref_elm_to_sexp(sess, var, dt, &val_lst) != 0)
+			if (oval_varref_elm_to_sexp(sess, var, dt, &val_lst, NULL) != 0)
 				goto fail;
 
 			SEXP_list_add(ste_ent, val_lst);
@@ -853,12 +884,13 @@ static struct oval_sysent *oval_sexp_to_sysent(struct oval_syschar_model *model,
 				snprintf(val, sizeof(val), "%" PRIu64, SEXP_number_getu_64(sval));
 				break;
 			default:
-				dE("Unexpected SEXP number datatype: %d, name: '%s'.\n", sndt, key);
+				dE("Unexpected SEXP number datatype: %d, name: '%s'.", sndt, key);
 				valp = '\0';
 				break;
 			}
 			break;
 		case OVAL_DATATYPE_EVR_STRING:
+		case OVAL_DATATYPE_DEBIAN_EVR_STRING:
 		case OVAL_DATATYPE_IPV4ADDR:
 		case OVAL_DATATYPE_IPV6ADDR:
 		case OVAL_DATATYPE_STRING:
@@ -866,7 +898,7 @@ static struct oval_sysent *oval_sexp_to_sysent(struct oval_syschar_model *model,
 			valp = SEXP_string_cstr(sval);
 			break;
 		default:
-			dE("Unexpected OVAL datatype: %d, '%s', name: '%s'.\n",
+			dE("Unexpected OVAL datatype: %d, '%s', name: '%s'.",
 			   dt, oval_datatype_get_text(dt), key);
 			valp = '\0';
 			break;
@@ -916,8 +948,8 @@ static struct oval_sysitem *oval_sexp_to_sysitem(struct oval_syschar_model *mode
 
 	int type = oval_str_to_subtype(name);
 
-	dI("Syschar entry type: %d '%s' => %s\n", type, name,
-	   ((type != OVAL_SUBTYPE_UNKNOWN) ? "OK" : "FAILED to decode"));
+	dD("Syschar entry type: %d '%s' => %s", type, name,
+	   ((type != OVAL_SUBTYPE_UNKNOWN) ? "decoded OK" : "FAILED to decode"));
 #ifndef NDEBUG
 	if (type == OVAL_SUBTYPE_UNKNOWN)
 		abort();

@@ -19,6 +19,7 @@ common_oval_sources = \
 	collectVarRefs.c \
 	collectVarRefs_impl.h \
 	oval_agent.c \
+	oval_session.c \
 	oval_defModel.c \
 	oval_sysModel.c \
 	oval_affected.c \
@@ -32,6 +33,8 @@ common_oval_sources = \
 	oval_enumerations.c \
 	oval_filter.c \
 	oval_generator.c \
+	oval_glob_to_regex.c \
+	oval_glob_to_regex.h \
 	oval_message.c \
 	oval_object.c \
 	oval_objectContent.c \
@@ -41,6 +44,7 @@ common_oval_sources = \
 	oval_reference.c \
 	oval_directives.c \
 	oval_directives_impl.h \
+	oval_schema_version.c \
 	oval_set.c \
 	oval_state.c \
 	oval_stateContent.c \
@@ -130,12 +134,14 @@ liboval_testing_la_LIBADD = $(liboval_la_LIBADD)
 pkginclude_HEADERS  = \
 			public/oval_adt.h \
 			public/oval_agent_api.h \
+			public/oval_session.h \
 			public/oval_definitions.h \
 			public/oval_system_characteristics.h \
 			public/oval_variables.h \
 			public/oval_directives.h \
 			public/oval_types.h \
 			public/oval_version.h \
+			public/oval_schema_version.h \
 			public/oval_agent_xccdf_api.h
 
 if WANT_PROBES

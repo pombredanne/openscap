@@ -25,12 +25,16 @@
 #endif
 
 #include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <libxml/parser.h>
 #include <libxml/xmlreader.h>
+#include <libxml/xmlerror.h>
 
 #include "common/alloc.h"
 #include "common/elements.h"
 #include "common/_error.h"
+#include "common/debug_priv.h"
 #include "common/public/oscap.h"
 #include "common/util.h"
 #include "CPE/public/cpe_lang.h"
@@ -38,6 +42,7 @@
 #include "CPE/cpelang_priv.h"
 #include "doc_type_priv.h"
 #include "oscap_source.h"
+#include "common/oscap_string.h"
 #include "oscap_source_priv.h"
 #include "OVAL/oval_parser_impl.h"
 #include "OVAL/public/oval_definitions.h"
@@ -79,14 +84,33 @@ struct oscap_source *oscap_source_new_from_file(const char *filepath)
 	return source;
 }
 
-struct oscap_source *oscap_source_new_from_memory(const char *buffer, size_t size, const char *filepath)
+/**
+ * Allocate oscap_source struct and fill for memory data
+ * @param size_t size Size of data
+ * @param const char* filepath Path of file
+ * @return Allocated struct
+ */
+static struct oscap_source* _create_oscap_source(size_t size, const char* filepath)
 {
 	struct oscap_source *source = (struct oscap_source *) oscap_calloc(1, sizeof(struct oscap_source));
-	source->origin.memory = oscap_calloc(1, size);
 	source->origin.memory_size = size;
-	memcpy(source->origin.memory, buffer, size);
 	source->origin.type = OSCAP_SRC_FROM_USER_MEMORY;
 	source->origin.filepath = oscap_strdup(filepath ? filepath : "NONEXISTENT");
+	return source;
+}
+
+struct oscap_source *oscap_source_new_from_memory(const char *buffer, size_t size, const char *filepath)
+{
+	struct oscap_source *source = _create_oscap_source(size, filepath);
+	source->origin.memory = oscap_calloc(1, size);
+	memcpy(source->origin.memory, buffer, size);
+	return source;
+}
+
+struct oscap_source *oscap_source_new_take_memory(char *buffer, size_t size, const char *filepath)
+{
+	struct oscap_source* source = _create_oscap_source(size, filepath);
+	source->origin.memory = buffer;
 	return source;
 }
 
@@ -154,15 +178,29 @@ oscap_document_type_t oscap_source_get_scap_type(struct oscap_source *source)
 	return source->scap_type;
 }
 
+static void xmlErrorCb(struct oscap_string *buffer, const char * format, ...)
+{
+	va_list ap;
+	va_start(ap, format);
+
+	char* error_msg = oscap_vsprintf(format, ap);
+	oscap_string_append_string(buffer, error_msg);
+	oscap_free(error_msg);
+
+	va_end(ap);
+}
+
 xmlDoc *oscap_source_get_xmlDoc(struct oscap_source *source)
 {
 	// We check origin.memory first because even with it being non-NULL
 	// filepath will be non-NULL, it will contain the filepath hint.
+	struct oscap_string *xml_error_string = oscap_string_new();
+	xmlSetGenericErrorFunc(xml_error_string, (xmlGenericErrorFunc)xmlErrorCb);
 
 	if (source->xml.doc == NULL) {
-		if (source->origin.memory) {
+		if (source->origin.memory != NULL) {
 #ifdef HAVE_BZ2
-			if (bz2_file_is_bzip(source->origin.filepath)) {
+			if (bz2_memory_is_bzip(source->origin.memory, source->origin.memory_size)) {
 				source->xml.doc = bz2_mem_read_doc(source->origin.memory, source->origin.memory_size);
 			} else
 #endif
@@ -170,39 +208,64 @@ xmlDoc *oscap_source_get_xmlDoc(struct oscap_source *source)
 				source->xml.doc = xmlReadMemory(source->origin.memory, source->origin.memory_size, NULL, NULL, 0);
 				if (source->xml.doc == NULL) {
 					oscap_setxmlerr(xmlGetLastError());
-					oscap_seterr(OSCAP_EFAMILY_XML, "Unable to parse XML from user memory buffer");
+					const char *error_msg = oscap_string_get_cstr(xml_error_string);
+					oscap_seterr(OSCAP_EFAMILY_XML, "%sUnable to parse XML from user memory buffer", error_msg);
+					oscap_string_clear(xml_error_string);
 				}
 			}
 		}
 		else {
+			int fd = open(source->origin.filepath, O_RDONLY);
+			if ( fd == -1 ){
+				source->xml.doc = NULL;
+				oscap_seterr(OSCAP_EFAMILY_GLIBC, "Unable to open file: '%s'", oscap_source_readable_origin(source));
+			} else {
 #ifdef HAVE_BZ2
-			if (bz2_file_is_bzip(source->origin.filepath)) {
-				source->xml.doc = bz2_file_read_doc(source->origin.filepath);
-			} else
+				if (bz2_fd_is_bzip(fd)) {
+					source->xml.doc = bz2_fd_read_doc(fd);
+				} else
 #endif
-			{
-				source->xml.doc = xmlReadFile(source->origin.filepath, NULL, 0);
-				if (source->xml.doc == NULL) {
-					oscap_setxmlerr(xmlGetLastError());
-					oscap_seterr(OSCAP_EFAMILY_XML, "Unable to parse XML at: '%s'", oscap_source_readable_origin(source));
+				{
+					source->xml.doc = xmlReadFd(fd, NULL, NULL, 0);
+					if (source->xml.doc == NULL) {
+						oscap_setxmlerr(xmlGetLastError());
+						const char *error_msg = oscap_string_get_cstr(xml_error_string);
+						oscap_seterr(OSCAP_EFAMILY_XML, "%sUnable to parse XML at: '%s'", error_msg, oscap_source_readable_origin(source));
+						oscap_string_clear(xml_error_string);
+					}
 				}
+				close(fd);
 			}
 		}
 	}
+
+	xmlSetGenericErrorFunc(stderr, NULL);
+
+	if (!oscap_string_empty(xml_error_string)) {
+		const char *error_msg = oscap_string_get_cstr(xml_error_string);
+		oscap_seterr(OSCAP_EFAMILY_XML, "%sFound xml error.", error_msg);
+	}
+
+	oscap_string_free(xml_error_string);
 	return source->xml.doc;
 }
 
 int oscap_source_validate(struct oscap_source *source, xml_reporter reporter, void *user)
 {
-	int ret = oscap_source_validate_priv(source, oscap_source_get_scap_type(source),
-			oscap_source_get_schema_version(source), reporter, user);
-	if (ret != 0) {
-		const char *type_name = oscap_document_type_to_string(oscap_source_get_scap_type(source));
-		if (type_name == NULL) {
-			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Unrecognized document type for: ", oscap_source_readable_origin(source));
-		} else {
-			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Invalid %s (%s) content in %s.", type_name,
-				oscap_source_get_schema_version(source), oscap_source_readable_origin(source));
+	int ret;
+	oscap_document_type_t scap_type = oscap_source_get_scap_type(source);
+
+	if (scap_type == OSCAP_DOCUMENT_UNKNOWN) {
+		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Unrecognized document type for: %s", oscap_source_readable_origin(source));
+		ret = -1;
+	} else {
+		const char *schema_version = oscap_source_get_schema_version(source);
+		const char *type_name = oscap_document_type_to_string(scap_type);
+		const char *origin = oscap_source_readable_origin(source);
+		dD("Validating %s (%s) document from %s.", type_name, schema_version, origin);
+		ret = oscap_source_validate_priv(source, scap_type, schema_version, reporter, user);
+		if (ret != 0) {
+			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Invalid %s (%s) content in %s.", type_name, schema_version, origin);
 		}
 	}
 	return ret;

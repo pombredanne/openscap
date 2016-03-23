@@ -273,12 +273,18 @@ int ds_sds_session_register_component_with_dependencies(struct ds_sds_session *s
 			res = ds_sds_dump_component_ref_as(component_ref, session, ds_sds_session_get_target_dir(session), target_filename);
 		}
 	}
+	else {
+		oscap_seterr(OSCAP_EFAMILY_XML, "No '%s' component ref found in file '%s' in datastream of id '%s'.",
+				component_id, oscap_source_readable_origin(session->source), ds_sds_session_get_datastream_id(session));
+		return -1;
+	}
+
 	return res;
 }
 
 int ds_sds_session_dump_component_files(struct ds_sds_session *session)
 {
-	return ds_dump_component_sources(session->component_sources);
+	return ds_dump_component_sources(session->component_sources, ds_sds_session_get_target_dir(session));
 }
 
 char *ds_sds_session_get_html_guide(struct ds_sds_session *session, const char *profile_id)
@@ -295,6 +301,7 @@ char *ds_sds_session_get_html_guide(struct ds_sds_session *session, const char *
 	struct oscap_source *xccdf = oscap_htable_get(session->component_sources, "xccdf.xml");
 	if (xccdf == NULL) {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Internal error: Could not acquire handle to xccdf.xml source.");
+		return NULL;
 	}
 	return oscap_source_apply_xslt_path_mem(xccdf, "xccdf-guide.xsl", params, oscap_path_to_xslt());
 }

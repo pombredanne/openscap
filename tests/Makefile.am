@@ -25,8 +25,11 @@ SUBDIRS = \
 	API \
 	bz2 \
 	codestyle \
+	CPE \
 	DS \
+	sources \
 	schemas \
+	oscap_string \
 	oval_details \
 	$(PROBE_SUBDIRS) $(SCE_SUBDIRS) $(BINDINGS_SUBDIRS)
 

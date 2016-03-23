@@ -72,10 +72,9 @@ struct oval_syschar_model *oval_syschar_model_new(struct oval_definition_model *
 	if (newmodel == NULL)
 		return NULL;
 
-	newmodel->generator = oval_generator_new();
-        struct oval_generator *generator = oval_definition_model_get_generator(definition_model);
-        char * schema_version = oval_generator_get_schema_version(generator);
-        oval_generator_set_schema_version(newmodel->generator, schema_version);
+	struct oval_generator *generator = oval_definition_model_get_generator(definition_model);
+	newmodel->generator = oval_generator_clone(generator);
+	oval_generator_update_timestamp(newmodel->generator);
 
 	newmodel->sysinfo = NULL;
 	newmodel->definition_model = definition_model;
@@ -139,26 +138,15 @@ struct oval_syschar_model *oval_syschar_model_clone(struct oval_syschar_model *o
 
 void oval_syschar_model_free(struct oval_syschar_model *model)
 {
-	__attribute__nonnull__(model);
-
-	if (model->sysinfo)
+	if (model != NULL) {
 		oval_sysinfo_free(model->sysinfo);
-	if (model->syschar_map)
 		oval_smc_free(model->syschar_map, (oscap_destruct_func) oval_syschar_free);
-	if (model->sysitem_map)
-		oval_string_map_free(model->sysitem_map, (oscap_destruct_func) oval_sysitem_free);
-        if (model->schema)
-                oscap_free(model->schema);
-
-	model->sysinfo = NULL;
-	model->definition_model = NULL;
-	model->syschar_map = NULL;
-	model->sysitem_map = NULL;
-        model->schema = NULL;
-
-	oval_generator_free(model->generator);
-
-	oscap_free(model);
+		if (model->sysitem_map)
+			oval_string_map_free(model->sysitem_map, (oscap_destruct_func) oval_sysitem_free);
+		oscap_free(model->schema);
+		oval_generator_free(model->generator);
+		oscap_free(model);
+	}
 }
 
 void oval_syschar_model_reset(struct oval_syschar_model *model) 
@@ -266,7 +254,7 @@ int oval_syschar_model_import_source(struct oval_syschar_model *model, struct os
 		ret = oval_syschar_model_parse(context.reader, &context);
 	} else {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Missing \"oval_system_characteristics\" element");
-		dE("Unprocessed tag: <%s:%s>.\n", namespace, tagname);
+		dE("Unprocessed tag: <%s:%s>.", namespace, tagname);
 		ret = -1;
 	}
 

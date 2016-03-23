@@ -38,6 +38,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <linux/fs.h>
 
 #ifdef HAVE_PROC_MAGIC
 #include <linux/magic.h>
@@ -134,14 +135,21 @@ static const char *correct_fstype(char *type)
 	return "";
 }
 
+static void add_mnt_opt(char ***mnt_opts, uint8_t mnt_ocnt, char *opt)
+{
+	*mnt_opts = realloc(*mnt_opts, sizeof(char *) * (mnt_ocnt + 1));
+	(*mnt_opts)[mnt_ocnt - 1] = opt;
+	(*mnt_opts)[mnt_ocnt] = NULL;
+}
+
 #if defined(HAVE_BLKID_GET_TAG_VALUE)
-static int collect_item(probe_ctx *ctx, oval_version_t over, struct mntent *mnt_ent, blkid_cache blkcache)
+static int collect_item(probe_ctx *ctx, oval_schema_version_t over, struct mntent *mnt_ent, blkid_cache blkcache)
 #else
-static int collect_item(probe_ctx *ctx, oval_version_t over, struct mntent *mnt_ent)
+static int collect_item(probe_ctx *ctx, oval_schema_version_t over, struct mntent *mnt_ent)
 #endif
 {
         SEXP_t *item;
-        char   *uuid = "", *tok, *save = NULL, **mnt_opts;
+        char   *uuid = "", *tok, *save = NULL, **mnt_opts = NULL;
         uint8_t mnt_ocnt;
         struct statvfs stvfs;
 
@@ -163,25 +171,36 @@ static int collect_item(probe_ctx *ctx, oval_version_t over, struct mntent *mnt_
         /*
          * Create a NULL-terminated array from the mount options
          */
-        mnt_opts = oscap_alloc(sizeof(char *) * 2);
         mnt_ocnt = 0;
 
         tok = strtok_r(mnt_ent->mnt_opts, ",", &save);
 
         do {
-                mnt_opts[++mnt_ocnt - 1] = tok;
-                mnt_opts = oscap_realloc(mnt_opts,
-                                         sizeof(char *) * (mnt_ocnt + 1));
-                mnt_opts[mnt_ocnt] = NULL;
+            add_mnt_opt(&mnt_opts, ++mnt_ocnt, tok);
         } while ((tok = strtok_r(NULL, ",", &save)) != NULL);
 
-        dI("mnt_ocnt = %d, mnt_opts[mnt_ocnt]=%p\n", mnt_ocnt, mnt_opts[mnt_ocnt]);
+        /*
+         * Check for "remount", "bind" and "move" mount options
+         * These options can't be found in /proc/mounts,
+         * we must use flags got by statvfs().
+         */
+        if (stvfs.f_flag & MS_REMOUNT) {
+            add_mnt_opt(&mnt_opts, ++mnt_ocnt, "remount");
+        }
+        if (stvfs.f_flag & MS_BIND) {
+            add_mnt_opt(&mnt_opts, ++mnt_ocnt, "bind");
+        }
+        if (stvfs.f_flag & MS_MOVE) {
+            add_mnt_opt(&mnt_opts, ++mnt_ocnt, "move");
+        }
+
+        dI("mnt_ocnt = %d, mnt_opts[mnt_ocnt]=%p", mnt_ocnt, mnt_opts[mnt_ocnt]);
 
 	/*
 	 * "Correct" the type (this won't be (hopefully) needed in a later version
 	 * of OVAL)
 	 */
-        if (oval_version_cmp(over, OVAL_VERSION(5.10)) < 0)
+        if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.10)) < 0)
 	        mnt_ent->mnt_type = (char *)correct_fstype(mnt_ent->mnt_type);
 
         /*
@@ -225,7 +244,7 @@ int probe_main(probe_ctx *ctx, void *probe_arg)
         char    mnt_path[PATH_MAX];
         oval_operation_t mnt_op;
         FILE *mnt_fp;
-        oval_version_t obj_over;
+        oval_schema_version_t obj_over;
 #if defined(PROC_CHECK) && defined(__linux__)
         int   mnt_fd;
         struct statfs stfs;
@@ -258,7 +277,7 @@ int probe_main(probe_ctx *ctx, void *probe_arg)
                 return (PROBE_ESYSTEM);
 #endif
         probe_in   = probe_ctx_getobject(ctx);
-        obj_over   = probe_obj_get_schema_version(probe_in);
+        obj_over   = probe_obj_get_platform_schema_version(probe_in);
         mnt_entity = probe_obj_getent(probe_in, "mount_point", 1);
 
         if (mnt_entity == NULL) {

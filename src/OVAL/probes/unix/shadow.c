@@ -59,7 +59,7 @@
 #include "alloc.h"
 #include "common/debug_priv.h"
 
-oval_version_t over;
+oval_schema_version_t over;
 
 #ifndef HAVE_SHADOW_H
 int probe_main(probe_ctx *ctx, void *arg)
@@ -156,7 +156,7 @@ static void report_finding(struct result_info *res, probe_ctx *ctx)
                                  "exp_date",  OVAL_DATATYPE_SEXP, SEXP_number_newi_64_r(&se_exd_mem, res->exp_date),
                                  "flag",      OVAL_DATATYPE_SEXP, SEXP_string_newf_r(&se_flg_mem, "%lu", res->flag),
                                  NULL);
-	if (oval_version_cmp(over, OVAL_VERSION(5.8)) >= 0) {
+	if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.8)) >= 0) {
 		enc_mth = parse_enc_mth(res->password);
 		if (enc_mth) {
 			probe_item_ent_add(item, "encrypt_method", NULL, enc_mth);
@@ -183,7 +183,7 @@ static int read_shadow(SEXP_t *un_ent, probe_ctx *ctx)
 	while ((pw = getspent())) {
 		SEXP_t *un;
 
-		dI("Have user: %s\n", pw->sp_namp);
+		dI("Have user: %s", pw->sp_namp);
 		err = 0;
 		un = SEXP_string_newf("%s", pw->sp_namp);
 		if (probe_entobj_cmp(un_ent, un) == OVAL_RESULT_TRUE) {
@@ -212,7 +212,7 @@ int probe_main(probe_ctx *ctx, void *arg)
 	SEXP_t *ent, *obj;
 
 	obj = probe_ctx_getobject(ctx);
-	over = probe_obj_get_schema_version(obj);
+	over = probe_obj_get_platform_schema_version(obj);
 	ent = probe_obj_getent(obj, "username", 1);
 	if (ent == NULL) {
 		return PROBE_ENOVAL;

@@ -346,7 +346,7 @@ static int _oval_test_parse_tag(xmlTextReaderPtr reader, struct oval_parser_cont
 			state_ref = NULL;
 		}
 	} else {
-		oscap_dlprintf(DBG_W, "Skipping tag <%s>.\n", tagname);
+		dW("Skipping tag <%s>.", tagname);
 		return_code = oval_parser_skip_tag(reader, context);
 	}
 
@@ -383,7 +383,7 @@ int oval_test_parse_tag(xmlTextReaderPtr reader, struct oval_parser_context *con
 	oval_check_t check = oval_check_parse(reader, "check", OVAL_CHECK_UNKNOWN);
 	if (check == OVAL_CHECK_NONE_EXIST) {
 		dW("The 'none exist' CheckEnumeration value has been deprecated. "
-		   "Converted to check='none satisfy' and check_existence='none exist'.\n");
+		   "Converted to check='none satisfy' and check_existence='none exist'.");
 		oval_test_set_check(test, OVAL_CHECK_NONE_SATISFY);
 		oval_test_set_existence(test, OVAL_NONE_EXIST);
 	} else {
@@ -425,7 +425,7 @@ xmlNode *oval_test_to_dom(struct oval_test *test, xmlDoc * doc, xmlNode * parent
 	/* skip unknown test */
 	oval_subtype_t subtype = oval_test_get_subtype(test);
 	if ( subtype == OVAL_SUBTYPE_UNKNOWN ) {
-		oscap_dlprintf(DBG_E, "Unknown Test %s.\n", oval_test_get_id(test));
+		dE("Unknown Test %s.", oval_test_get_id(test));
 		return test_node;
 	}
 
@@ -434,14 +434,10 @@ xmlNode *oval_test_to_dom(struct oval_test *test, xmlDoc * doc, xmlNode * parent
 	char test_name[strlen(subtype_text) + 6];
 	sprintf(test_name, "%s_test", subtype_text);
 
-	/* get family URI */
 	oval_family_t family = oval_test_get_family(test);
-	const char *family_text = oval_family_get_text(family);
-	char family_uri[strlen((const char *)OVAL_DEFINITIONS_NAMESPACE) + strlen(family_text) + 2];
-	sprintf(family_uri,"%s#%s", OVAL_DEFINITIONS_NAMESPACE, family_text);
 
 	/* search namespace & create child */
-	xmlNs *ns_family = xmlSearchNsByHref(doc, parent, BAD_CAST family_uri);
+	xmlNs *ns_family = oval_family_to_namespace(family, (const char *) OVAL_DEFINITIONS_NAMESPACE, doc, parent);
 	test_node = xmlNewTextChild(parent, ns_family, BAD_CAST test_name, NULL);
 
 	char *id = oval_test_get_id(test);

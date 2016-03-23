@@ -1,3 +1,133 @@
+openscap-1.2.8                                                  18-01-2016
+  - Maintenance
+    - textfilecontent54_probe does not produce false positives on non-UTF files (rhbz #1285757)
+    - fixed oscap-docker
+    - small improvements in verbose mode
+    - oscap info module shows information about tailoring files
+    - fixed build with CCE (issue #264)
+    - fixed XCCDF score computation (issue #272)
+    - fixed segmentation fault in variable probe (issue #277)
+    - fixed broken support for OVAL directives
+    - fixed bash completion
+    - plugged memory leaks
+    - fixed fresh static analysis (coverity) findings
+    - fixed shellcheck warnings
+    - new tests
+    - refactoring in datastream module
+    - many small bugfixes and typo fixes
+
+openscap-1.2.7                                                  02-12-2015
+  - New features
+    - OVAL 5.11.1 fully supported
+    - oscap-vm - tool for offline scanning of virtual machines
+    - verbose mode
+    - added SLED, SLES and OpenSUSE CPE names
+    - show profile description in HTML report and guide
+    - group rules by PCI DSS identifier in HTML report
+    - preliminary support for Ansible Playbooks within xccdf:fix
+    - added "How to contribute" and "Versioning" documents
+  - Maintenance
+    - using bziped RHSA documents in oscap-docker
+    - fixed errors of sysctl probe
+    - fixed skip-valid option (issue #203)
+    - fixed segmentation faults in SCE content reporting (issue #231)
+    - fixed tracebacks of scap-as-rpm
+    - fixed invalid memory reads in rpmverifyfile probe (issue #212)
+    - updated README and user manual
+    - many small bugfixes and new tests
+
+openscap-1.2.6                                                  05-10-2015
+  - New features
+    - introduced OpenSCAP user manual
+    - improved OVAL 5.11.1 support
+      - added OVAL 5.11.1 XSD schemas and schematrons
+      - support for core/platform schema versions
+      - support for check_existence attribute in state entities
+      - support for CIM datetime format
+      - amended behavior of mask attribute
+    - added support for remote .xml.bz2 files (use with
+--fetch-remote-resources)
+    - rewrote oscap-docker to python, deeper integration with Atomic Host
+    - introduced CPE name for Fedora 24 to the internal dictionary
+  - HTML report & guide
+    - results can be grouped by according to various aspects
+    - printing supported (interactive elements are now hidden when printing)
+    - table of content now shows only selected items (rule & groups)
+    - references to RHSA are presented as links to website (rhbz#1243808)
+  - Maintenance
+    - scap-as-rpm can now build source rpm packages (srpms) (trac#469)
+    - scap-as-rpm now supports python3
+    - refactored oval processing into oval_session structure
+    - many smaller bugfixes and new tests
+
+openscap-1.2.5                                                  06-07-2015
+ - maintenance
+   - smaller bugfixes
+   - plugged memory leaks
+   - fixed fresh static analysis (coverity) findings
+   - fixed shellcheck warnings
+   - fixes for Solaris platform
+
+openscap-1.2.4                                                  21-06-2015
+ - new features
+   - OVAL 5.11 support 99.8% completed!
+     - new symlink probe introduced
+     - new process58 test capabilities
+     - added possible_value support for external variables
+     - added possible_restriction support for external variables
+     - improved IP address comparisons
+   - Added Scientific Linux CPEs
+   - Added oscap-docker tool
+   - Created man-page for oscap-ssh
+ - HTML changes
+   - improved visibility of selected XCCDF profile in guides and reports
+   - render rule-result/message contents in reports
+ - maintenance
+   - Tests now pass on ppc64 little endian arch (rhbz#1215220)
+   - partition probe now supports remount, bind and move mount options
+   - Patched NIST OVAL-5.11 schemas to be backward compatible with
+     OVAL-5.10 (rhbz#1220262)
+   - fixed scap-as-rpm to work with vintage python (2.6)
+   - better error reporting when a probe dies (i.e. due to OOM killer)
+   - dropped selinux policy from upstream (rhbz#1209969)
+   - fix segfault on invalid selectors (rhbz#1220944)
+   - solaris support patches: file-system zones, systeminfo improvements
+   - many smaller fixes and new tests
+
+openscap-1.2.3                                                  01-05-2015
+ - new features
+   - oscap-ssh -- handy utility to run remote scan over ssh
+   - glob_to_regexp OVAL function added
+ - HTML changes
+   - show rationale elements
+   - show fixtext elements
+   - show Benchmark's front-matter, description and notices
+   - show warnings for Groups and Rules
+   - improved handling of multiple fixes within a single Rule
+   - scroll evaluation characteristic if they overflow
+ - maintenance
+   - OVAL 5.11 schema fixes
+   - coverity and mem leak fixes
+   - skip transient files when traversing /proc (trac#457)
+
+openscap-1.2.2                                                  02-04-2015
+ - new features
+   - OVAL 5.11 support turned on by default
+   - included OVAL 5.11 schematron rules
+   - DataStream can now contain OVAL 5.11
+   - `oscap ds sds-compose` now supports --skip-valid parameter
+ - HTML report changes
+   - Notably increased level of OVAL details
+   - Table of contents is now generated for HTML guides
+ - maintenance
+   - rhbz#1182242, rhbz#1159289 - @var_check & @var_ref exporting
+   - solaris build fixes
+   - xccdf:fix/instance processing fixes
+   - improved (none) epoch processing in rpm probe
+   - environmentvariable58 now emits warning messages when appropriate
+   - offline mode improvements
+   - other bugfixes
+
 openscap-1.2.1                                                  01-10-2015
  - API changes
    - 5.11 schemas updated (from RC1 to gold)

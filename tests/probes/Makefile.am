@@ -53,11 +53,23 @@ endif
 if probe_fileextendedattribute_enabled
 UNIX_SUBDIRS += fileextendedattribute
 endif
+if probe_symlink_enabled
+UNIX_SUBDIRS += symlink
+endif
+if probe_sysctl_enabled
+UNIX_SUBDIRS += sysctl
+endif
 endif
 
 if WANT_PROBES_LINUX
 if probe_rpminfo_enabled
 LINUX_SUBDIRS += rpminfo
+endif
+if probe_rpmverifyfile_enabled
+LINUX_SUBDIRS += rpmverifyfile
+endif
+if probe_rpmverifypackage_enabled
+LINUX_SUBDIRS += rpmverifypackage
 endif
 if probe_iflisteners_enabled
 LINUX_SUBDIRS += iflisteners

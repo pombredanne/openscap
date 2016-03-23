@@ -18,7 +18,10 @@
  *
  */
 
+#ifdef HAVE_CONFIG_H
 #include <config.h>
+#endif
+
 #include <stdio.h> // for P_tmpdir macro
 #include <string.h>
 #include <stdlib.h>
@@ -35,7 +38,10 @@
 #endif
 
 #include "oscap_acquire.h"
+#include "common/util.h"
+#include "common/oscap_buffer.h"
 #include "common/_error.h"
+#include "oscap_string.h"
 
 #ifndef P_tmpdir
 #define P_tmpdir "/tmp"
@@ -107,67 +113,10 @@ oscap_acquire_temp_file(const char *dir, const char *template, char **filename)
 	return fd;
 }
 
-char *
-oscap_acquire_url_download(const char *temp_dir, const char *url)
-{
-	/* SADLY, we create a tempfile which we use later.
-	 * Much greater solution would be to use unliked
-	 * file descriptors, but the library interface is
-	 * not yet prepared for that. */
-	char *output_filename = NULL;
-	int output_fd;
-	FILE *fp;
-	CURL *curl;
-	CURLcode res;
-
-	output_fd = oscap_acquire_temp_file(temp_dir, TEMP_URL_TEMPLATE, &output_filename);
-	if (output_fd == -1) {
-		return NULL;
-	}
-
-	fp = fdopen(output_fd, "w");
-	if (fp == NULL) {
-		oscap_seterr(OSCAP_EFAMILY_GLIBC, "fdopen failed, %s", strerror(errno));
-		if (remove(output_filename))
-			oscap_seterr(OSCAP_EFAMILY_GLIBC, "fdopen failed. Failed to remove temp file %s. %s",
-				output_filename, strerror(errno));
-		close(output_fd);
-		free(output_filename);
-		return NULL;
-	}
-
-	curl = curl_easy_init();
-	if (curl == NULL) {
-		oscap_seterr(OSCAP_EFAMILY_NET, "Failed to initialize libcurl.");
-
-		if (remove(output_filename))
-			oscap_seterr(OSCAP_EFAMILY_GLIBC, "Failed to initialize libcurl. Failed to remove temp file %s. %s",
-				output_filename, strerror(errno));
-		fclose(fp);
-		free(output_filename);
-		return NULL;
-	}
-
-	curl_easy_setopt(curl, CURLOPT_URL, url);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-	res = curl_easy_perform(curl);
-	if (res != 0) {
-		oscap_seterr(OSCAP_EFAMILY_NET, "Download failed: %s", curl_easy_strerror(res));
-		if (remove(output_filename))
-			oscap_seterr(OSCAP_EFAMILY_GLIBC, "Download failed: %s. Failed to remove temp file %s. %s",
-				curl_easy_strerror(res), output_filename, strerror(errno));
-		free(output_filename);
-		output_filename = NULL;
-	}
-	curl_easy_cleanup(curl);
-	fclose(fp);
-	return output_filename;
-}
-
 bool
 oscap_acquire_url_is_supported(const char *url)
 {
-	return !strncmp(url, "http://", strlen("http://"));
+	return oscap_str_startswith(url, "http://") || oscap_str_startswith(url, "https://");
 }
 
 char *
@@ -178,6 +127,10 @@ oscap_acquire_url_to_filename(const char *url)
 	char *filename = NULL;
 	CURL *curl;
 
+	if (curl_global_init(CURL_GLOBAL_ALL) != 0) {
+		oscap_seterr(OSCAP_EFAMILY_NET, "Failed to initialize libcurl.");
+		return NULL;
+	}
 	curl = curl_easy_init();
 	if (curl == NULL) {
 		oscap_seterr(OSCAP_EFAMILY_NET, "Failed to initialize libcurl.");
@@ -186,55 +139,74 @@ oscap_acquire_url_to_filename(const char *url)
 
 	curl_filename = curl_easy_escape(curl , url , 0);
 	if (curl_filename == NULL) {
+		curl_easy_cleanup(curl);
+		curl_global_cleanup();
 		oscap_seterr(OSCAP_EFAMILY_NET, "Failed to escape the given url %s", url);
 		return NULL;
 	}
 	filename = strdup(curl_filename);
 	curl_free(curl_filename);
 	curl_easy_cleanup(curl);
+	curl_global_cleanup();
 	return filename;
+}
+
+char* oscap_acquire_url_download(const char *url, size_t* memory_size)
+{
+	CURL *curl;
+	curl = curl_easy_init();
+	if (curl == NULL) {
+		oscap_seterr(OSCAP_EFAMILY_NET, "Failed to initialize libcurl.");
+		return NULL;
+	}
+
+	struct oscap_buffer* buffer = oscap_buffer_new();
+
+	curl_easy_setopt(curl, CURLOPT_URL, url);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_memory_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, buffer);
+
+	CURLcode res = curl_easy_perform(curl);
+	curl_easy_cleanup(curl);
+
+	if (res != 0) {
+		oscap_seterr(OSCAP_EFAMILY_NET, "Download failed: %s", curl_easy_strerror(res));
+		oscap_buffer_free(buffer);
+		return NULL;
+	}
+
+	*memory_size = oscap_buffer_get_length(buffer);
+	char* data = oscap_buffer_bequeath(buffer); // get data and free buffer struct
+	return data;
+}
+
+size_t write_to_memory_callback(char *ptr, size_t size, size_t nmemb, void *userdata)
+{
+	size_t new_received_size = size * nmemb; // total size of newly received data
+	oscap_buffer_append_binary_data((struct oscap_buffer*)userdata, ptr, new_received_size);
+	return new_received_size;
 }
 
 char *
 oscap_acquire_pipe_to_string(int fd)
 {
-	char* pipe_buffer = malloc(sizeof(char) * 128);
-	size_t pipe_buffer_size = 128;
-	size_t read_bytes = 0;
+	struct oscap_string *pipe_string = oscap_string_new();
 
 	char readbuf;
 	// FIXME: Read by larger chunks in the future
 	while (read(fd, &readbuf, 1) > 0) {
-		// & is a special case, we have to "escape" it manually
-		// (all else will eventually get handled by libxml)
-		if (readbuf == '&')
-			read_bytes += 5; // we have to write "&amp;" instead of just &
-		else
-			read_bytes += 1;
 
-		// + 1 because we want to add \0 at the end
-		if (read_bytes + 1 > pipe_buffer_size) {
-			// we simply double the buffer when we blow it
-			pipe_buffer_size *= 2;
-			pipe_buffer = realloc(pipe_buffer, sizeof(char) * pipe_buffer_size);
-		}
-
-		// write the escaped "&amp;" to the stdout buffer
 		if (readbuf == '&') {
-			pipe_buffer[read_bytes - 5] = '&';
-			pipe_buffer[read_bytes - 4] = 'a';
-			pipe_buffer[read_bytes - 3] = 'm';
-			pipe_buffer[read_bytes - 2] = 'p';
-			pipe_buffer[read_bytes - 1] = ';';
+			// & is a special case, we have to "escape" it manually
+			// (all else will eventually get handled by libxml)
+			oscap_string_append_string(pipe_string, "&amp;");
 		} else {
-			// index from 0 onwards, first byte ends up on index 0
-			pipe_buffer[read_bytes - 1] = readbuf;
+			oscap_string_append_char(pipe_string, readbuf);
 		}
 	}
-	pipe_buffer[read_bytes] = '\0';
 
 	close(fd);
-	return pipe_buffer;
+	return oscap_string_bequeath(pipe_string);
 }
 
 char *oscap_acquire_guess_realpath(const char *filepath)

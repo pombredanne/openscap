@@ -45,6 +45,8 @@
 #if defined(__SVR4) && defined(__sun)
 #include "fts_sun.h"
 #include <sys/mntent.h>
+#include <libzonecfg.h>
+#include <sys/avl.h>
 #else
 #include <fts.h>
 #endif
@@ -115,10 +117,7 @@ static OVAL_FTSENT *OVAL_FTSENT_new(OVAL_FTS *ofts, FTSENT *fts_ent)
 	}
 
 #if defined(OSCAP_FTS_DEBUG)
-	dI("\n"
-	   "New OVAL_FTSENT:\n"
-	   "\t    file: '%s'.\n"
-	   "\t    path: '%s'.\n", ofts_ent->file, ofts_ent->path);
+	dD("New OVAL_FTSENT: file: '%s', path: '%s'.", ofts_ent->file, ofts_ent->path);
 #endif
 	return (ofts_ent);
 }
@@ -138,6 +137,13 @@ static void OVAL_FTSENT_free(OVAL_FTSENT *ofts_ent)
 #ifndef MNTTYPE_PROC
 #define MNTTYPE_PROC	"proc"
 #endif
+
+typedef struct zone_path {
+	avl_node_t avl_link_next;
+	char zpath[MAXPATHLEN];
+} zone_path_t;
+static avl_tree_t avl_tree_list;
+
 
 static bool valid_remote_fs(char *fstype)
 {
@@ -161,6 +167,85 @@ static bool valid_local_fs(char *fstype)
 		return (false);
 	return (true);
 }
+
+/* function to compare two avl nodes in the avl tree */
+static int compare_zoneroot(const void *entry1, const void *entry2)
+{
+	zone_path_t *t1, *t2;
+	int comp;
+
+	t1 = (zone_path_t *)entry1;
+	t2 = (zone_path_t *)entry2;
+	if ((comp = strcmp(t1->zpath, t2->zpath)) == 0) {
+		return (0);
+	}
+	return (comp > 0 ? 1 : -1);
+}
+
+int load_zones_path_list()
+{
+	FILE *cookie;
+	char *name;
+	zone_state_t state_num;
+	zone_path_t *temp = NULL;
+	avl_index_t where;
+	char rpath[MAXPATHLEN];
+
+	cookie = setzoneent();
+	if (getzoneid() != GLOBAL_ZONEID)
+		return (0);
+	avl_create(&avl_tree_list, compare_zoneroot,
+	    sizeof(zone_path_t), offsetof(zone_path_t, avl_link_next));
+	while ((name = getzoneent(cookie)) != NULL) {
+		if (strcmp(name, "global") == 0)
+			continue;
+		if (zone_get_state(name, &state_num) != Z_OK) {
+			dE("Could not get zone state for %s", name);
+			continue;
+		} else if (state_num > ZONE_STATE_CONFIGURED) {
+			temp = malloc(sizeof(zone_path_t));
+			if (temp == NULL) {
+				dE("Memory alloc failed");
+				return(1);
+			}
+			if (zone_get_zonepath(name, rpath,
+			    sizeof(rpath)) != Z_OK) {
+				dE("Could not get zone path for %s",
+				    name);
+				continue;
+			}
+			if (realpath(rpath, temp->zpath) != NULL)
+				avl_add(&avl_tree_list, temp);
+		}
+	}
+	endzoneent(cookie);
+	return (0);
+}
+
+static void free_zones_path_list()
+{
+	zone_path_t *temp;
+	void* cookie = NULL;
+
+	while ((temp = avl_destroy_nodes(&avl_tree_list, &cookie)) != NULL) {
+		free(temp);
+	}
+	avl_destroy(&avl_tree_list);
+}
+
+static bool valid_local_zone(char *path)
+{
+	zone_path_t temp;
+	avl_index_t where;
+
+	strlcpy(temp.zpath, path, sizeof(temp.zpath));
+	if (avl_find(&avl_tree_list, &temp, &where) != NULL)
+		return (true);
+
+	return (false);
+}
+
+
 #endif
 
 static bool OVAL_FTS_localp(OVAL_FTS *ofts, const char *path, void *id)
@@ -169,9 +254,11 @@ static bool OVAL_FTS_localp(OVAL_FTS *ofts, const char *path, void *id)
 	if (id != NULL && (*(char*)id) != '\0') {
 		/* if not a valid local fs skip */
 		if (valid_local_fs((char*)id)) {
-			/* if recurse is local , skip remote fs */
+			/* if recurse is local , skip remote fs
+			   and non-global zones */
 			if (ofts->filesystem == OVAL_RECURSE_FS_LOCAL) {
-				return (!valid_remote_fs((char*)id));
+				return (!(valid_remote_fs((char*)id) ||
+				    valid_local_zone(path)));
 			}
 			return (true);
 		}
@@ -180,9 +267,11 @@ static bool OVAL_FTS_localp(OVAL_FTS *ofts, const char *path, void *id)
 		/* id was not set, because fts_read failed to stat the node */
 		struct stat sb;
 		if ((stat(path, &sb) == 0) && (valid_local_fs(sb.st_fstype))) {
-			/* if recurse is local , skip remote fs */
+			/* if recurse is local , skip remote fs
+			   and non-global zones */
 			if (ofts->filesystem == OVAL_RECURSE_FS_LOCAL) {
-				return (!valid_remote_fs(sb.st_fstype));
+				return (!(valid_remote_fs(sb.st_fstype) ||
+				    valid_local_zone(path)));
 			}
 			return (true);
 		}
@@ -375,7 +464,7 @@ static int badpartial_transform_pattern(char *pattern, pcre **regex_out)
 	if (s == NULL) {
 		dW("Nonfatal failure: can't transform the pattern for partial "
 		   "match optimization: none of the suspected culprits found, "
-		   "pattern: '%s'.\n", pattern);
+		   "pattern: '%s'.", pattern);
 		return -1;
 	}
 
@@ -388,7 +477,7 @@ static int badpartial_transform_pattern(char *pattern, pcre **regex_out)
 	if (regex == NULL) {
 		dW("Nonfatal failure: can't transform the pattern for partial "
 		   "match optimization, error: '%s', error offset: %d, "
-		   "pattern: '%s'.\n", errptr, errofs, pattern);
+		   "pattern: '%s'.", errptr, errofs, pattern);
 		return -1;
 	}
 
@@ -398,7 +487,7 @@ static int badpartial_transform_pattern(char *pattern, pcre **regex_out)
 		pcre_free(regex);
 		dW("Nonfatal failure: can't transform the pattern for partial "
 		   "match optimization, pcre_exec() return code: %d, pattern: "
-		   "'%s'.\n", ret, pattern);
+		   "'%s'.", ret, pattern);
 		return -1;
 	}
 
@@ -431,7 +520,7 @@ static int process_pattern_match(const char *path, pcre **regex_out)
 		memcpy(pattern + 1, path, plen);
 		dW("The pattern doesn't contain a leading caret - added. "
 		   "All paths with the 'pattern match' operation must begin "
-		   "with a caret.\n");
+		   "with a caret.");
 	} else {
 		pattern = strdup(path);
 	}
@@ -539,10 +628,10 @@ static int process_pattern_match(const char *path, pcre **regex_out)
 	}
 
 	if (regex == NULL) {
-		dI("Disabling partial match optimization.\n");
+		dI("Disabling partial match optimization.");
 	} else {
 		dI("Enabling partial match optimization using "
-		   "pattern: '%s'.\n", pattern);
+		   "pattern: '%s'.", pattern);
 		if (regex_out != NULL)
 			*regex_out = regex;
 	}
@@ -595,7 +684,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		path_op = OVAL_OPERATION_EQUALS;
 	}
 #if defined(OSCAP_FTS_DEBUG)
-	dI("path_op: %u, '%s'.\n", path_op, oval_operation_get_text(path_op));
+	dI("path_op: %u, '%s'.", path_op, oval_operation_get_text(path_op));
 #endif
 	if (path) { /* filepath == NULL */
 		PROBE_ENT_STRVAL(path, cstr_path, sizeof cstr_path,
@@ -607,10 +696,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 					 return NULL;, /* noop */;);
 		}
 #if defined(OSCAP_FTS_DEBUG)
-		dI("\n"
-		   "        path: '%s'.\n"
-		   "    filename: '%s'.\n"
-		   "nil filename: %d.\n", cstr_path, nilfilename ? "" : cstr_file, nilfilename);
+		dD("path: '%s', filename: '%s', filename: %d.", cstr_path, nilfilename ? "" : cstr_file, nilfilename);
 #endif
 	} else { /* filepath != NULL */
 		PROBE_ENT_STRVAL(filepath, cstr_path, sizeof cstr_path, return NULL;, return NULL;);
@@ -621,12 +707,12 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 	SEXP_string_cstr_r(r0, cstr_buff, sizeof cstr_buff - 1);
 	max_depth = strtol(cstr_buff, NULL, 10);
 	if (errno == EINVAL || errno == ERANGE) {
-		dE("Invalid value of the `%s' attribute: %s\n", "recurse_direction", cstr_buff);
+		dE("Invalid value of the `%s' attribute: %s", "recurse_direction", cstr_buff);
 		SEXP_free(r0);
 		return (NULL);
 	}
 #if defined(OSCAP_FTS_DEBUG)
-	dI("bh.max_depth: %s => max_depth: %d\n", cstr_buff, max_depth);
+	dI("bh.max_depth: %s => max_depth: %d", cstr_buff, max_depth);
 #endif
 	SEXP_free(r0);
 
@@ -641,12 +727,12 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 	} else if (strcmp(cstr_buff, "up") == 0) {
 		direction = OVAL_RECURSE_DIRECTION_UP;
 	} else {
-		dE("Invalid direction: %s\n", cstr_buff);
+		dE("Invalid direction: %s", cstr_buff);
 		SEXP_free(r0);
 		return (NULL);
 	}
 #if defined(OSCAP_FTS_DEBUG)
-	dI("bh.direction: %s => direction: %d\n", cstr_buff, direction);
+	dI("bh.direction: %s => direction: %d", cstr_buff, direction);
 #endif
 	SEXP_free(r0);
 
@@ -664,7 +750,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		} else if (strcmp(cstr_buff, "directories") == 0) {
 			recurse = OVAL_RECURSE_DIRS;
 		} else {
-			dE("Invalid recurse: %s\n", cstr_buff);
+			dE("Invalid recurse: %s", cstr_buff);
 			SEXP_free(r0);
 			return (NULL);
 		}
@@ -672,7 +758,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		recurse = OVAL_RECURSE_SYMLINKS_AND_DIRS;
 	}
 #if defined(OSCAP_FTS_DEBUG)
-	dI("bh.recurse: %s => recurse: %d\n", cstr_buff, recurse);
+	dI("bh.recurse: %s => recurse: %d", cstr_buff, recurse);
 #endif
 	SEXP_free(r0);
 
@@ -690,7 +776,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 			filesystem = OVAL_RECURSE_FS_DEFINED;
 			rec_fts_options |= FTS_XDEV;
 		} else {
-			dE("Invalid recurse filesystem: %s\n", cstr_buff);
+			dE("Invalid recurse filesystem: %s", cstr_buff);
 			SEXP_free(r0);
 			return (NULL);
 		}
@@ -698,7 +784,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		filesystem = OVAL_RECURSE_FS_ALL;
 	}
 #if defined(OSCAP_FTS_DEBUG)
-	dI("bh.filesystem: %s => filesystem: %d\n", cstr_buff, filesystem);
+	dI("bh.filesystem: %s => filesystem: %d", cstr_buff, filesystem);
 #endif
 	SEXP_free(r0);
 
@@ -715,7 +801,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		if (process_pattern_match(cstr_path, &regex) != 0)
 			return NULL;
 		paths[0] = extract_fixed_path_prefix(cstr_path);
-		dI("Extracted fixed path: '%s'.\n", paths[0]);
+		dI("Extracted fixed path: '%s'.", paths[0]);
 	} else {
 		paths[0] = strdup("/");
 	}
@@ -724,14 +810,14 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 	   without targets are accepted. */
 	if (lstat(paths[0], &st) == -1) {
 		if (errno) {
-			dE("lstat() failed: errno: %d, '%s'.\n",
+			dE("lstat() failed: errno: %d, '%s'.",
 			   errno, strerror(errno));
 		}
 		free((void *) paths[0]);
 		return NULL;
 	}
 
-	dI("fts_open args: path: \"%s\", options: %d.\n", paths[0], mtc_fts_options);
+	dI("fts_open args: path: \"%s\", options: %d.", paths[0], mtc_fts_options);
 
 	ofts = OVAL_FTS_new();
 	/* reset errno as fts_open() doesn't do it itself. */
@@ -741,7 +827,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 	/* fts_open() doesn't return NULL for all errors (e.g. nonexistent paths),
 	   so check errno to detect it. Far from being perfect. */
 	if (ofts->ofts_match_path_fts == NULL || errno != 0) {
-		dE("fts_open() failed, errno: %d \"%s\".\n", errno, strerror(errno));
+		dE("fts_open() failed, errno: %d \"%s\".", errno, strerror(errno));
 		OVAL_FTS_free(ofts);
 		return (NULL);
 	}
@@ -761,7 +847,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 #else
 		ofts->localdevs = fsdev_init(NULL, 0);
 		if (ofts->localdevs == NULL) {
-			dE("fsdev_init() failed.\n");
+			dE("fsdev_init() failed.");
 			/* One dummy read to get rid of an uninitialized
 			 * value in the FTS data before calling
 			 * fts_close() on it. */
@@ -795,6 +881,12 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		ofts->ofts_sfilepath = SEXP_ref(filepath);
 	}
 
+#if defined(__SVR4) && defined(__sun)
+	if (load_zones_path_list() != 0) {
+		dE("Failed to load zones path info. Recursing non-global zones.");
+		free_zones_path_list();
+	}
+#endif
 	return (ofts);
 }
 
@@ -832,13 +924,13 @@ static FTSENT *oval_fts_read_match_path(OVAL_FTS *ofts)
 		case FTS_DP:
 			continue;
 		case FTS_DC:
-			dW("Filesystem tree cycle detected at '%s'.\n", fts_ent->fts_path);
+			dW("Filesystem tree cycle detected at '%s'.", fts_ent->fts_path);
 			fts_set(ofts->ofts_match_path_fts, fts_ent, FTS_SKIP);
 			continue;
 		}
 
 #if defined(OSCAP_FTS_DEBUG)
-		dI("fts_path: '%s' (l=%d).\n"
+		dI("fts_path: '%s' (l=%d)."
 		   "fts_name: '%s' (l=%d).\n"
 		   "fts_info: %u.\n", fts_ent->fts_path, fts_ent->fts_pathlen,
 		   fts_ent->fts_name, fts_ent->fts_namelen, fts_ent->fts_info);
@@ -846,13 +938,13 @@ static FTSENT *oval_fts_read_match_path(OVAL_FTS *ofts)
 
 		if (fts_ent->fts_info == FTS_SL) {
 #if defined(OSCAP_FTS_DEBUG)
-			dI("Only the target of a symlink gets reported, skipping '%s'.\n", fts_ent->fts_path, fts_ent->fts_name);
+			dI("Only the target of a symlink gets reported, skipping '%s'.", fts_ent->fts_path, fts_ent->fts_name);
 #endif
 			fts_set(ofts->ofts_match_path_fts, fts_ent, FTS_FOLLOW);
 			continue;
 		}
 		if (_oval_fts_is_local(ofts, fts_ent)) {
-			dI("Don't recurse into non-local filesystems, skipping '%s'.\n", fts_ent->fts_path);
+			dI("Don't recurse into non-local filesystems, skipping '%s'.", fts_ent->fts_path);
 			fts_set(ofts->ofts_recurse_path_fts, fts_ent, FTS_SKIP);
 			continue;
 		}
@@ -874,14 +966,14 @@ static FTSENT *oval_fts_read_match_path(OVAL_FTS *ofts)
 			if (ret < 0) {
 				switch (ret) {
 				case PCRE_ERROR_NOMATCH:
-					dI("Partial match optimization: PCRE_ERROR_NOMATCH, skipping.\n");
+					dI("Partial match optimization: PCRE_ERROR_NOMATCH, skipping.");
 					fts_set(ofts->ofts_match_path_fts, fts_ent, FTS_SKIP);
 					continue;
 				case PCRE_ERROR_PARTIAL:
-					dI("Partial match optimization: PCRE_ERROR_PARTIAL, continuing.\n");
+					dI("Partial match optimization: PCRE_ERROR_PARTIAL, continuing.");
 					continue;
 				default:
-					dE("pcre_exec() error: %d.\n", ret);
+					dE("pcre_exec() error: %d.", ret);
 					return NULL;
 				}
 			}
@@ -944,7 +1036,7 @@ static FTSENT *oval_fts_read_recurse_path(OVAL_FTS *ofts)
 			char * const paths[2] = { ofts->ofts_match_path_fts_ent->fts_path, NULL };
 
 #if defined(OSCAP_FTS_DEBUG)
-			dI("fts_open args: path: \"%s\", options: %d.\n",
+			dI("fts_open args: path: \"%s\", options: %d.",
 				paths[0], ofts->ofts_recurse_path_fts_opts);
 #endif
 			/* reset errno as fts_open() doesn't do it itself. */
@@ -955,10 +1047,10 @@ static FTSENT *oval_fts_read_recurse_path(OVAL_FTS *ofts)
 			   (e.g. nonexistent paths), so check errno to detect it.
 			   Far from being perfect. */
 			if (ofts->ofts_recurse_path_fts == NULL || errno != 0) {
-				dE("fts_open() failed, errno: %d \"%s\".\n",
+				dE("fts_open() failed, errno: %d \"%s\".",
 					errno, strerror(errno));
 #if !defined(OSCAP_FTS_DEBUG)
-				dE("fts_open args: path: \"%s\", options: %d.\n",
+				dE("fts_open args: path: \"%s\", options: %d.",
 					paths[0], ofts->ofts_recurse_path_fts_opts);
 #endif
 				if (ofts->ofts_recurse_path_fts != NULL) {
@@ -985,13 +1077,13 @@ static FTSENT *oval_fts_read_recurse_path(OVAL_FTS *ofts)
 			case FTS_DP:
 				continue;
 			case FTS_DC:
-				dW("Filesystem tree cycle detected at '%s'.\n", fts_ent->fts_path);
+				dW("Filesystem tree cycle detected at '%s'.", fts_ent->fts_path);
 				fts_set(ofts->ofts_recurse_path_fts, fts_ent, FTS_SKIP);
 				continue;
 			}
 
 #if defined(OSCAP_FTS_DEBUG)
-			dI("fts_path: '%s' (l=%d).\n"
+			dI("fts_path: '%s' (l=%d)."
 			   "fts_name: '%s' (l=%d).\n"
 			   "fts_info: %u.\n", fts_ent->fts_path, fts_ent->fts_pathlen,
 			   fts_ent->fts_name, fts_ent->fts_namelen, fts_ent->fts_info);
@@ -1067,7 +1159,7 @@ static FTSENT *oval_fts_read_recurse_path(OVAL_FTS *ofts)
 				char * const paths[2] = { ofts->ofts_recurse_path_curpth, NULL };
 
 #if defined(OSCAP_FTS_DEBUG)
-				dI("fts_open args: path: \"%s\", options: %d.\n",
+				dI("fts_open args: path: \"%s\", options: %d.",
 					paths[0], ofts->ofts_recurse_path_fts_opts);
 #endif
 				/* reset errno as fts_open() doesn't do it itself. */
@@ -1078,10 +1170,10 @@ static FTSENT *oval_fts_read_recurse_path(OVAL_FTS *ofts)
 				ofts->ofts_recurse_path_fts = fts_open(paths,
 					ofts->ofts_recurse_path_fts_opts, NULL);
 				if (ofts->ofts_recurse_path_fts == NULL || errno != 0) {
-					dE("fts_open() failed, errno: %d \"%s\".\n",
+					dE("fts_open() failed, errno: %d \"%s\".",
 						errno, strerror(errno));
 #if !defined(OSCAP_FTS_DEBUG)
-					dE("fts_open args: path: \"%s\", options: %d.\n",
+					dE("fts_open args: path: \"%s\", options: %d.",
 						paths[0], ofts->ofts_recurse_path_fts_opts);
 #endif
 					if (ofts->ofts_recurse_path_fts != NULL) {
@@ -1180,7 +1272,7 @@ OVAL_FTSENT *oval_fts_read(OVAL_FTS *ofts)
 	FTSENT *fts_ent;
 
 #if defined(OSCAP_FTS_DEBUG)
-	dI("ofts: %p.\n", ofts);
+	dI("ofts: %p.", ofts);
 #endif
 
 	if (ofts == NULL)
@@ -1239,6 +1331,9 @@ int oval_fts_close(OVAL_FTS *ofts)
 	fsdev_free(ofts->localdevs);
 
 	OVAL_FTS_free(ofts);
+#if defined(__SVR4) && defined(__sun)
+	free_zones_path_list();
+#endif
 
 	return (0);
 }

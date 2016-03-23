@@ -59,7 +59,7 @@
 #include "alloc.h"
 #include "common/debug_priv.h"
 
-oval_version_t over;
+oval_schema_version_t over;
 
 /* Convenience structure for the results being reported */
 struct result_info {
@@ -80,7 +80,7 @@ static void report_finding(struct result_info *res, probe_ctx *ctx)
         SEXP_t *item;
 	SEXP_t *se_ruid;
 
-	if (oval_version_cmp(over, OVAL_VERSION(5.8)) < 0) {
+	if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.8)) < 0) {
 		se_ruid = NULL;
 	} else {
 		se_ruid = SEXP_number_newu_64(res->ruid);
@@ -245,7 +245,7 @@ static int read_process(SEXP_t *cmd_ent, probe_ctx *ctx)
 			continue;
 
 		err = 0; // If we get this far, no permission problems
-		dI("Have command: %s\n", cmd);
+		dI("Have command: %s", cmd);
 		cmd_sexp = SEXP_string_newf("%s", cmd);
 		if (probe_entobj_cmp(cmd_ent, cmd_sexp) == OVAL_RESULT_TRUE) {
 			struct result_info r;
@@ -407,7 +407,7 @@ static int read_process(SEXP_t *cmd_ent, probe_ctx *ctx)
 
 
 		err = 0; // If we get this far, no permission problems
-		dI("Have command: %s\n", psinfo->pr_fname);
+		dI("Have command: %s", psinfo->pr_fname);
 		cmd_sexp = SEXP_string_newf("%s", psinfo->pr_fname);
 		if (probe_entobj_cmp(cmd_ent, cmd_sexp) == OVAL_RESULT_TRUE) {
 			struct result_info r;
@@ -467,7 +467,7 @@ int probe_main(probe_ctx *ctx, void *arg)
 	SEXP_t *obj, *ent;
 
 	obj = probe_ctx_getobject(ctx);
-	over = probe_obj_get_schema_version(obj);
+	over = probe_obj_get_platform_schema_version(obj);
 	ent = probe_obj_getent(obj, "command", 1);
 	if (ent == NULL) {
 		return PROBE_ENOVAL;

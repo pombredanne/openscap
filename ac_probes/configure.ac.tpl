@@ -39,7 +39,7 @@ AC_PROG_SWIG([])
 # See http://sources.redhat.com/autobook/autobook/autobook_91.html#SEC91 for details
 
 ## increment if the interface has additions, changes, removals.
-LT_CURRENT=12
+LT_CURRENT=15
 
 ## increment any time the source changes; set 0 to if you increment CURRENT
 LT_REVISION=1
@@ -47,7 +47,7 @@ LT_REVISION=1
 ## increment if any interfaces have been added; set to 0
 ## if any interfaces have been changed or removed. removal has
 ## precedence over adding, so set to 0 if both happened.
-LT_AGE=4
+LT_AGE=7
 
 LT_CURRENT_MINUS_AGE=`expr $LT_CURRENT - $LT_AGE`
 
@@ -412,6 +412,10 @@ AC_ARG_ENABLE([python3],
 		*) AC_MSG_ERROR([bad value ${enableval} for --enable-python3]);;
 	esac],[python3_bind=no])
 
+
+AC_ARG_VAR([preferred_python], [set preferred Python interpreter])
+AS_IF([test "$preferred_python" = ""], [preferred_python=$PYTHON])
+
 AC_ARG_ENABLE([perl],
      [AC_HELP_STRING([--enable-perl], [enable compilation of perl bindings (default=no)])],
      [case "${enableval}" in
@@ -534,6 +538,30 @@ AC_ARG_ENABLE([util-scap-as-rpm],
        *) AC_MSG_ERROR([bad value ${enableval} for --enable-util-scap-as-rpm]) ;;
      esac],[util_scap_as_rpm=yes])
 
+AC_ARG_ENABLE([util-oscap-ssh],
+     [AC_HELP_STRING([--enable-util-oscap-ssh], [enable compilation of the oscap-ssh utility (default=yes)])],
+     [case "${enableval}" in
+       yes) util_oscap_ssh=yes ;;
+       no)  util_oscap_ssh=no  ;;
+       *) AC_MSG_ERROR([bad value ${enableval} for --enable-util-oscap-ssh]) ;;
+     esac],[util_oscap_ssh=yes])
+
+AC_ARG_ENABLE([util-oscap-docker],
+     [AC_HELP_STRING([--enable-util-oscap-docker], [enable compilation of the oscap-docker utility (default=yes)])],
+     [case "${enableval}" in
+       yes) util_oscap_docker=yes ;;
+       no)  util_oscap_docker=no  ;;
+       *) AC_MSG_ERROR([bad value ${enableval} for --enable-util-oscap-docker]) ;;
+     esac],[util_oscap_docker=yes])
+
+AC_ARG_ENABLE([util-oscap-vm],
+     [AC_HELP_STRING([--enable-util-oscap-vm], [enable compilation of the oscap-vm utility (default=yes)])],
+     [case "${enableval}" in
+       yes) util_oscap_vm=yes ;;
+       no)  util_oscap_vm=no  ;;
+       *) AC_MSG_ERROR([bad value ${enableval} for --enable-util-oscap-vm]) ;;
+     esac],[util_oscap_vm=yes])
+
 if test "$vgdebug" = "yes"; then
  if test "$HAVE_VALGRIND" = "yes"; then
    vgcheck="yes"
@@ -544,6 +572,12 @@ else
    vgcheck="no"
 fi
 AC_SUBST([vgcheck])
+
+if test "x${util_oscap_docker}" = "xyes"; then
+	if test ! "x${HAVE_BZIP2}" = xyes; then
+		AC_MSG_FAILURE(oscap-docker requires bzip2! Either disable oscap-docker or install bzip2.)
+	fi
+fi
 
 if test "x${perl_bind}" = xyes; then
 	AC_PATH_PROG(PERL, perl)
@@ -587,13 +621,9 @@ if test "x${python3_bind}" = xyes; then
 	AC_SUBST(py3execdir, $PYTHON3_EXECDIR)
 fi
 
-AC_ARG_ENABLE([selinux_policy],
-     [AC_HELP_STRING([--enable-selinux_policy], [enable SELinux policy (default=no)])],
-     [case "${enableval}" in
-       yes) selinux_policy=yes ;;
-       no)  selinux_policy=no  ;;
-       *) AC_MSG_ERROR([bad value ${enableval} for --enable-selinux_policy]) ;;
-     esac],[selinux_policy=no])
+# oscap-docker determine python dir on default python version
+OSCAPDOCKER_PYTHONDIR=`$preferred_python -c "import distutils.sysconfig; print(distutils.sysconfig.get_python_lib(0,0,prefix='$' '{prefix}'))"`
+AC_SUBST(oscapdocker_pythondir, $OSCAPDOCKER_PYTHONDIR)
 
 @@@@PROBE_EVAL@@@@
 
@@ -607,12 +637,13 @@ AM_CONDITIONAL([WANT_PROBES_SOLARIS], test "$probes_solaris" = yes)
 AM_CONDITIONAL([WANT_SCE], test "$sce" = yes)
 AM_CONDITIONAL([WANT_UTIL_OSCAP], test "$util_oscap" = yes)
 AM_CONDITIONAL([WANT_UTIL_SCAP_AS_RPM], test "$util_scap_as_rpm" = yes)
+AM_CONDITIONAL([WANT_UTIL_OSCAP_SSH], test "$util_oscap_ssh" = yes)
+AM_CONDITIONAL([WANT_UTIL_OSCAP_DOCKER], test "$util_oscap_docker" = yes)
+AM_CONDITIONAL([WANT_UTIL_OSCAP_VM], test "$util_oscap_vm" = yes)
 AM_CONDITIONAL([WANT_PYTHON], test "$python_bind" = yes)
 AM_CONDITIONAL([WANT_PYTHON3], test "$python3_bind" = yes)
 AM_CONDITIONAL([WANT_PERL], test "$perl_bind" = yes)
 AM_CONDITIONAL([ENABLE_VALGRIND_TESTS], test "$vgcheck" = yes)
-
-AM_CONDITIONAL([WANT_SELINUX_POLICY], test "$selinux_policy" = yes)
 
 #
 # Core
@@ -623,7 +654,6 @@ AC_CONFIG_FILES([Makefile
                  xsl/Makefile
                  schemas/Makefile
                  cpe/Makefile
-		 selinux/Makefile
                  libopenscap.pc
                  src/common/Makefile
 		src/source/Makefile
@@ -641,6 +671,9 @@ AC_CONFIG_FILES([Makefile
 		src/OVAL/adt/Makefile
 		src/OVAL/results/Makefile
                  tests/API/OVAL/Makefile
+		tests/API/OVAL/glob_to_regex/Makefile
+		tests/API/OVAL/schema_version/Makefile
+		tests/oscap_string/Makefile
                  tests/API/OVAL/unittests/Makefile
 		 tests/API/OVAL/validate/Makefile
 		 tests/API/OVAL/report_variable_values/Makefile
@@ -655,15 +688,20 @@ AC_CONFIG_FILES([Makefile
                  tests/API/crypt/Makefile
                  tests/API/SEAP/Makefile
                  tests/API/probes/Makefile
+		tests/sources/Makefile
+		tests/CPE/Makefile
                  tests/probes/file/Makefile
                  tests/probes/fileextendedattribute/Makefile
                  tests/probes/uname/Makefile
                  tests/probes/shadow/Makefile
 		tests/probes/sql57/Makefile
+		tests/probes/symlink/Makefile
                  tests/probes/family/Makefile
                  tests/probes/process58/Makefile
                  tests/probes/sysinfo/Makefile
                  tests/probes/rpminfo/Makefile
+		tests/probes/rpmverifyfile/Makefile
+                 tests/probes/rpmverifypackage/Makefile
 		 tests/probes/rpmverify/Makefile
                  tests/probes/systemdunitproperty/Makefile
                  tests/probes/systemdunitdependency/Makefile
@@ -680,6 +718,7 @@ AC_CONFIG_FILES([Makefile
                  tests/probes/isainfo/Makefile
                  tests/probes/iflisteners/Makefile
 		 tests/probes/maskattr/Makefile
+		tests/probes/sysctl/Makefile
 
                  src/CVSS/Makefile
                  tests/API/CVSS/Makefile
@@ -732,6 +771,8 @@ AC_CONFIG_FILES([run],
                 [chmod +x,-w run])
 AC_CONFIG_FILES([tests/test_common.sh],
                 [chmod +x,-w tests/test_common.sh])
+AC_CONFIG_FILES([utils/oscap-docker],
+                [chmod +x,-w utils/oscap-docker])
 
 AC_OUTPUT
 
@@ -740,6 +781,9 @@ echo "OpenSCAP will be compiled with the following settings:"
 echo
 echo "oscap tool:                    $util_oscap"
 echo "scap-as-rpm tool:              $util_scap_as_rpm"
+echo "oscap-ssh tool:                $util_oscap_ssh"
+echo "oscap-docker tool:             $util_oscap_docker"
+echo "oscap-vm tool:                 $util_oscap_vm"
 echo "python2 bindings enabled:      $python_bind"
 echo "python3 bindings enabled:      $python3_bind"
 echo "perl bindings enabled:         $perl_bind"
@@ -747,7 +791,6 @@ echo "use POSIX regex:               $regex_posix"
 echo "SCE enabled                    $sce"
 echo "debugging flags enabled:       $debug"
 echo "CCE enabled:                   $cce"
-echo "SELinux policy enabled:        $selinux_policy"
 echo
 
 if test "$probes" = "yes"; then

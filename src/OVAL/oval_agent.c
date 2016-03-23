@@ -96,6 +96,8 @@ oval_agent_session_t * oval_agent_new_session(struct oval_definition_model *mode
 	struct oval_generator *generator;
 	int ret;
 
+	dI("Started new OVAL agent.", name);
+
         /* Optimalization */
         oval_definition_model_optimize_by_filter_propagation(model);
 
@@ -170,7 +172,15 @@ int oval_agent_eval_definition(oval_agent_session_t *ag_sess, const char *id)
 {
 #if defined(OVAL_PROBES_ENABLED)
 	int ret;
+	const char *title = NULL;
 	struct oval_result_system *rsystem;
+	struct oval_definition *oval_def;
+
+	oval_def = oval_definition_model_get_definition(ag_sess->def_model, id);
+	if (oval_def != NULL) {
+		title = oval_definition_get_title(oval_def);
+	}
+	dI("Evaluating definition '%s': %s.", id, title);
 
 	/* probe */
 	ret = oval_probe_query_definition(ag_sess->psess, id);
@@ -269,6 +279,7 @@ int oval_agent_eval_system(oval_agent_session_t * ag_sess, agent_reporter cb, vo
 	char   *id;
 	int ret = 0;
 
+	dI("OVAL agent started to evaluate OVAL definitions on your system.");
 	oval_def_it = oval_definition_model_get_definitions(ag_sess->def_model);
 	while (oval_definition_iterator_has_more(oval_def_it)) {
 		oval_def = oval_definition_iterator_next(oval_def_it);
@@ -298,6 +309,7 @@ int oval_agent_eval_system(oval_agent_session_t * ag_sess, agent_reporter cb, vo
 
 cleanup:
 	oval_definition_iterator_free(oval_def_it);
+	dI("OVAL agent finished evaluation.");
 	return ret;
 }
 
@@ -314,16 +326,16 @@ const char * oval_agent_get_filename(oval_agent_session_t * ag_sess) {
 }
 
 void oval_agent_destroy_session(oval_agent_session_t * ag_sess) {
-	if (ag_sess->product_name)
+	if (ag_sess != NULL) {
 		oscap_free(ag_sess->product_name);
 #if defined(OVAL_PROBES_ENABLED)
-	oval_probe_session_destroy(ag_sess->psess);
+		oval_probe_session_destroy(ag_sess->psess);
 #endif
-	oval_syschar_model_free(ag_sess->sys_model);
-	oval_results_model_free(ag_sess->res_model);
-        oscap_free(ag_sess->filename);
-	oscap_free(ag_sess);
-	ag_sess=NULL;
+		oval_syschar_model_free(ag_sess->sys_model);
+		oval_results_model_free(ag_sess->res_model);
+	        oscap_free(ag_sess->filename);
+		oscap_free(ag_sess);
+	}
 }
 
 
@@ -526,13 +538,13 @@ int oval_agent_resolve_variables(struct oval_agent_session * session, struct xcc
 			/* Add variable to variable model */
 			oval_variable_model_add(session->cur_var_model, name, "Unknown", o_type, value);
 			oval_variable_bind_ext_var(variable, session->cur_var_model, name);
-			oscap_dlprintf(DBG_I, "Adding external variable %s.\n", name);
+			dI("Adding external variable %s.", name);
 		} else {
 			/* Skip this variable (we assume it has same values otherwise conflict was detected) */
-			oscap_dlprintf(DBG_W, "Skipping external variable %s.\n", name);
+			dW("Skipping external variable %s.", name);
 		}
         } else {
-                oscap_dlprintf(DBG_W, "Variable %s does not exist, skipping.\n", name);
+                dW("Variable %s does not exist, skipping.", name);
         }
     }
 

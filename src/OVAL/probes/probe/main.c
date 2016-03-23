@@ -43,6 +43,7 @@
 #include "input_handler.h"
 #include "probe-api.h"
 #include "option.h"
+#include <oscap_debug.h>
 
 static int fail(int err, const char *who, int line)
 {
@@ -133,8 +134,16 @@ static int probe_opthandler_offlinemode(int option, int op, va_list args)
 			 * If the probe doesn't support offline mode, then probe_main()
 			 * won't be called in offline modee and a collected object with
 			 * the following flag will be generated for all queries.
+			 *
+			 * We have hardcoded not_collected here as the best fit for majority
+			 * of offline use cases. The test result will get the unknown result
+			 * which is pretty descriptive of the state.
+			 *
+			 * Other option would be to return not applicable. That would, however,
+			 * make the test result not_applicable as well. Which in turn may hide
+			 * underlying problems.
 			 */
-			o_cobjflag = va_arg(args, int);
+			o_cobjflag = SYSCHAR_FLAG_NOT_COLLECTED;
 		}
 		OSCAP_GSYM(offline_mode_supported) = o_offline_mode;
 		OSCAP_GSYM(offline_mode_cobjflag) = o_cobjflag;
@@ -158,6 +167,11 @@ int main(int argc, char *argv[])
 	sigset_t       sigmask;
 	probe_t        probe;
 	char *rootdir = NULL;
+
+	/* Turn on verbose mode */
+	char *verbosity_level = getenv("OSCAP_PROBE_VERBOSITY_LEVEL");
+	char *verbose_log_file = getenv("OSCAP_PROBE_VERBOSE_LOG_FILE");
+	oscap_set_verbose(verbosity_level, verbose_log_file, true);
 
 	if ((errno = pthread_barrier_init(&OSCAP_GSYM(th_barrier), NULL,
 	                                  1 + // signal thread

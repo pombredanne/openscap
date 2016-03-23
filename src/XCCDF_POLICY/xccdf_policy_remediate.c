@@ -104,6 +104,7 @@ static const char *_get_supported_interpret(const char *sys, const struct _inter
 		{"urn:xccdf:fix:script:csh",		"/bin/csh"},
 		{"urn:xccdf:fix:script:tclsh",		"/usr/bin/tclsh"},
 		{"urn:xccdf:fix:script:javascript",	"/usr/bin/js"},
+		{"urn:xccdf:fix:script:ansible",	"/usr/bin/ansible-playbook"},
 		{NULL,					NULL}
 	};
 	const char *interpret = _search_interpret_map(sys, _openscap_supported_interprets);
@@ -235,7 +236,7 @@ static inline int _xccdf_fix_decode_xml(struct xccdf_fix *fix, char **result)
 		xccdf_fix_get_content(fix));
         xmlDoc *doc = xmlReadMemory(str, strlen(str), NULL, NULL, XML_PARSE_RECOVER |
 		XML_PARSE_NOERROR | XML_PARSE_NOWARNING | XML_PARSE_NONET | XML_PARSE_NSCLEAN);
-	dI("Following script will be executed: '''%s'''\n", str);
+	dI("Following script will be executed: '''%s'''", str);
 	oscap_free(str);
 
         xmlBuffer *buff = xmlBufferCreate();
@@ -331,7 +332,11 @@ static inline int _xccdf_fix_execute(struct xccdf_rule_result *rr, struct xccdf_
 				NULL
 			};
 
-			execve(interpret, argvp, NULL);
+			char *const envp[1] = {
+				NULL
+			};
+
+			execve(interpret, argvp, envp);
 			/* Wow, execve returned. In this special case, we failed to execute the fix
 			 * and we return 0 from function. At least the following error message will
 			 * indicate the problem in xccdf:message. */
@@ -395,7 +400,7 @@ int xccdf_policy_rule_result_remediate(struct xccdf_policy *policy, struct xccdf
 
 	/* Initialize the fix. */
 	struct xccdf_fix *cfix = xccdf_fix_clone(fix);
-	int res = xccdf_policy_resolve_fix_substitution(policy, cfix, test_result);
+	int res = xccdf_policy_resolve_fix_substitution(policy, cfix, rr, test_result);
 	xccdf_rule_result_add_fix(rr, cfix);
 	if (res != 0) {
 		_rule_add_info_message(rr, "Fix execution was aborted: Text substitution failed.");
@@ -478,25 +483,25 @@ static inline int _xccdf_policy_rule_generate_fix(struct xccdf_policy *policy, s
 	// Ensure that given Rule is selected and applicable (CPE).
 	const bool is_selected = xccdf_policy_is_item_selected(policy, xccdf_rule_get_id(rule));
 	if (!is_selected) {
-		dI("Skipping unselected Rule/@id=\"%s\"\n", xccdf_rule_get_id(rule));
+		dI("Skipping unselected Rule/@id=\"%s\"", xccdf_rule_get_id(rule));
 		return 0;
 	}
 	const bool is_applicable = xccdf_policy_model_item_is_applicable(xccdf_policy_get_model(policy), (struct xccdf_item*)rule);
 	if (!is_applicable) {
-		dI("Skipping notapplicable Rule/@id\"%s\"\n", xccdf_rule_get_id(rule));
+		dI("Skipping notapplicable Rule/@id\"%s\"", xccdf_rule_get_id(rule));
 		return 0;
 	}
 	// Find the most suitable fix.
 	const struct xccdf_fix *fix = _find_fix_for_template(policy, rule, template);
 	if (fix == NULL) {
-		dI("No fix element was found for Rule/@id=\"%s\"\n", xccdf_rule_get_id(rule));
+		dI("No fix element was found for Rule/@id=\"%s\"", xccdf_rule_get_id(rule));
 		return 0;
 	}
-	dI("Processing a fix for Rule/@id=\"%s\"\n", xccdf_rule_get_id(rule));
+	dI("Processing a fix for Rule/@id=\"%s\"", xccdf_rule_get_id(rule));
 
 	// Process Text Substitute within the fix
 	struct xccdf_fix *cfix = xccdf_fix_clone(fix);
-	int res = xccdf_policy_resolve_fix_substitution(policy, cfix, NULL);
+	int res = xccdf_policy_resolve_fix_substitution(policy, cfix, NULL, NULL);
 	if (res != 0) {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "A fix for Rule/@id=\"%s\" was skipped: Text substitution failed.",
 				xccdf_rule_get_id(rule));
@@ -551,9 +556,13 @@ int xccdf_policy_generate_fix(struct xccdf_policy *policy, struct xccdf_result *
 
 	if (result == NULL) {
 		// No TestResult is available. Generate fix from the stock profile.
-		dI("Generating fixes for policy(profile/@id=%s)\n", xccdf_policy_get_id(policy));
+		dI("Generating fixes for policy(profile/@id=%s)", xccdf_policy_get_id(policy));
 		int ret = 0;
 		struct xccdf_benchmark *benchmark = xccdf_policy_get_benchmark(policy);
+		if (benchmark == NULL) {
+			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not find benchmark model for policy id='%s' when generating fixes.", xccdf_policy_get_id(policy));
+			return 1;
+		}
 		struct xccdf_item_iterator *item_it = xccdf_benchmark_get_content(benchmark);
 		while (xccdf_item_iterator_has_more(item_it)) {
 			struct xccdf_item *item = xccdf_item_iterator_next(item_it);

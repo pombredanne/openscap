@@ -99,6 +99,12 @@ void oval_collection_free_items(struct oval_collection *collection, oscap_destru
 	}
 }
 
+int oval_collection_is_empty(struct oval_collection *collection)
+{
+	__attribute__nonnull__(collection);
+	return collection->item_collection_frame == NULL;
+}
+
 void oval_collection_add(struct oval_collection *collection, void *item)
 {
 	__attribute__nonnull__(collection);
@@ -122,7 +128,7 @@ struct oval_iterator *oval_collection_iterator(struct oval_collection *collectio
 
 	if ((iterator_count++) < 0) {
 		_debugStack[iterator_count - 1] = iterator;
-		oscap_dlprintf(DBG_W, "iterator_count: %d.\n", iterator_count);
+		dW("iterator_count: %d.", iterator_count);
 	}
 
 	iterator->item_iterator_frame = NULL;
@@ -186,7 +192,7 @@ void oval_collection_iterator_free(struct oval_iterator *iterator)
 {
 	if (iterator) {		//NOOP if iterator is NULL
 		if ((--iterator_count) < 0) {
-			oscap_dlprintf(DBG_W, "iterator_count: %d.\n", iterator_count);
+			dW("iterator_count: %d.", iterator_count);
 			if (iterator != _debugStack[iterator_count]) {
 				debug = false;
 			}
@@ -213,7 +219,7 @@ struct oval_iterator *oval_collection_iterator_new()
 
 	if ((iterator_count++) < 0) {
 		_debugStack[iterator_count - 1] = iterator;
-		oscap_dlprintf(DBG_W, "iterator_count: %d.\n", iterator_count);
+		dW("iterator_count: %d.", iterator_count);
 	}
 	iterator->item_iterator_frame = NULL;
 	return iterator;

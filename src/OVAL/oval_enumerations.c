@@ -147,6 +147,7 @@ static const struct oscap_string_map OVAL_DATETIME_FORMAT_MAP[] = {
 	{OVAL_DATETIME_DAY_MONTH_YEAR, "day_month_year"},
 	{OVAL_DATETIME_WIN_FILETIME, "win_filetime"},
 	{OVAL_DATETIME_SECONDS_SINCE_EPOCH, "seconds_since_epoch"},
+	{OVAL_DATETIME_CIM_DATETIME, "cim_datetime"},
 	{OVAL_ENUMERATION_INVALID, NULL}
 };
 
@@ -245,6 +246,7 @@ const char *oval_check_get_text(oval_check_t check)
 static const struct oscap_string_map OVAL_DATATYPE_MAP[] = {
 	{OVAL_DATATYPE_BINARY, "binary"},
 	{OVAL_DATATYPE_BOOLEAN, "boolean"},
+	{OVAL_DATATYPE_DEBIAN_EVR_STRING, "debian_evr_string"},
 	{OVAL_DATATYPE_EVR_STRING, "evr_string"},
 	{OVAL_DATATYPE_FILESET_REVISION, "fileset_revision"},
 	{OVAL_DATATYPE_FLOAT, "float"},
@@ -338,6 +340,7 @@ static const struct oscap_string_map OVAL_COMPONENT_TYPE_MAP[] = {
 	{OVAL_FUNCTION_REGEX_CAPTURE, "regex_capture"},
 	{OVAL_FUNCTION_ARITHMETIC, "arithmetic"},
 	{OVAL_FUNCTION_COUNT, "count"},
+	{OVAL_FUNCTION_GLOB_TO_REGEX, "glob_to_regex"},
 	{OVAL_ENUMERATION_INVALID, NULL}
 };
 
@@ -375,7 +378,7 @@ oval_family_t oval_family_parse(xmlTextReaderPtr reader)
 	}
 	char *family_text = strrchr(namespace, '#');
 	if (family_text == NULL) {
-		dW("No OVAL family for namespace: %s\n", namespace);
+		dW("No OVAL family for namespace: %s", namespace);
 		oscap_free(namespace);
 		return OVAL_FAMILY_UNKNOWN;
 	}
@@ -383,7 +386,7 @@ oval_family_t oval_family_parse(xmlTextReaderPtr reader)
 	int ret = oscap_string_to_enum(OVAL_FAMILY_MAP, ++family_text);
 
 	if (ret == OVAL_ENUMERATION_INVALID) {
-		dW("Unknown OVAL family: %s\n", family_text);
+		dW("Unknown OVAL family: %s", family_text);
 		ret = OVAL_FAMILY_UNKNOWN;
 	}
 
@@ -394,6 +397,18 @@ oval_family_t oval_family_parse(xmlTextReaderPtr reader)
 const char *oval_family_get_text(oval_family_t family)
 {
 	return oval_enumeration_get_text(OVAL_FAMILY_MAP, family);
+}
+
+xmlNs *oval_family_to_namespace(oval_family_t family, const char *schema_ns, xmlDoc *doc, xmlNode *parent)
+{
+	const char *family_text = oval_family_get_text(family);
+	if (family_text == NULL) {
+		return NULL;
+	}
+	/* We need to allocate memory also for '#' and '\0'. */
+	char family_uri[strlen(schema_ns) + 1 + strlen(family_text) + 1];
+	sprintf(family_uri,"%s#%s", schema_ns, family_text);
+	return xmlSearchNsByHref(doc, parent, BAD_CAST family_uri);
 }
 
 static const struct oscap_string_map OVAL_SUBTYPE_AIX_MAP[] = {
@@ -532,43 +547,58 @@ static const struct oscap_string_map OVAL_SUBTYPE_UNIX_MAP[] = {
         {OVAL_UNIX_FILEEXTENDEDATTRIBUTE, "fileextendedattribute"},
         {OVAL_UNIX_GCONF, "gconf"},
         {OVAL_UNIX_ROUTINGTABLE, "routingtable"},
+	{OVAL_UNIX_SYMLINK, "symlink"},
 	{OVAL_SUBTYPE_UNKNOWN, NULL}
 };
 
 static const struct oscap_string_map OVAL_SUBTYPE_WINDOWS_MAP[] = {
-	{OVAL_WINDOWS_ACCESS_TOKEN, "access_token"},
-	{OVAL_WINDOWS_ACTIVE_DIRECTORY, "active_directory"},
-	{OVAL_WINDOWS_AUDIT_EVENT_POLICY, "audit_event_policy"},
-	{OVAL_WINDOWS_AUDIT_EVENT_SUBCATEGORIES, "audit_event_subcatagories"},
+	{OVAL_WINDOWS_ACCESS_TOKEN, "accesstoken"},
+	{OVAL_WINDOWS_ACTIVE_DIRECTORY, "activedirectory"},
+	{OVAL_WINDOWS_AUDIT_EVENT_POLICY, "auditeventpolicy"},
+	{OVAL_WINDOWS_AUDIT_EVENT_POLICY_SUBCATEGORIES, "auditeventpolicysubcategories"},
 	{OVAL_WINDOWS_FILE, "file"},
-	{OVAL_WINDOWS_FILE_AUDITED_PERMISSIONS_53, "file_audited_permissions_53"},
-	{OVAL_WINDOWS_FILE_AUDITED_PERMISSIONS, "file_audited_permissions"},
-	{OVAL_WINDOWS_FILE_EFFECTIVE_RIGHTS_53, "file_effective_rights_53"},
-	{OVAL_WINDOWS_FILE_EFFECTIVE_RIGHTS, "file_effective_rights"},
+	{OVAL_WINDOWS_FILE_AUDITED_PERMISSIONS_53, "fileauditedpermissions53"},
+	{OVAL_WINDOWS_FILE_AUDITED_PERMISSIONS, "fileauditedpermissions"},
+	{OVAL_WINDOWS_FILE_EFFECTIVE_RIGHTS_53, "fileeffectiverights53"},
+	{OVAL_WINDOWS_FILE_EFFECTIVE_RIGHTS, "fileeffectiverights"},
 	{OVAL_WINDOWS_GROUP, "group"},
 	{OVAL_WINDOWS_GROUP_SID, "group_sid"},
 	{OVAL_WINDOWS_INTERFACE, "interface"},
-	{OVAL_WINDOWS_LOCKOUT_POLICY, "lockout_policy"},
+	{OVAL_WINDOWS_LOCKOUT_POLICY, "lockoutpolicy"},
 	{OVAL_WINDOWS_METABASE, "metabase"},
-	{OVAL_WINDOWS_PASSWORD_POLICY, "password_policy"},
+	{OVAL_WINDOWS_PASSWORD_POLICY, "passwordpolicy"},
 	{OVAL_WINDOWS_PORT, "port"},
-	{OVAL_WINDOWS_PRINTER_EFFECTIVE_RIGHTS, "printer_effective_rights"},
+	{OVAL_WINDOWS_PRINTER_EFFECTIVE_RIGHTS, "printereffectiverights"},
 	{OVAL_WINDOWS_PROCESS, "process"},
 	{OVAL_WINDOWS_REGISTRY, "registry"},
-	{OVAL_WINDOWS_REGKEY_AUDITED_PERMISSIONS_53, "regkey_audited_permissions_53"},
-	{OVAL_WINDOWS_REGKEY_AUDITED_PERMISSIONS, "regkey_audited_permissions"},
-	{OVAL_WINDOWS_REGKEY_EFFECTIVE_RIGHTS_53, "regkey_effective_rights_53"},
-	{OVAL_WINDOWS_REGKEY_EFFECTIVE_RIGHTS, "regkey_effective_rights"},
-	{OVAL_WINDOWS_SHARED_RESOURCE, "shared_resource"},
+	{OVAL_WINDOWS_REGKEY_AUDITED_PERMISSIONS_53, "regkeyauditedpermissions53"},
+	{OVAL_WINDOWS_REGKEY_AUDITED_PERMISSIONS, "regkeyauditedpermissions"},
+	{OVAL_WINDOWS_REGKEY_EFFECTIVE_RIGHTS_53, "regkeyeffectiverights53"},
+	{OVAL_WINDOWS_REGKEY_EFFECTIVE_RIGHTS, "regkeyeffectiverights"},
+	{OVAL_WINDOWS_SHARED_RESOURCE, "sharedresource"},
 	{OVAL_WINDOWS_SID, "sid"},
 	{OVAL_WINDOWS_SID_SID, "sid_sid"},
 	{OVAL_WINDOWS_USER_ACCESS_CONTROL, "user_access_control"},
 	{OVAL_WINDOWS_USER, "user"},
-	{OVAL_WINDOWS_USER_SID_55, "user_sid_55"},
+	{OVAL_WINDOWS_USER_SID_55, "user_sid55"},
 	{OVAL_WINDOWS_USER_SID, "user_sid"},
 	{OVAL_WINDOWS_VOLUME, "volume"},
 	{OVAL_WINDOWS_WMI, "wmi"},
-	{OVAL_WINDOWS_WUA_UPDATE_SEARCHER, "wua_update_searcher"},
+	{OVAL_WINDOWS_WUA_UPDATE_SEARCHER, "wuaupdatesearcher"},
+	{OVAL_WINDOWS_ACTIVE_DIRECTORY_57, "activedirectory57"},
+	{OVAL_WINDOWS_CMDLET, "cmdlet"},
+	{OVAL_WINDOWS_DNSCACHE, "dnscache"},
+	{OVAL_WINDOWS_LICENSE, "license"},
+	{OVAL_WINDOWS_NTUSER, "ntuser"},
+	{OVAL_WINDOWS_PEHEADER, "peheader"},
+	{OVAL_WINDOWS_PROCESS_58, "process58"},
+	{OVAL_WINDOWS_SERVICE, "service"},
+	{OVAL_WINDOWS_SERVICE_EFFECTIVE_RIGHTS, "serviceeffectiverights"},
+	{OVAL_WINDOWS_SHARED_RESOURCE_AUDITED_PERMISSIONS, "sharedresourceauditedpermissions"},
+	{OVAL_WINDOWS_SHARED_RESOURCE_EFFECTIVE_RIGHTS, "sharedresourceeffectiverights"},
+	{OVAL_WINDOWS_SYSTEM_METRIC, "systemmetric"},
+	{OVAL_WINDOWS_USER_RIGHT, "userright"},
+	{OVAL_WINDOWS_WMI_57, "wmi57"},
 	{OVAL_SUBTYPE_UNKNOWN, NULL}
 };
 
@@ -635,7 +665,7 @@ oval_subtype_t oval_subtype_parse(xmlTextReaderPtr reader)
 
 	int subtype_s = oscap_string_to_enum(map, tagname);
 	if (subtype < 0) {
-		dW("Unknown OVAL family subtype: %s\n", tagname);
+		dW("Unknown OVAL family subtype: %s", tagname);
 		subtype = OVAL_ENUMERATION_INVALID;
 	}
 	else {
@@ -705,7 +735,7 @@ const char *oval_subtype_get_text(oval_subtype_t subtype)
 	if (map) {
 		return oval_enumeration_get_text(map, subtype);
 	} else {
-		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Warning: Zero family index");
+		oscap_seterr(OSCAP_EFAMILY_OVAL, "Invalid OVAL family.");
 		return _invalid;
 	}
 }
