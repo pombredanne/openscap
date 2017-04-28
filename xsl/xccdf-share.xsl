@@ -30,6 +30,8 @@ Authors:
 
 <xsl:param name="verbosity"/>
 
+<xsl:key name="values" match="//cdf:Value" use="concat(ancestor::cdf:Benchmark/@id, '|', @id)"/>
+
 <xsl:template name="rule-result-tooltip">
     <xsl:param name="ruleresult"/>
     <!-- The texts are sourced from XCCDF 1.2 specification with minor modifications -->
@@ -105,7 +107,7 @@ Authors:
 
     <xsl:if test="$item/cdf:ident">
         <p>
-            <span class="label label-info" title="A globally meaningful identifiers for this rule. MAY be the name or identifier of a security configuration issue or vulnerability that the rule remediates. By setting an identifier on a rule, the benchmark author effectively declares that the rule instantiates, implements, or remediates the issue for which the name was assigned.">identifiers:</span>&#160;
+            <span class="label label-info" title="A globally meaningful identifiers for this rule. MAY be the name or identifier of a security configuration issue or vulnerability that the rule remediates. By setting an identifier on a rule, the benchmark author effectively declares that the rule instantiates, implements, or remediates the issue for which the name was assigned.">Identifiers:</span>&#160;
             <xsl:for-each select="$item/cdf:ident">
                 <xsl:apply-templates mode="ident" select="."/>
                 <xsl:if test="position() != last()">, </xsl:if>
@@ -114,13 +116,19 @@ Authors:
     </xsl:if>
     <xsl:if test="$item/cdf:reference">
         <p>
-            <span class="label label-default" title="Provide a reference to a document or resource where the user can learn more about the subject of the Rule or Group.">references:</span>&#160;
+            <span class="label label-default" title="Provide a reference to a document or resource where the user can learn more about the subject of the Rule or Group.">References:</span>&#160;
             <xsl:for-each select="$item/cdf:reference">
                 <xsl:apply-templates mode="reference" select="."/>
                 <xsl:if test="position() != last()">, </xsl:if>
             </xsl:for-each>
         </p>
     </xsl:if>
+</xsl:template>
+
+<!-- works for both XCCDF Rule elements and rule-result elements -->
+<xsl:template name="item-severity">
+    <xsl:param name="item"/>
+    <xsl:choose><xsl:when test="$item/@severity"><xsl:value-of select="$item/@severity"/></xsl:when><xsl:otherwise>unknown</xsl:otherwise></xsl:choose>
 </xsl:template>
 
 <!-- substitution for testresults, used in HTML report -->
@@ -160,18 +168,35 @@ Authors:
         <xsl:when test="$testresult and $testresult/cdf:set-value[@idref = $subid]">
             <abbr title="from TestResult: {$subid}"><xsl:value-of select="$testresult/cdf:set-value[@idref = $subid][last()]"/></abbr>
         </xsl:when>
-        <xsl:when test="$profile and $profile/cdf:refine-value[@idref = $subid]">
-            <xsl:variable name="selector" select="$profile/cdf:refine-value[@idref = $subid][last()]/@selector"/>
-            <abbr title="from Profile/refine-value: {$subid}"><xsl:value-of select="$benchmark//cdf:Value/cdf:value[@selector = $selector][last()]/text()"/></abbr>
-        </xsl:when>
         <xsl:when test="$profile and $profile/cdf:set-value[@idref = $subid]">
             <abbr title="from Profile/set-value: {$subid}"><xsl:value-of select="$profile/cdf:set-value[@idref = $subid][last()]/text()"/></abbr>
         </xsl:when>
-        <xsl:when test="$benchmark//cdf:Value[@id = $subid]/cdf:value[not(@selector)]">
-            <abbr title="from Benchmark/Value: {$subid}"><xsl:value-of select="$benchmark//cdf:Value[@id = $subid]/cdf:value[not(@selector)][last()]"/></abbr>
-        </xsl:when>
         <xsl:otherwise>
-            <abbr title="Substitution failed: {$subid}">(N/A)</abbr>
+            <!-- We have to look up the cdf:Value in benchmark and that's a
+                 performance hit. Let's treat it as a special case and do
+                 do the lookup once -->
+            <xsl:variable name="value" select="key('values', concat($benchmark/@id, '|', $subid))"/>
+
+            <xsl:choose>
+                <xsl:when test="$profile and $profile/cdf:refine-value[@idref = $subid]">
+                    <xsl:variable name="selector" select="$profile/cdf:refine-value[@idref = $subid][last()]/@selector"/>
+                    <abbr title="from Profile/refine-value: {$subid}"><xsl:value-of select="$value/cdf:value[@selector = $selector][last()]/text()"/></abbr>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:variable name="value_lastselector" select="$value/cdf:value[not(@selector)][last()]"/>
+                    <xsl:choose>
+                        <xsl:when test="$value_lastselector and $value[@prohibitChanges='true']">
+                            <xsl:value-of select="$value_lastselector"/>
+                        </xsl:when>
+                        <xsl:when test="$value_lastselector">
+                            <abbr title="from Benchmark/Value: {$subid}"><xsl:value-of select="$value_lastselector"/></abbr>
+                        </xsl:when>
+                        <xsl:otherwise>
+                            <abbr title="Substitution failed: {$subid}">(N/A)</abbr>
+                        </xsl:otherwise>
+                    </xsl:choose>
+                </xsl:otherwise>
+            </xsl:choose>
         </xsl:otherwise>
     </xsl:choose>
 </xsl:template>
@@ -233,11 +258,14 @@ Authors:
     <xsl:param name="benchmark"/>
     <xsl:param name="profile"/>
 
-    <xsl:apply-templates mode="sub-testresult" select="$fixtext">
-        <xsl:with-param name="testresult" select="$testresult"/>
-        <xsl:with-param name="benchmark" select="$benchmark"/>
-        <xsl:with-param name="profile" select="$profile"/>
-    </xsl:apply-templates>
+    <span class="label label-success">Remediation description:</span>
+    <div class="panel panel-default"><div class="panel-body">
+        <xsl:apply-templates mode="sub-testresult" select="$fixtext">
+            <xsl:with-param name="testresult" select="$testresult"/>
+            <xsl:with-param name="benchmark" select="$benchmark"/>
+            <xsl:with-param name="profile" select="$profile"/>
+        </xsl:apply-templates>
+    </div></div>
 </xsl:template>
 
 <xsl:template name="show-fix">
@@ -246,13 +274,54 @@ Authors:
     <xsl:param name="benchmark"/>
     <xsl:param name="profile"/>
 
-    <pre><code>
-        <xsl:apply-templates mode="sub-testresult" select="$fix">
-            <xsl:with-param name="testresult" select="$testresult"/>
-            <xsl:with-param name="benchmark" select="$benchmark"/>
-            <xsl:with-param name="profile" select="$profile"/>
-        </xsl:apply-templates>
-    </code></pre>
+    <xsl:variable name="fix_type">
+        <xsl:choose>
+            <xsl:when test="$fix/@system = 'urn:xccdf:fix:script:sh'">Shell script</xsl:when>
+            <xsl:when test="$fix/@system = 'urn:xccdf:fix:script:ansible'">Ansible snippet</xsl:when>
+            <xsl:when test="$fix/@system = 'urn:xccdf:fix:script:puppet'">Puppet snippet</xsl:when>
+            <xsl:when test="$fix/@system = 'urn:redhat:anaconda:pre'">Anaconda snippet</xsl:when>
+            <xsl:otherwise>script</xsl:otherwise>
+        </xsl:choose>
+    </xsl:variable>
+
+    <span class="label label-success">Remediation <xsl:value-of select="$fix_type"/>:</span>&#160;&#160;&#160;<a data-toggle="collapse" data-target="#{generate-id($fix)}">(show)</a><br />
+    <div class="panel-collapse collapse" id="{generate-id($fix)}">
+        <xsl:if test="$fix/@complexity or $fix/@disruption or $fix/@reboot or $fix/@strategy">
+            <table class="table table-striped table-bordered table-condensed">
+                <xsl:if test="$fix/@complexity">
+                    <tr>
+                        <th>Complexity:</th>
+                        <td><xsl:value-of select="$fix/@complexity" /></td>
+                    </tr>
+                </xsl:if>
+                <xsl:if test="$fix/@disruption">
+                    <tr>
+                        <th>Disruption:</th>
+                        <td><xsl:value-of select="$fix/@disruption" /></td>
+                    </tr>
+                </xsl:if>
+                <xsl:if test="$fix/@reboot">
+                    <tr>
+                        <th>Reboot:</th>
+                        <td><xsl:value-of select="$fix/@reboot" /></td>
+                    </tr>
+                </xsl:if>
+                <xsl:if test="$fix/@strategy">
+                    <tr>
+                        <th>Strategy:</th>
+                        <td><xsl:value-of select="$fix/@strategy" /></td>
+                    </tr>
+                </xsl:if>
+            </table>
+        </xsl:if>
+        <pre><code>
+            <xsl:apply-templates mode="sub-testresult" select="$fix">
+                <xsl:with-param name="testresult" select="$testresult"/>
+                <xsl:with-param name="benchmark" select="$benchmark"/>
+                <xsl:with-param name="profile" select="$profile"/>
+            </xsl:apply-templates>
+        </code></pre>
+    </div>
 </xsl:template>
 
 <xsl:template name="show-title-front-matter-description-notices">

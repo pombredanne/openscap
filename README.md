@@ -18,9 +18,9 @@ Choose *1a* or *1b* depending on whether you want sources from a release tarball
 1a) Get a release tarball
 ```
 # replace ${version} with the desired version
-wget https://fedorahosted.org/releases/o/p/openscap/openscap-${version}.tar.gz
+wget https://github.com/OpenSCAP/openscap/releases/download/${version}/openscap-${version}.tar.gz
 tar -xzpf openscap-${version}.tar.gz
-cd openscap-${version}.tar.gz
+cd openscap-${version}
 ```
 
 **OR**
@@ -39,8 +39,12 @@ The autoconf, automake, and libtool tools are required to be installed on your s
 make
 ```
 Build dependencies:
-(some of these can be turned off via configure)
+(some of these are optional, if they are not detected, openscap will be compiled
+without respective optional features)
+ * dbus-devel
+ * GConf2-devel
  * libacl-devel
+ * libblkid-devel
  * libcap-devel
  * libcurl-devel
  * libgcrypt-devel
@@ -81,7 +85,6 @@ oscap ds sds-validate scap-ds.xml
 
 ### Scanning
 
- * To evaluate all definitions within the given OVAL Definition file, run the following command: 
  * To evaluate all definitions within the given OVAL Definition file, run the following command:
 ```
 oscap oval eval --results oval-results.xml scap-oval.xml

@@ -57,7 +57,10 @@ struct oscap_module OSCAP_INFO_MODULE = {
     .parent = &OSCAP_ROOT_MODULE,
     .summary = "info module",
     .usage = "some-file.xml",
-    .help = "Print information about a file",
+    .help = "Print information about a file\n"
+    "\n"
+    "Options:\n"
+    "   --fetch-remote-resources \r\t\t\t\t - Download remote content referenced by DataStream.\n",
     .opt_parser = getopt_info,
     .func = app_info
 };
@@ -91,7 +94,9 @@ static inline void _print_xccdf_profiles(struct xccdf_profile_iterator *prof_it,
 	printf("%sProfiles:\n", prefix);
 	while (xccdf_profile_iterator_has_more(prof_it)) {
 		struct xccdf_profile * prof = xccdf_profile_iterator_next(prof_it);
-		printf("%s\t%s\n", prefix, xccdf_profile_get_id(prof));
+		printf("%s\t%s%s\n", prefix,
+			xccdf_profile_get_abstract(prof) ? "(abstract) " : "",
+			xccdf_profile_get_id(prof));
 	}
 	xccdf_profile_iterator_free(prof_it);
 }
@@ -110,6 +115,34 @@ static inline void _print_xccdf_referenced_files(struct xccdf_policy_model *poli
 	oscap_file_entry_list_free(referenced_files);
 }
 
+static inline void _print_xccdf_result(struct xccdf_result *xccdf_result, const char *prefix)
+{
+	const char *result_id = xccdf_result_get_id(xccdf_result);
+	const char *benchmark_uri = xccdf_result_get_benchmark_uri(xccdf_result);
+	const char *xccdf_profile = xccdf_result_get_profile(xccdf_result);
+	if (xccdf_profile == NULL) {
+		xccdf_profile = "(default)";
+	}
+	const char *start_time = xccdf_result_get_start_time(xccdf_result);
+	const char *end_time = xccdf_result_get_end_time(xccdf_result);
+	printf("%s\tResult ID: %s\n", prefix, result_id);
+	printf("%s\tSource benchmark: %s\n", prefix, benchmark_uri);
+	printf("%s\tSource profile: %s\n", prefix, xccdf_profile);
+	printf("%s\tEvaluation started: %s\n", prefix, start_time);
+	printf("%s\tEvaluation finished: %s\n", prefix, end_time);
+	printf("%s\tPlatform CPEs:\n", prefix);
+	struct oscap_string_iterator *platforms_it = xccdf_result_get_platforms(xccdf_result);
+	if (!oscap_string_iterator_has_more(platforms_it)) {
+		printf("%s\t\t(none)\n", prefix);
+	}
+	while (oscap_string_iterator_has_more(platforms_it)) {
+		const char *platform = oscap_string_iterator_next(platforms_it);
+		printf("%s\t\t%s\n", prefix, platform);
+	}
+	oscap_string_iterator_free(platforms_it);
+}
+
+
 static inline void _print_xccdf_testresults(struct xccdf_benchmark *bench, const char *prefix)
 {
 	struct xccdf_result_iterator *res_it = xccdf_benchmark_get_results(bench);
@@ -117,7 +150,7 @@ static inline void _print_xccdf_testresults(struct xccdf_benchmark *bench, const
 		printf("%sTest Results:\n", prefix);
 	while (xccdf_result_iterator_has_more(res_it)) {
 		struct xccdf_result *test_result = xccdf_result_iterator_next(res_it);
-		printf("%s\t%s\n", prefix, xccdf_result_get_id(test_result));
+		_print_xccdf_result(test_result, prefix);
 	}
 	xccdf_result_iterator_free(res_it);
 }
@@ -258,6 +291,9 @@ static int app_info(const struct oscap_action *action)
 		if (session == NULL) {
 			goto cleanup;
 		}
+
+		ds_sds_session_set_remote_resources(session, action->remote_resources, download_reporting_callback);
+
 		/* get collection */
 		struct ds_sds_index *sds = ds_sds_session_get_sds_idx(session);
 		if (!sds) {
@@ -330,6 +366,7 @@ static int app_info(const struct oscap_action *action)
 	break;
 	case OSCAP_DOCUMENT_ARF: {
 		printf("Document type: Result Data Stream\n");
+		print_time(action->file);
 		struct ds_rds_session *session = ds_rds_session_new_from_source(source);
 		if (session == NULL) {
 			goto cleanup;
@@ -349,10 +386,29 @@ static int app_info(const struct oscap_action *action)
 			while (rds_report_index_iterator_has_more(report_it)) {
 				struct rds_report_index* report = rds_report_index_iterator_next(report_it);
 				struct rds_report_request_index* request = rds_report_index_get_request(report);
+				const char *report_request_id = rds_report_request_index_get_id(request);
+				const char *report_id = rds_report_index_get_id(report);
 
-				printf(" - %s -> %s\n",
-					rds_report_request_index_get_id(request),
-					rds_report_index_get_id(report));
+				struct oscap_source *report_source = ds_rds_session_select_report(session, report_id);
+				if (report_source == NULL) {
+					goto cleanup;
+				}
+				oscap_document_type_t report_source_type = oscap_source_get_scap_type(report_source);
+				if (report_source_type != OSCAP_DOCUMENT_XCCDF) {
+					oscap_source_free(report_source);
+					goto cleanup;
+				}
+				struct xccdf_result *xccdf_result = xccdf_result_import_source(report_source);
+				if (xccdf_result == NULL) {
+					oscap_source_free(report_source);
+					goto cleanup;
+				}
+				printf("\tARF report: %s\n", report_id);
+				printf("\t\tReport request: %s\n", report_request_id);
+				_print_xccdf_result(xccdf_result, "\t");
+				xccdf_result_free(xccdf_result);
+				// oscap_source_free is not needed, it is already freed by xccdf_result_free
+
 			}
 			rds_report_index_iterator_free(report_it);
 		}
@@ -373,6 +429,10 @@ static int app_info(const struct oscap_action *action)
 		printf("Document type: SCE Result File\n");
 		// Currently, we do not have any SCE result file parsing capabilities.
 	break;
+	case OSCAP_DOCUMENT_OCIL:
+		printf("Document type: OCIL Definitions file\n");
+		// we don't support OCIL yet
+	break;
 	default:
 		printf("Could not determine document type\n");
 		goto cleanup;
@@ -390,11 +450,29 @@ cleanup:
 
 bool getopt_info(int argc, char **argv, struct oscap_action *action)
 {
-	if(  argc != 3) {
-		oscap_module_usage(action->module, stderr, "Wrong number of parameters.\n");
+	assert(action != NULL);
+
+	/* Command-options */
+	const struct option long_options[] = {
+		{"fetch-remote-resources", no_argument, &action->remote_resources, 1},
+		// end
+		{0, 0, 0, 0}
+	};
+
+	int c;
+	while ((c = getopt_long(argc, argv, "o:i:", long_options, NULL)) != -1) {
+		switch(c) {
+			case 0: break;
+			default: return oscap_module_usage(action->module, stderr, NULL);
+		}
+	}
+
+	if (optind >= argc) {
+		oscap_module_usage(action->module, stderr, "SCAP file needs to be specified!\n");
 		return false;
 	}
-	action->file = argv[2];
+
+	action->file = argv[optind];
 
 	return true;
 }

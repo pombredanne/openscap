@@ -200,6 +200,8 @@ static int filehash58_cb (const char *p, const char *f, const char *h, probe_ctx
 
 void *probe_init (void)
 {
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
+
 	/*
 	 * Initialize crypto API
 	 */
@@ -215,8 +217,6 @@ void *probe_init (void)
 	default:
 		dI("Can't initialize mutex: errno=%u, %s.", errno, strerror (errno));
 	}
-
-	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
 
 	return (NULL);
 }
@@ -281,7 +281,7 @@ int probe_main(probe_ctx *ctx, void *mutex)
 		goto cleanup;
 	}
 
-	if ((ofts = oval_fts_open(path, filename, filepath, behaviors)) != NULL) {
+	if ((ofts = oval_fts_open(path, filename, filepath, behaviors, probe_ctx_getresult(ctx))) != NULL) {
 		while ((ofts_ent = oval_fts_read(ofts)) != NULL) {
 			/* find hash types to compare with entity, think "not satisfy" */
 			const struct oscap_string_map *p = CRAPI_ALG_MAP;

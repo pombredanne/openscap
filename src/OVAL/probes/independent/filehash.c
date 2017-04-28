@@ -180,6 +180,8 @@ static int filehash_cb (const char *p, const char *f, probe_ctx *ctx, oval_schem
 
 void *probe_init (void)
 {
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
+
         /*
          * Initialize crypto API
          */
@@ -196,7 +198,6 @@ void *probe_init (void)
                 dI("Can't initialize mutex: errno=%u, %s.", errno, strerror (errno));
         }
 
-        probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
 
         return (NULL);
 }
@@ -261,7 +262,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
 		return (PROBE_EFATAL);
         }
 
-	if ((ofts = oval_fts_open(path, filename, filepath, behaviors)) != NULL) {
+	if ((ofts = oval_fts_open(path, filename, filepath, behaviors, probe_ctx_getresult(ctx))) != NULL) {
 		while ((ofts_ent = oval_fts_read(ofts)) != NULL) {
 			filehash_cb(ofts_ent->path, ofts_ent->file, ctx, over);
 			oval_ftsent_free(ofts_ent);

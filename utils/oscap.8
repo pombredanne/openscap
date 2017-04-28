@@ -1,4 +1,4 @@
-.TH OSCAP "8" "Jan 2016" "Red Hat" "System Administration Utilities"
+.TH OSCAP "8" "March 2017" "Red Hat" "System Administration Utilities"
 
 .SH NAME
 oscap \- OpenSCAP command line tool
@@ -46,11 +46,16 @@ Common Vulnerabilities and Exposures
 
 .SH INFO OPERATIONS
 .TP
-any-scap-file.xml
+[\fIoptions\fR] any-scap-file.xml
 .RS
 This module prints information about SCAP content in a file specified on a command line. It determines SCAP content type, specification version, date of creation, date of import and so on. Info module doesn't require any additional opperation switch.
 
 For XCCDF or Datastream files, info module prints out IDs of incorporated profiles, components, and datastreams. These IDs can be used to specify the target for evaluation. Use options --profile, --xccdf-id (or --oval-id), and --datastream-id respectively.
+.PP
+\fB\-\-fetch-remote-resources\fR
+.RS
+Allow download of remote components referenced from Datastream.
+.RE
 .SH XCCDF OPERATIONS
 .TP
 .B \fBeval\fR [\fIoptions\fR] INPUT_FILE [\fIoval-definitions-files\fR]
@@ -93,6 +98,16 @@ Write XCCDF results into FILE.
 \fB\-\-results-arf FILE\fR
 .RS
 Writes results to a given FILE in Asset Reporting Format. It is recommended to use this option instead of --results when dealing with datastreams.
+.RE
+.TP
+\fB\-\-thin-results\fR
+.RS
+Thin Results provides only minimal amount of information in OVAL/ARF results. The option --without-syschar is automatically enabled when you use Thin Results.
+.RE
+.TP
+\fB\-\-without-syschar\fR
+.RS
+Don't provide system characteristics in OVAL/ARF result files.
 .RE
 .TP
 \fB\-\-report FILE\fR
@@ -298,11 +313,18 @@ Specify what result types shall be displayed in the result report. The default i
 .TP
 \fB\-\-oval-template \fItemplate-string\fR
 To use the ability to include additional information from OVAL in xccdf result file, a template which will be used to obtain OVAL result file names has to be specified. The template can be either a filename or a string containing wildcard character (percent sign '%'). Wildcard will be replaced by the original OVAL definition file name as referenced from the XCCDF file. This way it is possible to obtain OVAL information even from XCCDF documents referencing several OVAL files. To use this option with results from an XCCDF evaluation, specify \fI%.result.xml\fR as a OVAL file name template.
+.TP
+\fB\-\-sce-template \fItemplate-string\fR
+To use the ability to include additional information from SCE in XCCDF result file, a template which will be used to obtain SCE result file names has to be specified. The template can be either a filename or a string containing wildcard character (percent sign '%'). Wildcard will be replaced by the original SCE script file name as referenced from the XCCDF file. This way it is possible to obtain SCE information even from XCCDF documents referencing several SCE files. To use this option with results from an XCCDF evaluation, specify \fI%.result.xml\fR as a SCE file name template.
 .RE
 .TP
 .B \fBfix\fR  [\fIoptions\fR] xccdf-file
 .RS
-Generate a script that shall bring the system to a state of compliance with given XCCDF Benchmark.
+Generate a script that shall bring the system to a state of compliance with given XCCDF Benchmark. There are 2 possibilities when generating fixes: Result-oriented fixes (--result-id) or Profile-oriented fixes (--profile). Result-oriented takes precedences over Profile-oriented, if result-id is given, oscap will ignore any profile provided.
+.TP
+Result-oriented fixes are generated using result-id provided to select only the failing rules from results in xccdf-file, it skips all other rules.
+.TP
+Profile-oriented fixes are generated using all rules within the provided profile. If no result-id/profile are provided, (default) profile will be used to generate fixes.
 .TP
 \fB\-\-output FILE\fR
 Write the report to this file instead of standard output.
@@ -344,6 +366,9 @@ Provide external variables expected by OVAL Definition File.
 \fB\-\-directives FILE\fR
 Use OVAL Directives content to specify desired results content.
 .TP
+\fB\-\-without-syschar\fR
+Don't provide system characteristics in result file.
+.TP
 \fB\-\-results FILE\fR
 Write OVAL Results into file.
 .TP
@@ -362,6 +387,11 @@ Takes component ref with given ID from checks. This allows to select a particula
 .TP
 \fB\-\-skip-valid\fR
 Do not validate input/output files.
+.TP
+.RE
+\fB\-\-fetch-remote-resources\fR
+Allow download of remote components referenced from Datastream.
+.RE
 .TP
 \fB\-\-verbose VERBOSITY_LEVEL\fR
 Turn on verbose mode at specified verbosity level. VERBOSITY_LEVEL is one of: DEVEL, INFO, WARNING, ERROR.
@@ -553,6 +583,9 @@ Takes component ref with given ID from checklists. This allows to select a parti
 .TP
 \fB\-\-skip-valid
 Do not validate input/output files.
+.TP
+\fB\-\-fetch-remote-resources\fR
+Allow download of remote components referenced from Datastream.
 .RE
 .TP
 .B \fBsds-validate\fR SOURCE_DS
@@ -622,7 +655,7 @@ Evaluate XCCDF content using CPE dictionary and produce html report. In this cas
 
 .SH REPORTING BUGS
 .nf
-Please report bugs using https://fedorahosted.org/openscap/
+Please report bugs using https://github.com/OpenSCAP/openscap/issues
 Make sure you include the full output of `oscap --v` in the bug report.
 
 .SH AUTHORS

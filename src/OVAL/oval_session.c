@@ -40,6 +40,7 @@
 #include "../DS/public/ds_sds_session.h"
 #include "oscap_source.h"
 
+
 static const char *oscap_productname = "cpe:/a:open-scap:oscap";
 static const char *oval_results_report = "oval-results-report.xsl";
 
@@ -74,7 +75,10 @@ struct oval_session {
 	} reporter;
 
 	bool validation;
+	bool export_sys_chars;
 	bool full_validation;
+	bool fetch_remote_resources;
+	download_progress_calllback_t progress;
 };
 
 struct oval_session *oval_session_new(const char *filename)
@@ -96,6 +100,8 @@ struct oval_session *oval_session_new(const char *filename)
 		oval_session_free(session);
 		return NULL;
 	}
+
+	session->export_sys_chars = true;
 
 	dI("Created a new OVAL session from input file '%s'.", filename);
 	return session;
@@ -212,7 +218,7 @@ static int oval_session_load_definitions(struct oval_session *session)
 		if ((session->sds_session = ds_sds_session_new_from_source(session->source)) == NULL) {
 			return 1;
 		}
-
+		ds_sds_session_set_remote_resources(session->sds_session,session->fetch_remote_resources ,session->progress);
 		ds_sds_session_set_datastream_id(session->sds_session, session->datastream_id);
 		if (ds_sds_session_register_component_with_dependencies(session->sds_session,
 					"checks", session->component_id, "oval.xml") != 0) {
@@ -407,6 +413,7 @@ int oval_session_export(struct oval_session *session)
 	/* Get OVAL Results if evaluation or analyse has been done and apply
 	 * directives to them */
 	if (session->res_model && (session->export.results || session->export.report)) {
+		oval_results_model_set_export_system_characteristics(session->res_model, session->export_sys_chars);
 		result = oval_results_model_export_source(session->res_model, dir_model, NULL);
 		filename = session->export.results;
 	}
@@ -449,6 +456,17 @@ cleanup:
 	if (dir_model)
 		oval_directives_model_free(dir_model);
 	return ret;
+}
+
+void oval_session_set_export_system_characteristics(struct oval_session *session, bool export)
+{
+	session->export_sys_chars = export;
+}
+
+void oval_session_set_remote_resources(struct oval_session *session, bool allowed, download_progress_calllback_t callback)
+{
+	session->fetch_remote_resources = allowed;
+	session->progress = callback;
 }
 
 void oval_session_free(struct oval_session *session)

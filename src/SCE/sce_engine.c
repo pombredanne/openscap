@@ -34,6 +34,8 @@
 #include "common/util.h"
 #include "common/list.h"
 #include "common/oscap_acquire.h"
+#include "common/oscap_string.h"
+#include "common/debug_priv.h"
 #include "sce_engine_api.h"
 
 #include <stdlib.h>
@@ -57,6 +59,7 @@ struct sce_check_result
 	char* href;
 	char* basename;
 	char* std_out;
+	char* std_err;
 	int exit_code;
 	struct oscap_stringlist* environment_variables;
 	xccdf_test_result_type_t xccdf_result;
@@ -68,6 +71,7 @@ struct sce_check_result* sce_check_result_new(void)
 	ret->href = NULL;
 	ret->basename = NULL;
 	ret->std_out = NULL;
+	ret->std_err = NULL;
 	ret->environment_variables = oscap_stringlist_new();
 	ret->xccdf_result = XCCDF_RESULT_UNKNOWN;
 
@@ -85,6 +89,8 @@ void sce_check_result_free(struct sce_check_result* v)
 		oscap_free(v->basename);
 	if (v->std_out)
 		oscap_free(v->std_out);
+	if (v->std_err)
+		oscap_free(v->std_err);
 
 	oscap_stringlist_free(v->environment_variables);
 
@@ -128,6 +134,19 @@ void sce_check_result_set_stdout(struct sce_check_result* v, const char* _stdout
 const char* sce_check_result_get_stdout(struct sce_check_result* v)
 {
 	return v->std_out;
+}
+
+void sce_check_result_set_stderr(struct sce_check_result* v, const char* _stderr)
+{
+	if (v->std_err)
+		oscap_free(v->std_err);
+
+	v->std_err = strdup(_stderr);
+}
+
+const char* sce_check_result_get_stderr(struct sce_check_result* v)
+{
+	return v->std_err;
 }
 
 void sce_check_result_set_exit_code(struct sce_check_result* v, int exit_code)
@@ -182,8 +201,15 @@ void sce_check_result_export(struct sce_check_result* v, const char* target_file
 	oscap_string_iterator_free(it);
 	fprintf(f, "\t</sceres:environment>\n");
 	fprintf(f, "\t<sceres:stdout><![CDATA[\n");
-	fwrite(v->std_out, 1, strlen(v->std_out), f);
+	size_t ret = fwrite(v->std_out, 1, strlen(v->std_out), f);
+	if (ret < strlen(v->std_out))
+		oscap_seterr(OSCAP_EFAMILY_SCE, "Failed to write stdout result to %s.\n", target_file);
 	fprintf(f, "\t]]></sceres:stdout>\n");
+	fprintf(f, "\t<sceres:stderr><![CDATA[\n");
+	ret = fwrite(v->std_err, 1, strlen(v->std_err), f);
+	if (ret < strlen(v->std_err))
+		oscap_seterr(OSCAP_EFAMILY_SCE, "Failed to write stderr result to %s.\n", target_file);
+	fprintf(f, "\t]]></sceres:stderr>\n");
 	fprintf(f, "\t<sceres:exit_code>%i</sceres:exit_code>\n", sce_check_result_get_exit_code(v));
 	fprintf(f, "\t<sceres:result>%s</sceres:result>\n", xccdf_test_result_type_get_text(sce_check_result_get_xccdf_result(v)));
 	fprintf(f, "</sceres:sce_results>\n");
@@ -305,6 +331,38 @@ struct sce_session* sce_parameters_get_session(struct sce_parameters* v)
 void sce_parameters_allocate_session(struct sce_parameters* v)
 {
 	sce_parameters_set_session(v, sce_session_new());
+}
+
+static void _pipe_try_read_into_string(int fd, struct oscap_string *string, bool *eof)
+{
+	// FIXME: Read by larger chunks in the future
+	char readbuf;
+	while (true) {
+		const int read_status = read(fd, &readbuf, 1);
+		if (read_status == 1) {  // successful read
+			if (readbuf == '&') {
+				// & is a special case, we have to "escape" it manually
+				// (all else will eventually get handled by libxml)
+				oscap_string_append_string(string, "&amp;");
+			} else {
+				oscap_string_append_char(string, readbuf);
+			}
+		}
+		else if (read_status == 0) {  // EOF
+			*eof = true;
+			break;
+		}
+		else {
+			if (errno == EAGAIN) {
+				// NOOP, we are waiting for more input
+				break;
+			}
+			else {
+				*eof = true;  // signal EOF to exit the loops
+				break;
+			}
+		}
+	}
 }
 
 xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const char *rule_id, const char *id, const char *href,
@@ -444,8 +502,9 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 	env_values[env_value_count] = NULL;
 
 	// We open a pipe for communication with the forked process
-	int pipefd[2];
-	if (pipe(pipefd) == -1)
+	int stdout_pipefd[2];
+	int stderr_pipefd[2];
+	if (pipe(stdout_pipefd) == -1 || pipe(stderr_pipefd) == -1)
 	{
 		perror("pipe");
 		// the first 9 values (0 to 8) are compiled in
@@ -467,17 +526,19 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 
 		if (fork_result == 0)
 		{
-		    // we won't read from the pipe, so close the reading fd
-		    close(pipefd[0]);
+		    // we won't read from the pipes, so close the reading fd
+		    close(stdout_pipefd[0]);
+		    close(stderr_pipefd[0]);
 
-		    // forward stdout and stderr to the opened pipe
-			dup2(pipefd[1], fileno(stdout));
-			dup2(pipefd[1], fileno(stderr));
+			// forward stdout and stderr to our custom opened pipes
+			dup2(stdout_pipefd[1], fileno(stdout));
+			dup2(stderr_pipefd[1], fileno(stderr));
 
-			// we duplicated the file description twice, we can close the original
-			// one now, stdout and stderr will be closed properly after the execved
+			// we duplicated the file descriptors twice, we can close the original
+			// ones now, stdout and stderr will be closed properly after the execved
 			// script/executable finishes
-			close(pipefd[1]);
+			close(stdout_pipefd[1]);
+			close(stderr_pipefd[1]);
 
 			// before we execute the script, lets make sure we get SIGTERM when
 			// oscap is killed, crashes or otherwise terminates
@@ -500,10 +561,62 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 		}
 		else
 		{
-			// we won't write to the pipe, so close the writing fd
-			close(pipefd[1]);
+			// we won't write to the pipes, so close the writing fd
+			close(stdout_pipefd[1]);
+			close(stderr_pipefd[1]);
 
-			char* stdout_buffer = oscap_acquire_pipe_to_string(pipefd[0]);
+			const int flag_stdout = fcntl(stdout_pipefd[0], F_GETFL, 0);
+			if (flag_stdout == -1) {
+				oscap_seterr(OSCAP_EFAMILY_SCE, "Failed to obtain status of stdout pipe: %s",
+						strerror(errno));
+				return XCCDF_RESULT_ERROR;
+			}
+			int retval = fcntl(stdout_pipefd[0], F_SETFL, flag_stdout | O_NONBLOCK);
+			if (retval == -1) {
+				oscap_seterr(OSCAP_EFAMILY_SCE,
+						"Failed to set nonblocking flag on stdout pipe: %s",
+						strerror(errno));
+				return XCCDF_RESULT_ERROR;
+			}
+
+			const int flag_stderr = fcntl(stderr_pipefd[0], F_GETFL, 0);
+			if (flag_stderr == -1) {
+				oscap_seterr(OSCAP_EFAMILY_SCE,
+						"Failed to obtain status of stderr pipe: %s",
+						strerror(errno));
+				return XCCDF_RESULT_ERROR;
+			}
+			retval = fcntl(stderr_pipefd[0], F_SETFL, flag_stderr | O_NONBLOCK);
+			if (retval == -1) {
+				oscap_seterr(OSCAP_EFAMILY_SCE,
+						"Failed to set nonblocking flag on stderr pipe: %s",
+						strerror(errno));
+				return XCCDF_RESULT_ERROR;
+			}
+
+			// we have to read from both pipes at the same time to avoid stalling
+			struct oscap_string *stdout_string = oscap_string_new();
+			struct oscap_string *stderr_string = oscap_string_new();
+
+			bool stdout_eof = false;
+			bool stderr_eof = false;
+
+			while (!stdout_eof || !stderr_eof) {
+				if (!stdout_eof)
+					_pipe_try_read_into_string(stdout_pipefd[0], stdout_string, &stdout_eof);
+
+				if (!stderr_eof)
+					_pipe_try_read_into_string(stderr_pipefd[0], stderr_string, &stderr_eof);
+
+				// sleep for 10ms to avoid wasting CPU
+				usleep(10 * 1000);
+			}
+
+			close(stdout_pipefd[0]);
+			close(stderr_pipefd[0]);
+
+			char *stdout_buffer = oscap_string_bequeath(stdout_string);
+			char *stderr_buffer = oscap_string_bequeath(stderr_string);
 
 			// we are the parent process
 			int wstatus;
@@ -524,6 +637,7 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 				sce_check_result_set_href(check_result, tmp_href);
 				sce_check_result_set_basename(check_result, basename(tmp_href));
 				sce_check_result_set_stdout(check_result, stdout_buffer);
+				sce_check_result_set_stderr(check_result, stderr_buffer);
 				sce_check_result_set_exit_code(check_result, WEXITSTATUS(wstatus));
 				sce_check_result_set_xccdf_result(check_result, (xccdf_test_result_type_t)raw_result);
 
@@ -553,10 +667,15 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 				{
 					xccdf_check_import_set_content(check_import, stdout_buffer);
 				}
+				else if (strcmp(name, "stderr") == 0)
+				{
+					xccdf_check_import_set_content(check_import, stderr_buffer);
+				}
 			}
 
 			oscap_free(tmp_href);
 			oscap_free(stdout_buffer);
+			oscap_free(stderr_buffer);
 
 			return (xccdf_test_result_type_t)raw_result;
 		}
@@ -570,8 +689,10 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 		}
 		oscap_free(env_values);
 
-		close(pipefd[0]);
-		close(pipefd[1]);
+		close(stdout_pipefd[0]);
+		close(stdout_pipefd[1]);
+		close(stderr_pipefd[0]);
+		close(stderr_pipefd[1]);
 		return XCCDF_RESULT_ERROR;
 	}
 }

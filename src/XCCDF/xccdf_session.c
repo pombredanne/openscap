@@ -89,6 +89,8 @@ struct xccdf_session {
 		char *product_cpe;			///< CPE of scanner product.
 		struct oscap_source* arf_report;	///< ARF report
 		struct oscap_htable *result_sources;    ///< mapping 'filepath' to oscap_source for OVAL results
+		struct oscap_htable *results_mapping;    ///< mapping OVAL filename to filepath for OVAL results
+		struct oscap_htable *arf_report_mapping;    ///< mapping OVAL filename to ARF report ID for OVAL results
 	} oval;
 	struct {
 		char *arf_file;				///< Path to ARF file to export
@@ -96,7 +98,9 @@ struct xccdf_session {
 		char *report_file;			///< Path to HTML file to eport
 		bool oval_results;			///< Shall be the OVAL results files exported?
 		bool oval_variables;			///< Shall be the OVAL variable files exported?
-		bool check_engine_plugins_results; ///< Shall the check engine plugins results be exported?
+		bool check_engine_plugins_results;	///< Shall the check engine plugins results be exported?
+		bool without_sys_chars;			///< Shall system characteristics be exported?
+		bool thin_results;			///< Shall OVAL/ARF results be exported as THIN? Default is FULL
 	} export;					///< Settings of Session export
 	char *user_cpe;					///< Path to CPE dictionary required by user
 	struct {
@@ -117,11 +121,14 @@ static void _xccdf_session_free_oval_result_sources(struct xccdf_session *sessio
 static const char *oscap_productname = "cpe:/a:open-scap:oscap";
 static const char *oval_sysname = "http://oval.mitre.org/XMLSchema/oval-definitions-5";
 
-struct xccdf_session *xccdf_session_new(const char *filename)
+struct xccdf_session *xccdf_session_new_from_source(struct oscap_source *source)
 {
+	if (source == NULL) {
+		return NULL;
+	}
+	const char *filename = oscap_source_get_filepath(source);
 	struct xccdf_session *session = (struct xccdf_session *) oscap_calloc(1, sizeof(struct xccdf_session));
-
-	session->source = oscap_source_new_from_file(filename);
+	session->source = source;
 	oscap_document_type_t document_type = oscap_source_get_scap_type(session->source);
 	if (document_type == OSCAP_DOCUMENT_UNKNOWN) {
 		xccdf_session_free(session);
@@ -138,6 +145,7 @@ struct xccdf_session *xccdf_session_new(const char *filename)
 	}
 	session->validate = true;
 	session->xccdf.base_score = 0;
+	session->oval.progress = download_progress_empty_calllback;
 	session->check_engine_plugins = oscap_list_new();
 
 	// We now have to switch up the oscap_sources in case we were given XCCDF tailoring
@@ -151,6 +159,13 @@ struct xccdf_session *xccdf_session_new(const char *filename)
 
 	dI("Created a new XCCDF session from a %s '%s'.",
 		oscap_document_type_to_string(document_type), filename);
+	return session;
+}
+
+struct xccdf_session *xccdf_session_new(const char *filename)
+{
+	struct oscap_source *source = oscap_source_new_from_file(filename);
+	struct xccdf_session *session = xccdf_session_new_from_source(source);
 	return session;
 }
 
@@ -178,7 +193,7 @@ static int _xccdf_session_autonegotiate_tailoring_file(struct xccdf_session *ses
 	char *real_source_path = source_path[0] == '/' ?
 		oscap_strdup(source_path) : oscap_sprintf("%s/%s", base_dir, source_path);
 
-	oscap_free(base_dir);
+	oscap_free(original_path_cpy);
 	oscap_free(source_path);
 
 	struct oscap_source *real_source = oscap_source_new_from_file(real_source_path);
@@ -223,7 +238,7 @@ static struct oscap_source* xccdf_session_create_arf_source(struct xccdf_session
 		free(sds_path);
 	}
 
-	session->oval.arf_report = ds_rds_create_source(sds_source, session->xccdf.result_source, session->oval.result_sources, session->export.arf_file);
+	session->oval.arf_report = ds_rds_create_source(sds_source, session->xccdf.result_source, session->oval.result_sources, session->oval.results_mapping, session->oval.arf_report_mapping, session->export.arf_file);
 	if (!xccdf_session_is_sds(session)) {
 		oscap_source_free(sds_source);
 	}
@@ -259,6 +274,8 @@ void xccdf_session_free(struct xccdf_session *session)
 	oscap_source_free(session->source);
 	oscap_source_free(session->tailoring.user_file);
 	oscap_free(session->tailoring.user_component_id);
+	oscap_htable_free(session->oval.results_mapping, (oscap_destruct_func) oscap_free);
+	oscap_htable_free(session->oval.arf_report_mapping, (oscap_destruct_func) oscap_free);
 	oscap_free(session);
 }
 
@@ -276,6 +293,11 @@ void xccdf_session_set_validation(struct xccdf_session *session, bool validate, 
 {
 	session->validate = validate;
 	session->full_validation = full_validation;
+}
+
+void xccdf_session_set_thin_results(struct xccdf_session *session, bool thin_results)
+{
+	session->export.thin_results = thin_results;
 }
 
 void xccdf_session_set_datastream_id(struct xccdf_session *session, const char *datastream_id)
@@ -336,12 +358,6 @@ void xccdf_session_set_user_tailoring_cid(struct xccdf_session *session, const c
 	session->tailoring.user_component_id = oscap_strdup(user_tailoring_cid);
 }
 
-void xccdf_session_set_remote_resources(struct xccdf_session *session, bool allowed, download_progress_calllback_t callback)
-{
-	session->oval.fetch_remote_resources = allowed;
-	session->oval.progress = callback;
-}
-
 void xccdf_session_set_custom_oval_eval_fn(struct xccdf_session *session, xccdf_policy_engine_eval_fn eval_fn)
 {
 	session->oval.user_eval_fn = eval_fn;
@@ -352,6 +368,11 @@ bool xccdf_session_set_product_cpe(struct xccdf_session *session, const char *pr
 	oscap_free(session->oval.product_cpe);
 	session->oval.product_cpe = oscap_strdup(product_cpe);
 	return true;
+}
+
+void xccdf_session_set_without_sys_chars_export(struct xccdf_session *session, bool without_sys_chars)
+{
+	session->export.without_sys_chars = without_sys_chars;
 }
 
 void xccdf_session_set_oval_results_export(struct xccdf_session *session, bool to_export_oval_results)
@@ -419,6 +440,24 @@ static struct ds_sds_session *xccdf_session_get_ds_sds_session(struct xccdf_sess
 	return session->ds.session;
 }
 
+void xccdf_session_set_remote_resources(struct xccdf_session *session, bool allowed, download_progress_calllback_t callback)
+{
+	if (callback == NULL) {
+		// With empty cb we don't have to check for NULL
+		// when we want to use it
+		callback = download_progress_empty_calllback;
+	}
+
+	session->oval.fetch_remote_resources = allowed;
+	session->oval.progress = callback;
+
+	if (xccdf_session_is_sds(session)) {
+		// We have to propagate this option to allow loading
+		// of external datastream components
+		ds_sds_session_set_remote_resources(xccdf_session_get_ds_sds_session(session), allowed, callback);
+	}
+}
+
 /**
  * Get Source DataStream index of the session.
  * @memberof xccdf_session
@@ -436,6 +475,10 @@ struct ds_sds_index *xccdf_session_get_sds_idx(struct xccdf_session *session)
 int xccdf_session_load(struct xccdf_session *session)
 {
 	int ret = 0;
+
+	if (session->ds.session) {
+		ds_sds_session_reset(session->ds.session);
+	}
 
 	if ((ret = xccdf_session_load_xccdf(session)) != 0)
 		return ret;
@@ -487,6 +530,75 @@ static inline int _xccdf_session_load_xccdf_benchmark(struct xccdf_session *sess
 	return 0;
 }
 
+static int _acquire_xccdf_checklist_from_tailoring(struct xccdf_session* session)
+{
+	struct ds_sds_session *ds_sds_session = xccdf_session_get_ds_sds_session(session);
+	if (ds_sds_session == NULL) {
+		return 1;
+	}
+
+	xmlDoc *tailoring_xmlDoc = xmlCopyDoc(oscap_source_get_xmlDoc(session->xccdf.source), true);
+	struct oscap_source *tailoring_source = oscap_source_new_from_xmlDoc(tailoring_xmlDoc, NULL);
+	struct xccdf_tailoring* tailoring = xccdf_tailoring_import_source(tailoring_source, NULL);
+	if (tailoring == NULL) {
+		/* Freeing tailoring_source also frees the tailoring_xmlDoc used to create the source */
+		oscap_source_free(tailoring_source);
+		return 1;
+	}
+	const char *benchmark_ref = oscap_strdup(xccdf_tailoring_get_benchmark_ref(tailoring));
+	xccdf_tailoring_free(tailoring);
+	if (benchmark_ref == NULL) {
+		oscap_source_free(tailoring_source);
+		return 1;
+	}
+
+	struct oscap_source *xccdf_source = NULL;
+	if (oscap_str_startswith(benchmark_ref, "file:")) {
+		char* sep = strchr(benchmark_ref, '#');
+		const char *filename = benchmark_ref + strlen("file:");
+		const char *component_ref = NULL;
+		if (sep != NULL) {
+			component_ref = sep + 1;
+			*sep = '\0';
+		}
+
+		struct oscap_source *external_file = oscap_source_new_from_file(filename);
+		if (oscap_source_get_scap_type(external_file) == OSCAP_DOCUMENT_SDS) {
+			if (component_ref == NULL) {
+				oscap_seterr(OSCAP_EFAMILY_OSCAP,
+						"The referenced component is a datastream, but no datastream component was specified.");
+				oscap_source_free(external_file);
+				oscap_source_free(tailoring_source);
+				oscap_free(benchmark_ref);
+				return 1;
+			}
+			ds_sds_session_free(ds_sds_session);
+			ds_sds_session = ds_sds_session_new_from_source(external_file);
+			session->ds.session = ds_sds_session;
+			xccdf_source = ds_sds_session_select_checklist(ds_sds_session, NULL, component_ref, NULL);
+			oscap_source_free(session->source);
+			session->source = external_file;
+		} else {
+			xccdf_source = external_file;
+		}
+	} else {
+		xccdf_source = ds_sds_session_select_checklist(ds_sds_session,
+				NULL, benchmark_ref + 1, NULL);
+	}
+	if (xccdf_source == NULL) {
+		oscap_seterr(OSCAP_EFAMILY_OSCAP,
+				"Could not find benchmark referenced from tailoring as '%s'.", benchmark_ref);
+		oscap_source_free(tailoring_source);
+		oscap_free(benchmark_ref);
+		return 1;
+	}
+
+	session->xccdf.source = xccdf_source;
+	session->tailoring.user_file = tailoring_source;
+	oscap_free(benchmark_ref);
+	return 0;
+}
+
 int xccdf_session_load_xccdf(struct xccdf_session *session)
 {
 	session->xccdf.source = NULL;
@@ -505,6 +617,13 @@ int xccdf_session_load_xccdf(struct xccdf_session *session)
 				session->ds.user_component_id, session->ds.user_benchmark_id);
 		if (session->xccdf.source == NULL) {
 			return 1;
+		}
+		if (oscap_source_get_scap_type(session->xccdf.source) == OSCAP_DOCUMENT_XCCDF_TAILORING) {
+			if (_acquire_xccdf_checklist_from_tailoring(session)) {
+				oscap_seterr(OSCAP_EFAMILY_OSCAP,
+						"Could not find appropriate checklist to tailor.");
+				return 1;
+			}
 		}
 		if (oscap_source_get_scap_type(session->xccdf.source) != OSCAP_DOCUMENT_XCCDF) {
 			oscap_seterr(OSCAP_EFAMILY_OSCAP, "The selected checklist document is not '%s', but '%s'.",
@@ -530,6 +649,12 @@ int xccdf_session_load_cpe(struct xccdf_session *session)
 {
 	if (session == NULL || session->xccdf.policy_model == NULL)
 		return 1;
+
+	// The CPE session will load OVAL files for any CPE dicts that require it.
+	// These OVAL files are outside of scope of XCCDF session but we still want
+	// to apply the thin results settings to them.
+	struct cpe_session *cpe_session = xccdf_policy_model_get_cpe_session(session->xccdf.policy_model);
+	cpe_session_set_thin_results(cpe_session, session->export.thin_results);
 
 	/* Use custom CPE dict if given */
 	if (session->user_cpe != NULL) {
@@ -659,13 +784,22 @@ static int _xccdf_session_get_oval_from_model(struct xccdf_session *session)
 		if (strcmp(oscap_file_entry_get_system(file_entry), oval_sysname))
 			continue;
 
+		const char *file_path = oscap_file_entry_get_file(file_entry);
 		struct oscap_source *source = NULL;
 		if (xccdf_session_get_ds_sds_session(session) != NULL) {
-			source = ds_sds_session_get_component_by_href(xccdf_session_get_ds_sds_session(session), oscap_file_entry_get_file(file_entry));
+			source = ds_sds_session_get_component_by_href(xccdf_session_get_ds_sds_session(session), file_path);
 		}
 
 		tmp_path = malloc(PATH_MAX * sizeof(char));
-		snprintf(tmp_path, PATH_MAX, "%s/%s", dir_path, oscap_file_entry_get_file(file_entry));
+		if (file_path[0] == '/') { // it's a simple absolute path
+			snprintf(tmp_path, PATH_MAX, "%s", file_path);
+		}
+		else if (oscap_str_startswith(file_path, "file://")) { // it's an absolute path prefixed with file://
+			snprintf(tmp_path, PATH_MAX, "%s", file_path + 7);
+		}
+		else { // assume it's a relative path
+			snprintf(tmp_path, PATH_MAX, "%s/%s", dir_path, file_path);
+		}
 
 		if (source != NULL || stat(tmp_path, &sb) == 0) {
 			resources[idx] = malloc(sizeof(struct oval_content_resource));
@@ -688,17 +822,14 @@ static int _xccdf_session_get_oval_from_model(struct xccdf_session *session)
 				printable_path = (char *) oscap_file_entry_get_file(file_entry);
 
 				if (session->oval.fetch_remote_resources) {
-					if (session->oval.progress != NULL)
-						session->oval.progress(false, "Downloading: %s ... ", printable_path);
+					session->oval.progress(false, "Downloading: %s ... ", printable_path);
 
 					size_t data_size;
 					char *data = oscap_acquire_url_download(printable_path, &data_size);
 					if (data == NULL) {
-						if (session->oval.progress != NULL)
-							session->oval.progress(false, "error\n");
+						session->oval.progress(false, "error\n");
 					} else {
-						if (session->oval.progress != NULL)
-							session->oval.progress(false, "ok\n");
+						session->oval.progress(false, "ok\n");
 
 						resources[idx] = malloc(sizeof(struct oval_content_resource));
 						resources[idx]->href = strdup(printable_path);
@@ -712,16 +843,14 @@ static int _xccdf_session_get_oval_from_model(struct xccdf_session *session)
 					}
 				}
 				else if (!fetch_option_suggested) {
-					if (session->oval.progress != NULL)
-						session->oval.progress(false, "This content points out to the remote resources. "
+					session->oval.progress(true, "WARNING: This content points out to the remote resources. "
 								"Use `--fetch-remote-resources' option to download them.\n");
 					fetch_option_suggested = true;
 				}
 			}
 			else
 				printable_path = tmp_path;
-			if (session->oval.progress != NULL)
-				session->oval.progress(true, "WARNING: Skipping %s file which is referenced from XCCDF content\n", printable_path);
+			session->oval.progress(true, "WARNING: Skipping %s file which is referenced from XCCDF content\n", printable_path);
 		}
 		free(tmp_path);
 	}
@@ -792,6 +921,19 @@ int xccdf_session_load_oval(struct xccdf_session *session)
 			return 2;
 		}
 
+		if (session->export.thin_results) {
+			struct oval_results_model *res_model = oval_agent_get_results_model(tmp_sess);
+			struct oval_directives_model *dir_model = oval_results_model_get_directives_model(res_model);
+			// This is the worst function name in existence, despite its name,
+			// it's getting the oval_result_directives of the oval_directives_model.
+			// You would expect oval_directives_model_getresdirs at least, but no..
+			struct oval_result_directives *dir = oval_directives_model_get_defdirs(dir_model);
+			oval_result_directives_set_content(dir,  OVAL_RESULT_TRUE | OVAL_RESULT_FALSE |
+							OVAL_RESULT_UNKNOWN | OVAL_RESULT_NOT_EVALUATED |
+							OVAL_RESULT_NOT_APPLICABLE | OVAL_RESULT_ERROR,
+							OVAL_DIRECTIVE_CONTENT_THIN);
+		}
+
 		/* store our name in the generated documents */
 		oval_agent_set_product_name(tmp_sess, session->oval.product_cpe != NULL ?
 				session->oval.product_cpe : (char *) oscap_productname);
@@ -812,16 +954,28 @@ int xccdf_session_load_oval(struct xccdf_session *session)
 	return 0;
 }
 
-int xccdf_session_load_check_engine_plugin(struct xccdf_session *session, const char *plugin_name)
+int xccdf_session_load_check_engine_plugin2(struct xccdf_session *session, const char *plugin_name, bool quiet)
 {
-	struct check_engine_plugin_def *plugin = check_engine_plugin_load(plugin_name);
+	struct check_engine_plugin_def *plugin = check_engine_plugin_load2(plugin_name, quiet);
 
 	if (!plugin)
 		return -1; // error already set
 
 	oscap_list_add(session->check_engine_plugins, plugin);
 
-	return check_engine_plugin_register(plugin, session->xccdf.policy_model, oscap_source_readable_origin(session->xccdf.source));
+	if (xccdf_session_get_datastream_id(session) != NULL){
+		return check_engine_plugin_register(plugin, session->xccdf.policy_model, ds_sds_session_get_target_dir(session->ds.session));
+	} else {
+		char* xccdf_filename = oscap_strdup(oscap_source_readable_origin(session->xccdf.source));
+		int res = check_engine_plugin_register(plugin, session->xccdf.policy_model, dirname(xccdf_filename));
+		oscap_free(xccdf_filename);
+		return res;
+	}
+}
+
+int xccdf_session_load_check_engine_plugin(struct xccdf_session *session, const char *plugin_name)
+{
+	return xccdf_session_load_check_engine_plugin2(session, plugin_name, false);
 }
 
 int xccdf_session_load_check_engine_plugins(struct xccdf_session *session)
@@ -833,7 +987,7 @@ int xccdf_session_load_check_engine_plugins(struct xccdf_session *session)
 	while (*known_plugins) {
 		// We do not report failure when a known plugin doesn't load properly, that's because they
 		// are optional and we don't know if it's not there or if it just failed to load.
-		if (xccdf_session_load_check_engine_plugin(session, *known_plugins) != 0)
+		if (xccdf_session_load_check_engine_plugin2(session, *known_plugins, true) != 0)
 			oscap_clearerr();
 
 		known_plugins++;
@@ -1150,6 +1304,8 @@ static char *_xccdf_session_export_oval_result_file(struct xccdf_session *sessio
 {
 	/* get result model and session name */
 	struct oval_results_model *res_model = oval_agent_get_results_model(oval_session);
+	/* Import XCCDF session without_sys_chars flag to res_model */
+	oval_results_model_set_export_system_characteristics(res_model, !session->export.without_sys_chars);
 	const char* oval_results_directory = NULL;
 
 	if (session->export.oval_results == true) {
@@ -1185,6 +1341,13 @@ static char *_xccdf_session_export_oval_result_file(struct xccdf_session *sessio
 		return NULL;
 	}
 
+	static int counter = 0;
+	char *report_id = oscap_sprintf("oval%d", counter++);
+	const char *original_name = oval_agent_get_filename(oval_session);
+	char *results_file_name = oscap_strdup(name);
+	oscap_htable_add(session->oval.results_mapping, original_name, results_file_name);
+	oscap_htable_add(session->oval.arf_report_mapping, original_name, report_id);
+
 	/* validate OVAL Results */
 	if (session->validate && session->full_validation) {
 		if (oscap_source_validate(source, _reporter, NULL)) {
@@ -1205,13 +1368,17 @@ static int _build_oval_result_sources(struct xccdf_session *session)
 
 	/* Export OVAL results */
 	session->oval.result_sources = oscap_htable_new();
-	for (int i = 0; session->oval.agents[i]; i++) {
-		char *filename = _xccdf_session_export_oval_result_file(session, session->oval.agents[i]);
-		if (filename == NULL) {
-			_xccdf_session_free_oval_result_sources(session);
-			return 1;
+	session->oval.results_mapping = oscap_htable_new();
+	session->oval.arf_report_mapping = oscap_htable_new();
+	if (session->oval.agents) {
+		for (int i = 0; session->oval.agents[i]; i++) {
+			char *filename = _xccdf_session_export_oval_result_file(session, session->oval.agents[i]);
+			if (filename == NULL) {
+				_xccdf_session_free_oval_result_sources(session);
+				return 1;
+			}
+			oscap_free(filename);
 		}
-		oscap_free(filename);
 	}
 
 	struct oscap_htable_iterator *cpe_it = xccdf_policy_model_get_cpe_oval_sessions(session->xccdf.policy_model);
@@ -1234,7 +1401,7 @@ static int _build_oval_result_sources(struct xccdf_session *session)
 
 int xccdf_session_export_oval(struct xccdf_session *session)
 {
-	if ((session->export.oval_results || session->export.arf_file != NULL) && session->oval.agents) {
+	if (session->export.oval_results || session->export.arf_file != NULL) {
 		if (_build_oval_result_sources(session) != 0) {
 			return 1;
 		}
@@ -1324,6 +1491,7 @@ int xccdf_session_export_arf(struct xccdf_session *session)
 
 		if (oscap_source_save_as(arf_source, NULL) != 0) {
 			oscap_source_free(arf_source);
+			session->oval.arf_report = NULL;
 			return 1;
 		}
 		if (session->full_validation) {
@@ -1410,23 +1578,30 @@ int xccdf_session_remediate(struct xccdf_session *session)
 	xccdf_result_set_version(session->xccdf.result,
 			benchmark != NULL ? xccdf_benchmark_get_version(benchmark) : NULL);
 	xccdf_result_fill_sysinfo(session->xccdf.result);
-	return xccdf_policy_remediate(xccdf_session_get_xccdf_policy(session), session->xccdf.result);
+
+	if ((res = xccdf_policy_remediate(xccdf_session_get_xccdf_policy(session), session->xccdf.result)) != 0)
+		return res;
+
+	return xccdf_policy_recalculate_score(xccdf_session_get_xccdf_policy(session), session->xccdf.result);
 }
 
 int xccdf_session_build_policy_from_testresult(struct xccdf_session *session, const char *testresult_id)
 {
-	session->xccdf.result = NULL;
-	struct xccdf_benchmark *benchmark = xccdf_policy_model_get_benchmark(session->xccdf.policy_model);
-	struct xccdf_result *result = xccdf_benchmark_get_result_by_id(benchmark, testresult_id);
-	if (result == NULL) {
-		if (testresult_id == NULL)
-			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not find latest TestResult element.");
-		else
-			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not find TestResult/@id=\"%s\"", testresult_id);
-		return 1;
+	if (session->xccdf.result_source == NULL) {
+		session->xccdf.result = NULL;
+		struct xccdf_benchmark *benchmark = xccdf_policy_model_get_benchmark(session->xccdf.policy_model);
+		struct xccdf_result *result = xccdf_benchmark_get_result_by_id(benchmark, testresult_id);
+		if (result == NULL) {
+			if (testresult_id == NULL)
+				oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not find latest TestResult element.");
+			else
+				oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not find TestResult/@id=\"%s\"", testresult_id);
+			return 1;
+		}
+		session->xccdf.result = xccdf_result_clone(result);
 	}
 
-	const char *profile_id = xccdf_result_get_profile(result);
+	const char *profile_id = xccdf_result_get_profile(session->xccdf.result);
 	if (xccdf_session_set_profile_id(session, profile_id) == false) {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP,
 			"Could not find Profile/@id=\"%s\" to build policy from TestResult/@id=\"%s\"",
@@ -1436,8 +1611,19 @@ int xccdf_session_build_policy_from_testresult(struct xccdf_session *session, co
 	struct xccdf_policy *xccdf_policy = xccdf_session_get_xccdf_policy(session);
 	if (xccdf_policy == NULL)
 		return 1;
-	session->xccdf.result = xccdf_result_clone(result);
 	xccdf_result_set_start_time_current(session->xccdf.result);
 	xccdf_policy_add_result(xccdf_policy, session->xccdf.result);
+	return 0;
+}
+
+int xccdf_session_add_report_from_source(struct xccdf_session *session, struct oscap_source *report_source)
+{
+	struct xccdf_result *result = xccdf_result_import_source(report_source);
+	if (result == NULL) {
+		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not find TestResult element.");
+		return 1;
+	}
+	session->xccdf.result_source = report_source;
+	session->xccdf.result = result;
 	return 0;
 }

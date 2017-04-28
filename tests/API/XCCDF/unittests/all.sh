@@ -39,8 +39,9 @@ test_run "Check Processing Algorithm -- complex-check priority" $srcdir/test_xcc
 test_run "Check Processing Algorithm -- bad refine must select check without @selector" $srcdir/test_xccdf_check_processing_selector_bad.sh
 test_run "Check Processing Algorithm -- none selected for candidate" $srcdir/test_xccdf_check_processing_selector_empty.sh
 test_run "Check Processing Algorithm -- none check-content-ref resolvable." $srcdir/test_xccdf_check_processing_invalid_content_refs.sh
-test_run "Check Processing Algorithm -- always include xccdf:check" $srcdir/test_xccdf_notchecked_has_check.sh
+test_run "Check Processing Algorithm -- don't include xccdf:check if result is notchecked" $srcdir/test_xccdf_notchecked_has_check.sh
 test_run "Check Processing Algorithm -- notchecked & unselected" $srcdir/test_xccdf_role_unchecked.sh
+test_run "Load OVAL using absolute path" $srcdir/test_xccdf_oval_absolute_path.sh
 test_run "Load OVAL using relative path" $srcdir/test_xccdf_oval_relative_path.sh
 test_run "xccdf:select and @cluster-id -- disable group" $srcdir/test_xccdf_selectors_cluster1.sh
 test_run "xccdf:select and @cluster-id -- enable a set of items" $srcdir/test_xccdf_selectors_cluster2.sh
@@ -58,8 +59,10 @@ test_run "incorrect selector for xccdf value" $srcdir/test_xccdf_refine_value_ba
 test_run "test xccdf resolve" $srcdir/test_xccdf_resolve.sh
 test_run "Exported arf results from xccdf without reference to oval" $srcdir/test_xccdf_results_arf_no_oval.sh
 test_run "XCCDF Substitute within Title" $srcdir/test_xccdf_sub_title.sh
+test_run "TestResult element should contain test-system attribute" $srcdir/test_xccdf_test_system.sh
 
 test_run "libxml errors handled correctly" $srcdir/test_unfinished.sh
+test_run "XCCDF 1.1 to 1.2 transformation" $srcdir/test_xccdf_transformation.sh
 
 #
 # Tests for 'oscap xccdf eval --remediate' and substitution
@@ -77,6 +80,7 @@ test_run "XCCDF Remediation bypass XML Comments" $srcdir/test_remediation_xml_co
 test_run "XCCDF Remediation understands <[CDATA[." $srcdir/test_remediation_cdata.sh
 test_run "XCCDF Remediation Aborts on unresolved element." $srcdir/test_remediation_subs_unresolved.sh
 test_run "XCCDF Remediation requires fix/@system attribute" $srcdir/test_remediation_fix_without_system.sh
+test_run "XCCDF Remediation output should not contain unallowed characters" $srcdir/test_remediation_invalid_characters.sh
 #
 # Tests for 'oscap xccdf remediate'
 #
@@ -91,8 +95,13 @@ test_run "XCCDF Remediate + perl fix" $srcdir/test_remediate_perl.sh
 test_run 'generate report: xccdf:check/@selector=""' $srcdir/test_report_check_with_empty_selector.sh
 test_run "generate report: missing xsl shall not segfault" $srcdir/test_report_without_xsl_fails_gracefully.sh
 test_run "generate report: avoid warnings from libxml" $srcdir/test_report_without_oval_poses_no_errors.sh
+
+#
+# Tests for 'oscap xccdf generate fix'
+#
 test_run "generate fix: just as the anaconda does" $srcdir/test_report_anaconda_fixes.sh
 test_run "generate fix: just as the anaconda does + DataStream" $srcdir/test_report_anaconda_fixes_ds.sh
 test_run "generate fix: ensure filtering drop fixes" $srcdir/test_fix_filtering.sh
+test_run "generate fix: from result DataStream" $srcdir/test_fix_arf.sh
 
 test_exit

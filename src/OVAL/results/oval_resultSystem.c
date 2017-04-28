@@ -353,6 +353,16 @@ int oval_result_system_eval(struct oval_result_system *sys)
 
 int oval_result_system_eval_definition(struct oval_result_system *sys, const char *id)
 {
+	struct oval_result_definition *rslt_definition = oval_result_system_prepare_definition(sys, id);
+	if (rslt_definition == NULL) {
+		return -1;
+	}
+	oval_result_definition_eval(rslt_definition);
+	return 0;
+}
+
+struct oval_result_definition *oval_result_system_prepare_definition(struct oval_result_system *sys, const char *id)
+{
         struct oval_results_model *res_model;
         struct oval_definition_model *definition_model;
         struct oval_definition *oval_definition;
@@ -363,7 +373,7 @@ int oval_result_system_eval_definition(struct oval_result_system *sys, const cha
 	oval_definition = oval_definition_model_get_definition(definition_model, id);
 	if (oval_definition == NULL) {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "No definition with ID: %s in definition model.", id);
-		return -1;
+		return NULL;
 	}
 
         rslt_definition = oval_result_system_get_definition(sys, id);
@@ -377,10 +387,7 @@ int oval_result_system_eval_definition(struct oval_result_system *sys, const cha
 		rslt_definition = make_result_definition_from_oval_definition(sys, oval_definition, hint);
 		oval_result_system_add_definition(sys, rslt_definition);
 	}
-
-	oval_result_definition_eval(rslt_definition);
-
-	return 0;
+	return rslt_definition;
 }
 
 static void _oval_result_definition_to_dom_based_on_directives(struct oval_result_definition *rslt_definition,
@@ -399,6 +406,8 @@ static void _oval_result_definition_to_dom_based_on_directives(struct oval_resul
 			/* collect the tests that are referenced from reported definitions */
 			if (criteria)
 				_oval_result_system_scan_criteria_for_references(criteria, tstmap);
+		} else if (content == OVAL_DIRECTIVE_CONTENT_THIN) {
+			// NOOP
 		}
 	}
 }
@@ -497,8 +506,9 @@ xmlNode *oval_result_system_to_dom(struct oval_result_system * sys,
 	}
 	oval_smc_iterator_free(result_tests);
 
+	bool export_sys_char = oval_results_model_get_export_system_characteristics(results_model);
 	oval_syschar_model_to_dom(syschar_model, doc, system_node, 
-				  (oval_syschar_resolver *) _oval_result_system_resolve_syschar, sysmap);
+				  (oval_syschar_resolver *) _oval_result_system_resolve_syschar, sysmap, export_sys_char);
 
 	oval_string_map_free(sysmap, NULL);
 	oval_string_map_free(objmap, NULL);

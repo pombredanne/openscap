@@ -60,8 +60,8 @@ struct oval_agent_session {
 	struct oval_variable_model *cur_var_model;
 	struct oval_syschar_model    * sys_model;
 	struct oval_syschar_model    * sys_models[2];
-	struct oval_results_model    * res_model;
 #if defined(OVAL_PROBES_ENABLED)
+	struct oval_results_model    * res_model;
 	oval_probe_session_t  * psess;
 #endif
 };
@@ -129,10 +129,12 @@ oval_agent_session_t * oval_agent_new_session(struct oval_definition_model *mode
 	/* one system only */
 	ag_sess->sys_models[0] = ag_sess->sys_model;
 	ag_sess->sys_models[1] = NULL;
-	ag_sess->res_model = oval_results_model_new(model, ag_sess->sys_models);
+#if defined(OVAL_PROBES_ENABLED)
+	ag_sess->res_model = oval_results_model_new_with_probe_session(
+			model, ag_sess->sys_models, ag_sess->psess);
 	generator = oval_results_model_get_generator(ag_sess->res_model);
 	oval_generator_set_product_version(generator, oscap_get_version());
-
+#endif
 
 	ag_sess->product_name = NULL;
 
@@ -152,8 +154,10 @@ void oval_agent_set_product_name(oval_agent_session_t *ag_sess, char * product_n
 	generator = oval_syschar_model_get_generator(ag_sess->sys_models[0]);
 	oval_generator_set_product_name(generator, product_name);
 
+#if defined(OVAL_PROBES_ENABLED)
 	generator = oval_results_model_get_generator(ag_sess->res_model);
 	oval_generator_set_product_name(generator, product_name);
+#endif
 }
 
 static struct oval_result_system *_oval_agent_get_first_result_system(oval_agent_session_t *ag_sess)
@@ -172,20 +176,7 @@ int oval_agent_eval_definition(oval_agent_session_t *ag_sess, const char *id)
 {
 #if defined(OVAL_PROBES_ENABLED)
 	int ret;
-	const char *title = NULL;
 	struct oval_result_system *rsystem;
-	struct oval_definition *oval_def;
-
-	oval_def = oval_definition_model_get_definition(ag_sess->def_model, id);
-	if (oval_def != NULL) {
-		title = oval_definition_get_title(oval_def);
-	}
-	dI("Evaluating definition '%s': %s.", id, title);
-
-	/* probe */
-	ret = oval_probe_query_definition(ag_sess->psess, id);
-	if (ret == -1)
-		return ret;
 
 	rsystem = _oval_agent_get_first_result_system(ag_sess);
 	/* eval */
@@ -247,6 +238,7 @@ int oval_agent_reset_session(oval_agent_session_t * ag_sess) {
 	 * results model. Hooray corner cases! */
 	//oval_syschar_model_reset(ag_sess->sys_model);
 
+#if defined(OVAL_PROBES_ENABLED)
 	/* Apply product name to new results_model */
 	if (ag_sess->product_name) {
 		struct oval_generator *generator;
@@ -254,18 +246,21 @@ int oval_agent_reset_session(oval_agent_session_t * ag_sess) {
 	        generator = oval_results_model_get_generator(ag_sess->res_model);
         	oval_generator_set_product_name(generator, ag_sess->product_name);
 	}
-#if defined(OVAL_PROBES_ENABLED)
-	oval_probe_session_destroy(ag_sess->psess);
-	ag_sess->psess = oval_probe_session_new(ag_sess->sys_model);
+
+	/* We have to reset probe_session inplace, because
+	 * ag_sess->res_model points to old probe_session
+	 * and we are not able to update the reference clearly */
+	oval_probe_session_reinit(ag_sess->psess, ag_sess->sys_model);
 #endif
+
 	return 0;
 }
 
 int oval_agent_abort_session(oval_agent_session_t *ag_sess)
 {
 	assume_d(ag_sess != NULL, -1);
-	assume_d(ag_sess->psess != NULL, -1);
 #if defined(OVAL_PROBES_ENABLED)
+	assume_d(ag_sess->psess != NULL, -1);
 	return oval_probe_session_abort(ag_sess->psess);
 #else
 	/* TODO */
@@ -316,7 +311,11 @@ cleanup:
 struct oval_results_model * oval_agent_get_results_model(oval_agent_session_t * ag_sess) {
 	__attribute__nonnull__(ag_sess);
 
+#if defined(OVAL_PROBES_ENABLED)
 	return ag_sess->res_model;
+#else
+	return NULL;
+#endif
 }
 
 const char * oval_agent_get_filename(oval_agent_session_t * ag_sess) {
@@ -330,9 +329,9 @@ void oval_agent_destroy_session(oval_agent_session_t * ag_sess) {
 		oscap_free(ag_sess->product_name);
 #if defined(OVAL_PROBES_ENABLED)
 		oval_probe_session_destroy(ag_sess->psess);
+		oval_results_model_free(ag_sess->res_model);
 #endif
 		oval_syschar_model_free(ag_sess->sys_model);
-		oval_results_model_free(ag_sess->res_model);
 	        oscap_free(ag_sess->filename);
 		oscap_free(ag_sess);
 	}

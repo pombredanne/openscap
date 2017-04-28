@@ -36,6 +36,7 @@
 
 #ifndef OVAL_SESSION_H_
 #define OVAL_SESSION_H_
+#include "oscap_download_cb.h"
 
 /**
  * @struct oval_session
@@ -220,6 +221,26 @@ int oval_session_evaluate(struct oval_session *session, char *probe_root, agent_
  * oscap_err_get_full_error to get more details)
  */
 int oval_session_export(struct oval_session *session);
+
+/**
+ * Set exporting of system characteristics in OVAL results
+ *
+ *
+ * @memberof oval_session
+ * @param session an \ref oval_session
+ * @param export false values indicated no system_characteristics in OVAL Results
+ */
+void oval_session_set_export_system_characteristics(struct oval_session *session, bool export);
+
+/**
+ * Set property of remote content.
+ * @memberof oval_session
+ * @param session an \ref oval_session
+ * @param allowed Whether is download of remote resources allowed in this session (defaults to false)
+ * @param callback used to notify user about download proceeds. This might be safely set
+ * to NULL -- ignoring user notification.
+ */
+void oval_session_set_remote_resources(struct oval_session *session, bool allowed, download_progress_calllback_t callback);
 
 /**
  * Destructor of an \ref oval_session.

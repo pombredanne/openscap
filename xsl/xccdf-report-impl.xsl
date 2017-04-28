@@ -33,7 +33,11 @@ Authors:
     xmlns:arf="http://scap.nist.gov/schema/asset-reporting-format/1.1"
     exclude-result-prefixes="xsl cdf ovalres sceres exsl">
 
-<xsl:key name="references" match="//cdf:Rule/cdf:reference" use="@href"/>
+<!-- This selects all the references, even if the SDS has multiple benchmarks.
+     That is fine because we will go through just the benchmark references
+     and only then we compare to this map. So this is correct.
+     See template "get-all-references". -->
+<xsl:key name="references" match="//cdf:reference" use="@href"/>
 
 <xsl:include href="xccdf-branding.xsl" />
 <xsl:include href="xccdf-resources.xsl" />
@@ -297,7 +301,9 @@ Authors:
                 <xsl:text>,</xsl:text>
             </xsl:if>
             <xsl:text>"</xsl:text>
-            <xsl:value-of select="$href"/>
+            <xsl:call-template name="convert-url-to-name">
+                <xsl:with-param name="href" select="$href"/>
+            </xsl:call-template>
             <xsl:text>":[</xsl:text>
             <xsl:for-each select="$item/cdf:reference[@href=$href]">
                 <xsl:text>"</xsl:text>
@@ -320,13 +326,15 @@ Authors:
     <xsl:text>}</xsl:text>
 </xsl:template>
 
+<xsl:key name="testresult_ruleresults" match="//cdf:rule-result" use="concat(ancestor::cdf:TestResult/@id, '|', @idref)"/>
+
 <xsl:template name="rule-overview-leaf">
     <xsl:param name="testresult"/>
     <xsl:param name="item"/>
     <xsl:param name="profile"/>
     <xsl:param name="indent"/>
 
-    <xsl:variable name="ruleresult" select="$testresult/cdf:rule-result[@idref = $item/@id]"/>
+    <xsl:variable name="ruleresult" select="key('testresult_ruleresults', concat($testresult/@id, '|', $item/@id))"/>
     <xsl:variable name="result" select="$ruleresult/cdf:result/text()"/>
 
     <tr data-tt-id="{$item/@id}" class="rule-overview-leaf rule-overview-leaf-{$result} rule-overview-leaf-id-{$item/@id}" id="rule-overview-leaf-{generate-id($ruleresult)}">
@@ -353,7 +361,7 @@ Authors:
                 &#160;<span class="label label-warning">waived</span>
             </xsl:if>
         </td>
-        <td class="rule-severity" style="text-align: center"><xsl:value-of select="$ruleresult/@severity"/></td>
+        <td class="rule-severity" style="text-align: center"><xsl:call-template name="item-severity"><xsl:with-param name="item" select="$ruleresult" /></xsl:call-template></td>
         <td class="rule-result rule-result-{$result}">
             <xsl:variable name="result_tooltip">
                 <xsl:call-template name="rule-result-tooltip">
@@ -373,10 +381,17 @@ Authors:
     <xsl:param name="profile"/>
     <xsl:param name="indent"/>
 
-    <xsl:variable name="contained_rules_fail" select="count($item/descendant::cdf:Rule[@id = $testresult/cdf:rule-result[cdf:result/text() = 'fail']/@idref])"/>
-    <xsl:variable name="contained_rules_error" select="count($item/descendant::cdf:Rule[@id = $testresult/cdf:rule-result[cdf:result/text() = 'error']/@idref])"/>
-    <xsl:variable name="contained_rules_unknown" select="count($item/descendant::cdf:Rule[@id = $testresult/cdf:rule-result[cdf:result/text() = 'unknown']/@idref])"/>
-    <xsl:variable name="contained_rules_notchecked" select="count($item/descendant::cdf:Rule[@id = $testresult/cdf:rule-result[cdf:result/text() = 'notchecked']/@idref])"/>
+    <xsl:param name="failed_rule_results"/>
+    <xsl:param name="error_rule_results"/>
+    <xsl:param name="unknown_rule_results"/>
+    <xsl:param name="notchecked_rule_results"/>
+
+    <xsl:variable name="descendant_rules" select="$item/descendant::cdf:Rule"/>
+
+    <xsl:variable name="contained_rules_fail" select="count($descendant_rules[@id = $failed_rule_results/@idref])"/>
+    <xsl:variable name="contained_rules_error" select="count($descendant_rules[@id = $error_rule_results/@idref])"/>
+    <xsl:variable name="contained_rules_unknown" select="count($descendant_rules[@id = $unknown_rule_results/@idref])"/>
+    <xsl:variable name="contained_rules_notchecked" select="count($descendant_rules[@id = $notchecked_rule_results/@idref])"/>
     <xsl:variable name="contained_rules_need_attention" select="$contained_rules_fail + $contained_rules_error + $contained_rules_unknown + $contained_rules_notchecked"/>
 
     <tr data-tt-id="{$item/@id}" class="rule-overview-inner-node rule-overview-inner-node-id-{$item/@id}">
@@ -419,6 +434,11 @@ Authors:
             <xsl:with-param name="item" select="."/>
             <xsl:with-param name="profile" select="$profile"/>
             <xsl:with-param name="indent" select="$indent + 1"/>
+
+            <xsl:with-param name="failed_rule_results" select="$failed_rule_results"/>
+            <xsl:with-param name="error_rule_results" select="$error_rule_results"/>
+            <xsl:with-param name="unknown_rule_results" select="$unknown_rule_results"/>
+            <xsl:with-param name="notchecked_rule_results" select="$notchecked_rule_results"/>
         </xsl:call-template>
     </xsl:for-each>
 
@@ -432,27 +452,48 @@ Authors:
     </xsl:for-each>
 </xsl:template>
 
+<xsl:template name="convert-url-to-name">
+    <xsl:param name="href"/>
+    <xsl:choose>
+        <xsl:when test="starts-with($href, 'http://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53')">
+            <xsl:text>NIST SP 800-53 ID</xsl:text>
+        </xsl:when>
+        <xsl:when test="starts-with($href, 'http://iase.disa.mil/stigs/cci/')">
+            <xsl:text>DISA CCI</xsl:text>
+        </xsl:when>
+        <xsl:when test="starts-with($href, 'http://iase.disa.mil/stigs/srgs/')">
+            <xsl:text>DISA SRG</xsl:text>
+        </xsl:when>
+        <xsl:when test="starts-with($href, 'http://iase.disa.mil/stigs/os/')">
+            <xsl:text>DISA STIG ID</xsl:text>
+        </xsl:when>
+        <xsl:when test="starts-with($href, 'https://www.pcisecuritystandards.org/')">
+            <xsl:text>PCI DSS Requirement</xsl:text>
+        </xsl:when>
+        <xsl:when test="starts-with($href, 'https://benchmarks.cisecurity.org/')">
+            <xsl:text>CIS Recommendation</xsl:text>
+        </xsl:when>
+        <xsl:otherwise>
+            <xsl:value-of select="$href"/>
+        </xsl:otherwise>
+    </xsl:choose>
+</xsl:template>
+
 <xsl:template name="get-all-references">
-    <xsl:for-each select="//cdf:Rule/cdf:reference[generate-id(.) = generate-id(key('references',@href)[1])]">
+    <xsl:param name="benchmark"/>
+    <xsl:for-each select="$benchmark//cdf:reference[generate-id(.) = generate-id(key('references',@href)[1])]">
+        <xsl:sort select="@href" />
         <xsl:if test="normalize-space(@href) and @href != 'https://github.com/OpenSCAP/scap-security-guide/wiki/Contributors'">
             <option>
+                <xsl:variable name="reference">
+                    <xsl:call-template name="convert-url-to-name">
+                        <xsl:with-param name="href" select="@href"/>
+                    </xsl:call-template>
+                </xsl:variable>
                 <xsl:attribute name="value">
-                    <xsl:value-of select="@href"/>
+                    <xsl:value-of select="$reference"/>
                 </xsl:attribute>
-                <xsl:choose>
-                    <xsl:when test="@href = 'http://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r4.pdf'">
-                        NIST SP 800-53 ID
-                    </xsl:when>
-                    <xsl:when test="@href = 'http://iase.disa.mil/stigs/cci/Pages/index.aspx'">
-                        DISA ID
-                    </xsl:when>
-                    <xsl:when test="@href = 'https://www.pcisecuritystandards.org/documents/PCI_DSS_v3.pdf'">
-                        PCI DSS Requirement
-                    </xsl:when>
-                    <xsl:otherwise>
-                        <xsl:value-of select="@href"/>
-                    </xsl:otherwise>
-                </xsl:choose>
+                <xsl:value-of select="$reference"/>
             </option>
         </xsl:if>
     </xsl:for-each>
@@ -519,7 +560,10 @@ Authors:
                         <option value="default" selected="selected">Default</option>
                         <option value="severity">Severity</option>
                         <option value="result">Result</option>
-                        <xsl:call-template name="get-all-references"/>
+                        <option disabled="disabled">──────────</option>
+                        <xsl:call-template name="get-all-references">
+                            <xsl:with-param name="benchmark" select="$benchmark"/>
+                        </xsl:call-template>
                     </select>
                 </div>
             </div>
@@ -534,11 +578,21 @@ Authors:
                 </tr>
             </thead>
             <tbody>
+                <xsl:variable name="failed_rule_results" select="$testresult/cdf:rule-result[cdf:result/text() = 'fail']"/>
+                <xsl:variable name="error_rule_results" select="$testresult/cdf:rule-result[cdf:result/text() = 'error']"/>
+                <xsl:variable name="unknown_rule_results" select="$testresult/cdf:rule-result[cdf:result/text() = 'unknown']"/>
+                <xsl:variable name="notchecked_rule_results" select="$testresult/cdf:rule-result[cdf:result/text() = 'notchecked']"/>
+
                 <xsl:call-template name="rule-overview-inner-node">
                     <xsl:with-param name="testresult" select="$testresult"/>
                     <xsl:with-param name="item" select="$benchmark"/>
                     <xsl:with-param name="profile" select="$profile"/>
                     <xsl:with-param name="indent" select="0"/>
+
+                    <xsl:with-param name="failed_rule_results" select="$failed_rule_results"/>
+                    <xsl:with-param name="error_rule_results" select="$error_rule_results"/>
+                    <xsl:with-param name="unknown_rule_results" select="$unknown_rule_results"/>
+                    <xsl:with-param name="notchecked_rule_results" select="$notchecked_rule_results"/>
                 </xsl:call-template>
             </tbody>
         </table>
@@ -616,11 +670,19 @@ Authors:
     <xsl:param name="sce-tmpl"/>
 
     <xsl:choose>
-        <xsl:when test="$check/cdf:check-import[@import-name = 'stdout']/text()">
-            <span class="label label-default"><abbr title="Script Check Engine stdout taken from check-import">SCE stdout</abbr></span>
-            <pre><code>
-                <xsl:value-of select="$check/cdf:check-import[@import-name = 'stdout']/text()"/>
-            </code></pre>
+        <xsl:when test="$check/cdf:check-import[@import-name = 'stdout']/text() or $check/cdf:check-import[@import-name = 'stderr']/text()">
+            <xsl:if test="$check/cdf:check-import[@import-name = 'stdout']/text()">
+                <span class="label label-default"><abbr title="Script Check Engine stdout taken from check-import">SCE stdout</abbr></span>
+                <pre><code>
+                    <xsl:value-of select="$check/cdf:check-import[@import-name = 'stdout']/text()"/>
+                </code></pre>
+            </xsl:if>
+            <xsl:if test="$check/cdf:check-import[@import-name = 'stderr']/text()">
+                <span class="label label-default"><abbr title="Script Check Engine stderr taken from check-import">SCE stderr</abbr></span>
+                <pre><code>
+                    <xsl:value-of select="$check/cdf:check-import[@import-name = 'stderr']/text()"/>
+                </code></pre>
+            </xsl:if>
         </xsl:when>
         <xsl:otherwise>
             <xsl:variable name="filename">
@@ -632,11 +694,18 @@ Authors:
 
             <xsl:if test="$filename != ''">
                 <xsl:variable name="stdout" select="document($filename)/sceres:sce_results/sceres:stdout/text()"/>
+                <xsl:variable name="stderr" select="document($filename)/sceres:sce_results/sceres:stderr/text()"/>
 
                 <xsl:if test="normalize-space($stdout)">
                     <span class="label label-default"><abbr title="Script Check Engine stdout taken from '{$filename}'">SCE stdout</abbr></span>
                     <pre><code>
                         <xsl:copy-of select="$stdout"/>
+                    </code></pre>
+                </xsl:if>
+                <xsl:if test="normalize-space($stderr)">
+                    <span class="label label-default"><abbr title="Script Check Engine stderr taken from '{$filename}'">SCE stderr</abbr></span>
+                    <pre><code>
+                        <xsl:copy-of select="$stderr"/>
                     </code></pre>
                 </xsl:if>
             </xsl:if>
@@ -675,7 +744,7 @@ Authors:
     <xsl:param name="item"/>
     <xsl:param name="profile"/>
 
-    <xsl:variable name="ruleresult" select="$testresult/cdf:rule-result[@idref = $item/@id]"/>
+    <xsl:variable name="ruleresult" select="key('testresult_ruleresults', concat($testresult/@id, '|', $item/@id))"/>
     <xsl:variable name="result" select="$ruleresult/cdf:result/text()"/>
 
     <div class="panel panel-default rule-detail rule-detail-{$result} rule-detail-id-{$item/@id}" id="rule-detail-{generate-id($ruleresult)}">
@@ -719,7 +788,7 @@ Authors:
                         </div>
                     </td></tr>
                     <tr><td>Time</td><td><xsl:value-of select="$ruleresult/@time"/></td></tr>
-                    <tr><td>Severity</td><td><xsl:value-of select="$ruleresult/@severity"/></td></tr>
+                    <tr><td>Severity</td><td><xsl:call-template name="item-severity"><xsl:with-param name="item" select="$ruleresult" /></xsl:call-template></td></tr>
                     <tr><td>Identifiers and References</td><td class="identifiers">
                         <!-- XCCDF 1.2 spec says that idents in rule-result should be copied from
                              the Rule itself. That means that we can just use the same code as guide
@@ -817,20 +886,16 @@ Authors:
                     <xsl:if test="$result = 'fail' or $result = 'error' or $result = 'unknown'">
                         <xsl:for-each select="$item/cdf:fixtext">
                             <tr><td colspan="2"><div class="remediation-description">
-                                <span class="label label-success">Remediation description:</span>
-                                <div class="panel panel-default"><div class="panel-body">
-                                    <xsl:call-template name="show-fixtext">
-                                        <xsl:with-param name="fixtext" select="."/>
-                                        <xsl:with-param name="testresult" select="$testresult"/>
-                                        <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
-                                        <xsl:with-param name="profile" select="$profile"/>
-                                    </xsl:call-template>
-                                </div></div>
+                                <xsl:call-template name="show-fixtext">
+                                    <xsl:with-param name="fixtext" select="."/>
+                                    <xsl:with-param name="testresult" select="$testresult"/>
+                                    <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
+                                    <xsl:with-param name="profile" select="$profile"/>
+                                </xsl:call-template>
                             </div></td></tr>
                         </xsl:for-each>
                         <xsl:for-each select="$item/cdf:fix">
                             <tr><td colspan="2"><div class="remediation">
-                                <span class="label label-success">Remediation script:</span>
                                 <xsl:call-template name="show-fix">
                                     <xsl:with-param name="fix" select="."/>
                                     <xsl:with-param name="testresult" select="$testresult"/>
@@ -884,6 +949,7 @@ Authors:
             <xsl:with-param name="item" select="$benchmark"/>
             <xsl:with-param name="profile" select="$profile"/>
         </xsl:call-template>
+        <a href="#result-details"><button type="button" class="btn btn-secondary">Scroll back to the first rule</button></a>
     </div>
 </xsl:template>
 

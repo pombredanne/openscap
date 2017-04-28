@@ -124,6 +124,8 @@ Authors:
     </div>
 </xsl:template>
 
+<xsl:key name="profile_selects" match="//cdf:select" use="concat(generate-id(ancestor::cdf:Profile), '|', @idref)"/>
+
 <xsl:template name="is-item-selected-final">
     <xsl:param name="item"/>
     <xsl:param name="profile"/>
@@ -134,9 +136,11 @@ Authors:
     2) is-item-selected-final is called for Groups and only if it returns true it's called for child items
     -->
 
+    <xsl:variable name="profile_select" select="key('profile_selects', concat(generate-id($profile), '|', $item/@id))[last()]/@selected"/>
+
     <xsl:choose>
-        <xsl:when test="$profile and $profile/cdf:select[@idref = $item/@id]">
-            <xsl:value-of select="$profile/cdf:select[@idref = $item/@id][last()]/@selected"/>
+        <xsl:when test="$profile_select">
+            <xsl:value-of select="$profile_select"/>
         </xsl:when>
         <xsl:when test="$item/@selected">
             <xsl:value-of select="$item/@selected"/>
@@ -167,10 +171,14 @@ Authors:
 
             <td style="padding-left: {$indent * 19}px">
                 <h4>
+                    <xsl:attribute name="id">
+                        <xsl:value-of select="$item/@id"/>
+                    </xsl:attribute>
                     <xsl:call-template name="item-title">
                         <xsl:with-param name="item" select="$item"/>
                         <xsl:with-param name="profile" select="$profile"/>
                     </xsl:call-template>
+                    &#160;&#160;<a class="small" href="{concat('#', $item/@id)}">[ref]</a>
                     <span class="label label-default pull-right">rule</span>
                 </h4>
 
@@ -186,7 +194,7 @@ Authors:
                 <xsl:for-each select="$item/cdf:warning">
                     <div class="panel panel-warning">
                         <div class="panel-heading">
-                            <span class="label label-warning">warning</span>&#160;
+                            <span class="label label-warning">Warning:</span>&#160;
                             <xsl:apply-templates mode="sub-testresult" select=".">
                                 <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
                                 <xsl:with-param name="profile" select="$profile"/>
@@ -205,6 +213,13 @@ Authors:
                     </p>
                 </xsl:if>
 
+                <div class="severity">
+                    <p>
+                        <span class="label label-warning">Severity:</span>&#160;
+                        <xsl:call-template name="item-severity"><xsl:with-param name="item" select="$item" /></xsl:call-template>
+                    </p>
+                </div>
+
                 <div class="identifiers">
                     <xsl:call-template name="item-idents-refs">
                         <xsl:with-param name="item" select="$item"/>
@@ -212,18 +227,14 @@ Authors:
                 </div>
 
                 <xsl:for-each select="$item/cdf:fixtext">
-                    <span class="label label-success">Remediation description:</span>
-                    <div class="panel panel-default"><div class="panel-body">
-                        <xsl:call-template name="show-fixtext">
-                            <xsl:with-param name="fixtext" select="."/>
-                            <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
-                            <xsl:with-param name="profile" select="$profile"/>
-                        </xsl:call-template>
-                    </div></div>
+                    <xsl:call-template name="show-fixtext">
+                        <xsl:with-param name="fixtext" select="."/>
+                        <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
+                        <xsl:with-param name="profile" select="$profile"/>
+                    </xsl:call-template>
                 </xsl:for-each>
 
                 <xsl:for-each select="$item/cdf:fix">
-                    <span class="label label-success">Remediation script:</span>
                     <xsl:call-template name="show-fix">
                         <xsl:with-param name="fix" select="."/>
                         <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
@@ -233,23 +244,6 @@ Authors:
             </td>
         </tr>
     </xsl:if>
-</xsl:template>
-
-<xsl:template name="substring-count">
-    <xsl:param name="string"/>
-    <xsl:param name="substr"/>
-    <xsl:choose>
-        <xsl:when test="contains($string, $substr) and $string and $substr">
-            <xsl:variable name="rest">
-                <xsl:call-template name="substring-count">
-                    <xsl:with-param name="string" select="substring-after($string, $substr)"/>
-                    <xsl:with-param name="substr" select="$substr"/>
-                </xsl:call-template>
-            </xsl:variable>
-            <xsl:value-of select="$rest + 1"/>
-        </xsl:when>
-        <xsl:otherwise>0</xsl:otherwise>
-    </xsl:choose>
 </xsl:template>
 
 <xsl:template name="guide-count-contained-selected-rules-impl">
@@ -273,17 +267,13 @@ Authors:
 
         <xsl:for-each select="$item/cdf:Rule">
             <xsl:variable name="rule" select="."/>
-
             <xsl:variable name="rule_selected_final">
                 <xsl:call-template name="is-item-selected-final">
                     <xsl:with-param name="item" select="$rule"/>
                     <xsl:with-param name="profile" select="$profile"/>
                 </xsl:call-template>
             </xsl:variable>
-
-            <xsl:if test="$rule_selected_final = 'true'">
-                RULE
-            </xsl:if>
+            <xsl:if test="$rule_selected_final = 'true'">R</xsl:if>
         </xsl:for-each>
     </xsl:if>
 </xsl:template>
@@ -305,10 +295,7 @@ Authors:
         </xsl:call-template>
     </xsl:variable>
 
-    <xsl:call-template name="substring-count">
-        <xsl:with-param name="string" select="$impl-ret"/>
-        <xsl:with-param name="substr" select="'RULE'"/>
-    </xsl:call-template>
+    <xsl:value-of select="string-length($impl-ret)"/>
 </xsl:template>
 
 <xsl:template name="guide-tree-inner-node">
@@ -341,15 +328,14 @@ Authors:
 
                 <td style="padding-left: {$indent * 19}px">
                     <h3>
-                        <xsl:if test="$indent=1 or $indent=2">
-                            <xsl:attribute name="id">
-                                <xsl:value-of select="$item/@id"/>
-                            </xsl:attribute>
-                        </xsl:if>
+                        <xsl:attribute name="id">
+                            <xsl:value-of select="$item/@id"/>
+                        </xsl:attribute>
                         <xsl:call-template name="item-title">
                             <xsl:with-param name="item" select="$item"/>
                             <xsl:with-param name="profile" select="$profile"/>
                         </xsl:call-template>
+                        &#160;&#160;<a class="small" href="{concat('#', $item/@id)}">[ref]</a>
                         <span class="label label-default pull-right">group</span>
                     </h3>
 
@@ -363,7 +349,7 @@ Authors:
                     <xsl:for-each select="$item/cdf:warning">
                         <div class="panel panel-warning">
                             <div class="panel-heading">
-                                <span class="label label-warning">warning</span>&#160;
+                                <span class="label label-warning">Warning:</span>&#160;
                                 <xsl:apply-templates mode="sub-testresult" select=".">
                                     <xsl:with-param name="benchmark" select="$item/ancestor::cdf:Benchmark"/>
                                     <xsl:with-param name="profile" select="$profile"/>
@@ -498,6 +484,9 @@ Authors:
     </xsl:call-template>
 
     <xsl:variable name="profile" select="$benchmark/cdf:Profile[@id = $profile_id]"/>
+    <xsl:if test="$profile_id != '' and not($profile)">
+        <xsl:message terminate="yes">Profile "<xsl:value-of select="$profile_id"/>" was not found. Get available profiles using "oscap info".</xsl:message>
+    </xsl:if>
 
     <xsl:text disable-output-escaping='yes'>&lt;!DOCTYPE html></xsl:text>
     <html lang="en">

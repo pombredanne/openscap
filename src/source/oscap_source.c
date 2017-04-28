@@ -84,6 +84,19 @@ struct oscap_source *oscap_source_new_from_file(const char *filepath)
 	return source;
 }
 
+struct oscap_source *oscap_source_clone(struct oscap_source *old)
+{
+	struct oscap_source *new = (struct oscap_source *) oscap_calloc(1, sizeof(struct oscap_source));
+	new->scap_type = old->scap_type;
+	new->origin.type = old->origin.type;
+	new->origin.version = oscap_strdup(old->origin.version);
+	new->origin.filepath = oscap_strdup(old->origin.filepath);
+	new->origin.memory = oscap_strdup(old->origin.memory);
+	new->origin.memory_size = old->origin.memory_size;
+	new->xml.doc = xmlCopyDoc(old->xml.doc, true);
+	return new;
+}
+
 /**
  * Allocate oscap_source struct and fill for memory data
  * @param size_t size Size of data
@@ -178,6 +191,11 @@ oscap_document_type_t oscap_source_get_scap_type(struct oscap_source *source)
 	return source->scap_type;
 }
 
+const char *oscap_source_get_filepath(struct oscap_source *source)
+{
+	return source->origin.filepath;
+}
+
 static void xmlErrorCb(struct oscap_string *buffer, const char * format, ...)
 {
 	va_list ap;
@@ -190,6 +208,44 @@ static void xmlErrorCb(struct oscap_string *buffer, const char * format, ...)
 	va_end(ap);
 }
 
+static bool fd_file_is_executable(int fd)
+{
+	int fd_dup = dup(fd);
+	if (fd_dup == -1) {
+		return false;
+	}
+	lseek(fd_dup, 0, SEEK_SET);
+	FILE* file = fdopen(fd_dup, "r");
+
+	if (file == NULL) {
+		// Cannot determine type of file we cannot open
+		return false;
+	}
+
+	// Check SHEBANG
+	// When we read after end of file, we get EOF (-1),
+	// So we don't have to do any special check
+	bool is_exec = true;
+	if ( fgetc(file) != (int)'#' ) is_exec = false;
+	if ( fgetc(file) != (int)'!' ) is_exec = false;
+
+	fclose(file);
+	lseek(fd, 0, SEEK_SET);
+	return is_exec;
+}
+
+static bool memory_file_is_executable(const char* memory, const size_t size)
+{
+	if (size < 2){
+		return false; // Cannot read SHEBANG
+	}
+
+	// Check that file in memory starts with SHEBANG
+	if ( memory[0] != '#' ) return false;
+	if ( memory[1] != '!' ) return false;
+	return true;
+}
+
 xmlDoc *oscap_source_get_xmlDoc(struct oscap_source *source)
 {
 	// We check origin.memory first because even with it being non-NULL
@@ -199,18 +255,25 @@ xmlDoc *oscap_source_get_xmlDoc(struct oscap_source *source)
 
 	if (source->xml.doc == NULL) {
 		if (source->origin.memory != NULL) {
-#ifdef HAVE_BZ2
 			if (bz2_memory_is_bzip(source->origin.memory, source->origin.memory_size)) {
+#ifdef HAVE_BZ2
 				source->xml.doc = bz2_mem_read_doc(source->origin.memory, source->origin.memory_size);
-			} else
+#else
+				oscap_seterr(OSCAP_EFAMILY_OSCAP, "Unable to unpack bz2 from buffer memory '%s'. Please compile OpenSCAP with bz2 support.", oscap_source_readable_origin(source));
 #endif
+			} else
 			{
 				source->xml.doc = xmlReadMemory(source->origin.memory, source->origin.memory_size, NULL, NULL, 0);
 				if (source->xml.doc == NULL) {
-					oscap_setxmlerr(xmlGetLastError());
-					const char *error_msg = oscap_string_get_cstr(xml_error_string);
-					oscap_seterr(OSCAP_EFAMILY_XML, "%sUnable to parse XML from user memory buffer", error_msg);
-					oscap_string_clear(xml_error_string);
+					if (memory_file_is_executable(source->origin.memory, source->origin.memory_size)) {
+						dI("oscap-source in memory was detected as executable file. Skipped XML parsing", oscap_source_readable_origin(source));
+						oscap_string_clear(xml_error_string);
+					} else {
+						oscap_setxmlerr(xmlGetLastError());
+						const char *error_msg = oscap_string_get_cstr(xml_error_string);
+						oscap_seterr(OSCAP_EFAMILY_XML, "%sUnable to parse XML from user memory buffer", error_msg);
+						oscap_string_clear(xml_error_string);
+					}
 				}
 			}
 		}
@@ -220,18 +283,26 @@ xmlDoc *oscap_source_get_xmlDoc(struct oscap_source *source)
 				source->xml.doc = NULL;
 				oscap_seterr(OSCAP_EFAMILY_GLIBC, "Unable to open file: '%s'", oscap_source_readable_origin(source));
 			} else {
-#ifdef HAVE_BZ2
 				if (bz2_fd_is_bzip(fd)) {
+#ifdef HAVE_BZ2
 					source->xml.doc = bz2_fd_read_doc(fd);
-				} else
+#else
+					source->xml.doc = NULL;
+					oscap_seterr(OSCAP_EFAMILY_OSCAP, "Unable to unpack bz2 file '%s'. Please compile OpenSCAP with bz2 support.", oscap_source_readable_origin(source));
 #endif
+				} else
 				{
 					source->xml.doc = xmlReadFd(fd, NULL, NULL, 0);
 					if (source->xml.doc == NULL) {
-						oscap_setxmlerr(xmlGetLastError());
-						const char *error_msg = oscap_string_get_cstr(xml_error_string);
-						oscap_seterr(OSCAP_EFAMILY_XML, "%sUnable to parse XML at: '%s'", error_msg, oscap_source_readable_origin(source));
-						oscap_string_clear(xml_error_string);
+						if (fd_file_is_executable(fd)) {
+							dI("oscap-source file was detected as executable file. Skipped XML parsing", oscap_source_readable_origin(source));
+							oscap_string_clear(xml_error_string);
+						} else {
+							oscap_setxmlerr(xmlGetLastError());
+							const char *error_msg = oscap_string_get_cstr(xml_error_string);
+							oscap_seterr(OSCAP_EFAMILY_XML, "%sUnable to parse XML at: '%s'", error_msg, oscap_source_readable_origin(source));
+							oscap_string_clear(xml_error_string);
+						}
 					}
 				}
 				close(fd);
@@ -260,6 +331,9 @@ int oscap_source_validate(struct oscap_source *source, xml_reporter reporter, vo
 		ret = -1;
 	} else {
 		const char *schema_version = oscap_source_get_schema_version(source);
+		if (!schema_version) {
+			schema_version = "unknown schema version";
+		}
 		const char *type_name = oscap_document_type_to_string(scap_type);
 		const char *origin = oscap_source_readable_origin(source);
 		dD("Validating %s (%s) document from %s.", type_name, schema_version, origin);

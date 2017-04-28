@@ -39,6 +39,7 @@
 #include <ds_sds_session.h>
 
 #include "oscap-tool.h"
+#include <oscap_debug.h>
 
 static struct oscap_module* DS_SUBMODULES[];
 bool getopt_ds(int argc, char **argv, struct oscap_action *action);
@@ -69,7 +70,8 @@ static struct oscap_module DS_SDS_SPLIT_MODULE = {
 		"Options:\n"
 		"   --datastream-id <id> \r\t\t\t\t - ID of the datastream in the collection to use.\n"
 		"   --xccdf-id <id> \r\t\t\t\t - ID of XCCDF in the datastream that should be evaluated.\n"
-		"   --skip-valid \r\t\t\t\t - Skips validating of given XCCDF.\n",
+		"   --skip-valid \r\t\t\t\t - Skips validating of given XCCDF.\n"
+		"   --fetch-remote-resources \r\t\t\t\t - Download remote content referenced by DataStream.\n",
 	.opt_parser = getopt_ds,
 	.func = app_ds_sds_split
 };
@@ -134,8 +136,10 @@ static struct oscap_module DS_RDS_VALIDATE_MODULE = {
 	.name = "rds-validate",
 	.parent = &OSCAP_DS_MODULE,
 	.summary = "Validate given ResultDataStream",
-	.usage = "result_datastream.xml",
-	.help = NULL,
+	.usage = "[options] result_datastream.xml",
+	.help = "Options:\n"
+		"   --verbose <verbosity_level>\r\t\t\t\t - Turn on verbose mode at specified verbosity level.\n"
+		"   --verbose-log-file <file>\r\t\t\t\t - Write verbose informations into file.\n",
 	.opt_parser = getopt_ds,
 	.func = app_ds_rds_validate
 };
@@ -155,6 +159,8 @@ enum ds_opt {
 	DS_OPT_DATASTREAM_ID = 1,
 	DS_OPT_XCCDF_ID,
 	DS_OPT_REPORT_ID,
+	DS_OPT_VERBOSE,
+	DS_OPT_VERBOSE_LOG_FILE,
 };
 
 bool getopt_ds(int argc, char **argv, struct oscap_action *action) {
@@ -167,6 +173,9 @@ bool getopt_ds(int argc, char **argv, struct oscap_action *action) {
 		{"datastream-id",		required_argument, NULL, DS_OPT_DATASTREAM_ID},
 		{"xccdf-id",		required_argument, NULL, DS_OPT_XCCDF_ID},
 		{"report-id",		required_argument, NULL, DS_OPT_REPORT_ID},
+		{"fetch-remote-resources", no_argument, &action->remote_resources, 1},
+		{"verbose", required_argument, NULL, DS_OPT_VERBOSE },
+		{"verbose-log-file", required_argument, NULL, DS_OPT_VERBOSE_LOG_FILE },
 	// end
 		{0, 0, 0, 0}
 	};
@@ -178,6 +187,8 @@ bool getopt_ds(int argc, char **argv, struct oscap_action *action) {
 		case DS_OPT_DATASTREAM_ID:	action->f_datastream_id = optarg;	break;
 		case DS_OPT_XCCDF_ID:	action->f_xccdf_id = optarg; break;
 		case DS_OPT_REPORT_ID:	action->f_report_id = optarg; break;
+		case DS_OPT_VERBOSE:	action->verbosity_level = optarg; break;
+		case DS_OPT_VERBOSE_LOG_FILE: action->f_verbose_log = optarg; break;
 		case 0: break;
 		default: return oscap_module_usage(action->module, stderr, NULL);
 		}
@@ -240,12 +251,12 @@ bool getopt_ds(int argc, char **argv, struct oscap_action *action) {
 		action->ds_action->oval_result_count = argc - optind - 3;
 	}
 	else if( (action->module == &DS_RDS_VALIDATE_MODULE) ) {
-		if(  argc != 4 ) {
-			oscap_module_usage(action->module, stderr, "Wrong number of parameters.\n");
+		if(optind >= argc) {
+			oscap_module_usage(action->module, stderr, "Result DataStream file need to be specified!\n");
 			return false;
 		}
 		action->ds_action = malloc(sizeof(struct ds_action));
-		action->ds_action->file = argv[3];
+		action->ds_action->file = argv[optind];
 	}
 	return true;
 }
@@ -289,9 +300,17 @@ int app_ds_sds_split(const struct oscap_action *action) {
 	}
 	ds_sds_session_set_datastream_id(session, f_datastream_id);
 
+	ds_sds_session_set_remote_resources(session, action->remote_resources, download_reporting_callback);
 	ds_sds_session_set_target_dir(session, action->ds_action->target);
 	if (ds_sds_session_register_component_with_dependencies(session, "checklists", f_component_id, NULL) != 0) {
 		goto cleanup;
+	}
+	// CPE dictionaries aren't required in datastreams, just silently continue
+	// if we can't register them
+	if (ds_sds_session_can_register_component(session, "dictionaries", NULL)) {
+		if (ds_sds_session_register_component_with_dependencies(session, "dictionaries", NULL, NULL) != 0) {
+			goto cleanup;
+		}
 	}
 	if (ds_sds_session_dump_component_files(session) != 0) {
 		goto cleanup;
@@ -507,6 +526,10 @@ cleanup:
 
 int app_ds_rds_validate(const struct oscap_action *action) {
 	int ret = OSCAP_ERROR;
+
+	if (!oscap_set_verbose(action->verbosity_level, action->f_verbose_log, false)) {
+		return OSCAP_ERROR;
+	}
 
 	struct oscap_source *rds = oscap_source_new_from_file(action->ds_action->file);
 	if (oscap_source_validate(rds, reporter, (void *) action) != 0) {

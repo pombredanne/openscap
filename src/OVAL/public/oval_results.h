@@ -148,6 +148,15 @@ OSCAP_DEPRECATED(int oval_results_model_import(struct oval_results_model *model,
  */
 struct oval_results_model *oval_results_model_clone(struct oval_results_model *);
 /**
+ * @memberof oval_results_model
+ */
+void oval_results_model_set_export_system_characteristics(struct oval_results_model *, bool export);
+
+/**
+ * @memberof oval_results_model
+ */
+bool oval_results_model_get_export_system_characteristics(struct oval_results_model *);
+/**
  * Free memory allocated to a specified oval results model.
  * @param the specified oval_results model
  * @memberof oval_results_model
@@ -184,12 +193,19 @@ void oval_results_model_set_generator(struct oval_results_model *model, struct o
  * @{
  */
 struct oval_generator *oval_results_model_get_generator(struct oval_results_model *model);
+
 /**
  * Return bound definition model from an oval_results_model.
  * @param model the specified oval_results_model.
  * @memberof oval_results_model
  */
 struct oval_definition_model *oval_results_model_get_definition_model(struct oval_results_model *model);
+
+/**
+ * Return the OVAL directives model
+ * @memberof oval_results_model
+ */
+struct oval_directives_model *oval_results_model_get_directives_model(struct oval_results_model *model);
 
 /**
  * Return iterator over reporting systems.

@@ -53,7 +53,13 @@ void *probe_input_handler(void *arg)
         SEAP_msg_t *seap_request, *seap_reply;
         SEXP_t *probe_in, *probe_out, *oid;
 
+#if defined(HAVE_PTHREAD_SETNAME_NP)
+# if defined(__APPLE__)
+	pthread_setname_np("input_handler");
+# else
 	pthread_setname_np(pthread_self(), "input_handler");
+# endif
+#endif
 
 #define TH_CANCEL_ON  pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &cstate)
 #define TH_CANCEL_OFF pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cstate)

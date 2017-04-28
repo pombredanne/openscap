@@ -120,6 +120,7 @@ static struct oscap_module OVAL_EVAL = {
 	"   --id <definition-id>\r\t\t\t\t - ID of the definition we want to evaluate.\n"
 	"   --variables <file>\r\t\t\t\t - Provide external variables expected by OVAL Definitions.\n"
         "   --directives <file>\r\t\t\t\t - Use OVAL Directives content to specify desired results content.\n"
+        "   --without-syschar \r\t\t\t\t - Don't provide system characteristic in result file.\n"
         "   --results <file>\r\t\t\t\t - Write OVAL Results into file.\n"
         "   --report <file>\r\t\t\t\t - Create human readable (HTML) report from OVAL Results.\n"
         "   --skip-valid\r\t\t\t\t - Skip validation.\n"
@@ -388,6 +389,7 @@ int app_evaluate_oval(const struct oscap_action *action)
 	/* set OVAL Variables */
 	oval_session_set_variables(session, action->f_variables);
 
+	oval_session_set_remote_resources(session, action->remote_resources, download_reporting_callback);
 	/* load all necesary OVAL Definitions and bind OVAL Variables if provided */
 	if ((oval_session_load(session)) != 0)
 		goto cleanup;
@@ -408,6 +410,7 @@ int app_evaluate_oval(const struct oscap_action *action)
 	oval_session_set_directives(session, action->f_directives);
 	oval_session_set_results_export(session, action->f_results);
 	oval_session_set_report_export(session, action->f_report);
+	oval_session_set_export_system_characteristics(session, !action->without_sys_chars);
 	if (oval_session_export(session) != 0)
 		goto cleanup;
 
@@ -582,12 +585,14 @@ bool getopt_oval_eval(int argc, char **argv, struct oscap_action *action)
 		{ "id",        	required_argument, NULL, OVAL_OPT_ID           },
 		{ "variables",	required_argument, NULL, OVAL_OPT_VARIABLES    },
 		{ "directives",	required_argument, NULL, OVAL_OPT_DIRECTIVES   },
+		{ "without-syschar",	no_argument, &action->without_sys_chars, 1},
 		{ "datastream-id",required_argument, NULL, OVAL_OPT_DATASTREAM_ID},
 		{ "oval-id",    required_argument, NULL, OVAL_OPT_OVAL_ID},
 		{ "skip-valid",	no_argument, &action->validate, 0 },
 		{ "probe-root", required_argument, NULL, OVAL_OPT_PROBE_ROOT},
 		{ "verbose", required_argument, NULL, OVAL_OPT_VERBOSE },
 		{ "verbose-log-file", required_argument, NULL, OVAL_OPT_VERBOSE_LOG_FILE },
+		{ "fetch-remote-resources", no_argument, &action->remote_resources, 1},
 		{ 0, 0, 0, 0 }
 	};
 

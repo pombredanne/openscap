@@ -141,9 +141,55 @@ function test_eval {
     diff /dev/null $stderr; rm $stderr
 }
 
-function test_generate_fix {
+function test_eval_cpe {
+    local stdout=$(mktemp -t ${name}.out.XXXXXX)
+    local stderr=$(mktemp -t ${name}.err.XXXXXX)
+    local ret=0
 
-    $OSCAP xccdf generate fix "${srcdir}/$1"
+    $OSCAP xccdf eval --progress "${srcdir}/$1" 1> $stdout 2> $stderr || ret=$?
+    grep -q "rule_applicable_pass:pass" $stdout
+    grep -q "rule_applicable_fail:fail" $stdout
+    grep -q "rule_notapplicable:notapplicable" $stdout
+    diff /dev/null $stderr
+    rm $stdout $stderr
+}
+
+function test_generate_fix_source {
+    local fixfile=$(mktemp -t ${name}.out.XXXXXX)
+
+    # all rules (default profile)
+    $OSCAP xccdf generate fix --output $fixfile "${srcdir}/$1"
+    grep -q remediation_rule_applicable_pass $fixfile
+    grep -q remediation_rule_applicable_fail $fixfile
+    grep -q remediation_rule_notapplicable $fixfile
+    rm $fixfile
+
+    # selected profile
+    $OSCAP xccdf generate fix --output $fixfile --profile xccdf_org.ssgproject.content_profile_test "${srcdir}/$1"
+    grep -qv remediation_rule_applicable_pass $fixfile
+    grep -q remediation_rule_applicable_fail $fixfile
+    grep -q remediation_rule_notapplicable $fixfile
+    rm $fixfile
+}
+
+function test_generate_fix_results {
+    local fixfile=$(mktemp -t ${name}.out.XXXXXX)
+    local results=$(mktemp -t ${name}.out.XXXXXX)
+
+    # generate all from results
+    $OSCAP xccdf eval --results $results "${srcdir}/$1" || ret=$?
+    $OSCAP xccdf generate fix --output $fixfile $results
+    grep -q remediation_rule_applicable_pass $fixfile
+    grep -q remediation_rule_applicable_fail $fixfile
+    grep -q remediation_rule_notapplicable $fixfile
+    rm $fixfile
+
+    # generate based on TestResult
+    $OSCAP xccdf generate fix --output $fixfile --result-id xccdf_org.open-scap_testresult_default-profile $results
+    grep -qv remediation_rule_applicable_pass $fixfile
+    grep -q remediation_rule_applicable_fail $fixfile
+    grep -qv remediation_rule_notapplicable $fixfile
+    rm $fixfile $results
 }
 
 function test_invalid_eval {
@@ -332,10 +378,48 @@ function test_rds_split {
     return 0
 }
 
+function test_sds_external_xccdf {
+    local SDS_FILE="${srcdir}/$2"
+    local XCCDF="$3"
+    local PROFILE="$4"
+    local result="${1}-${PROFILE}.xml"
+
+    $OSCAP xccdf eval --xccdf-id "$XCCDF" --profile "$PROFILE" --results "$result" "$SDS_FILE"
+
+    assert_exists 1 '//rule-result/result[text()="pass"]'
+
+    rm -f "$result"
+}
+
+function test_sds_tailoring {
+	local SDS_FILE="${srcdir}/$2"
+	local DATASTREAM_ID="$3"
+	local TAILORING_ID="$4"
+	local PROFILE="$5"
+	local result=$(mktemp)
+
+	$OSCAP info "$SDS_FILE"
+
+	$OSCAP xccdf eval --datastream-id "$DATASTREAM_ID" --tailoring-id "$TAILORING_ID" --profile "$PROFILE" --results "$result" "$SDS_FILE"
+
+	assert_exists 2 '//Rule'
+	assert_exists 1 '//Rule[@id="xccdf_com.example_rule_1" and @selected="true"]'
+	assert_exists 1 '//Rule[@id="xccdf_com.example_rule_2" and @selected="false"]'
+	assert_exists 2 '//rule-result'
+	assert_exists 1 '//rule-result[@idref="xccdf_com.example_rule_1"]'
+	assert_exists 1 '//rule-result[@idref="xccdf_com.example_rule_2"]'
+	assert_exists 1 '//rule-result[@idref="xccdf_com.example_rule_1"]/result[text()="notselected"]'
+	assert_exists 1 '//rule-result[@idref="xccdf_com.example_rule_2"]/result[text()="pass"]'
+
+	rm -f "$result"
+}
+
 # Testing.
 test_init "test_ds.log"
 
 test_run "sds_simple" test_sds sds_simple scap-fedora14-xccdf.xml 0
+test_run "sds_external_xccdf" test_sds_external_xccdf sds_external_xccdf sds_external_xccdf/sds.ds.xml scap_org.open-scap_cref_xccdf.xml xccdf_external_profile_datastream_1
+test_run "sds_external_xccdf" test_sds_external_xccdf sds_external_xccdf sds_external_xccdf/sds.ds.xml scap_org.open-scap_cref_xccdf-file.xml xccdf_external_profile_file_1
 test_run "sds_simple OVAL 5.11.1" test_sds sds_simple_5_11_1 simple_xccdf.xml 0
 test_run "sds_multiple_oval" test_sds sds_multiple_oval multiple-oval-xccdf.xml 0
 test_run "sds_missing_oval-prepare" [ ! -f sds_missing_oval/second-oval.xml ]
@@ -345,10 +429,10 @@ test_run "sds_extended_component" test_sds sds_extended_component fake-check-xcc
 test_run "sds_extended_component_plain_text" test_sds sds_extended_component_plain_text fake-check-xccdf.xml 0
 test_run "sds_extended_component_plain_text_entities" test_sds sds_extended_component_plain_text_entities fake-check-xccdf.xml 0
 test_run "sds_extended_component_plain_text_whitespace" test_sds sds_extended_component_plain_text_whitespace fake-check-xccdf.xml 0
+test_run "sds_tailoring" test_sds_tailoring sds_tailoring sds_tailoring/sds.ds.xml scap_com.example_datastream_with_tailoring xccdf_com.example_cref_tailoring_01 xccdf_com.example_profile_tailoring
 
 test_run "eval_simple" test_eval eval_simple/sds.xml
 test_run "cpe_in_ds" test_eval cpe_in_ds/sds.xml
-test_run "generate_fix_simple" test_generate_fix eval_simple/sds.xml
 test_run "eval_invalid" test_invalid_eval eval_invalid/sds.xml
 test_run "eval_invalid_oval" test_invalid_oval_eval eval_invalid/sds-oval.xml
 test_run "eval_xccdf_id1" test_eval_id eval_xccdf_id/sds.xml scap_org.open-scap_datastream_tst scap_org.open-scap_cref_first-xccdf.xml first
@@ -359,8 +443,9 @@ test_run "eval_benchmark_id_conflict" test_eval_benchmark_id eval_benchmark_id_c
 test_run "eval_just_oval" test_oval_eval eval_just_oval/sds.xml
 test_run "eval_oval_id1" test_oval_eval_id eval_oval_id/sds.xml scap_org.open-scap_datastream_just_oval scap_org.open-scap_cref_scap-oval1.xml "oval:x:def:1"
 test_run "eval_oval_id2" test_oval_eval_id eval_oval_id/sds.xml scap_org.open-scap_datastream_just_oval scap_org.open-scap_cref_scap-oval2.xml "oval:x:def:2"
-test_run "eval_cpe" test_eval eval_cpe/sds.xml
-test_run "generate_fix_cpe" test_generate_fix eval_cpe/sds.xml
+test_run "eval_cpe" test_eval_cpe eval_cpe/sds.xml
+test_run "generate_fix_cpe_source" test_generate_fix_source eval_cpe/sds.xml
+test_run "generate_fix_cpe_results" test_generate_fix_results eval_cpe/sds.xml
 
 test_run "rds_simple" test_rds rds_simple/sds.xml rds_simple/results-xccdf.xml rds_simple/results-oval.xml
 test_run "rds_testresult" test_rds rds_testresult/sds.xml rds_testresult/results-xccdf.xml rds_testresult/results-oval.xml

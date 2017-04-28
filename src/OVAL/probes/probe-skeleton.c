@@ -33,6 +33,17 @@
 
 #include <probe-api.h>
 
+void probe_offline_mode(void)
+{
+	return;
+}
+
+void probe_preload()
+{
+	/* preload dynamic libraries */
+	return;
+}
+
 void *probe_init(void)
 {
         /* initialize stuff */

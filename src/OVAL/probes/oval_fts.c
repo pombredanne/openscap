@@ -518,9 +518,9 @@ static int process_pattern_match(const char *path, pcre **regex_out)
 		pattern = malloc(plen + 1);
 		pattern[0] = '^';
 		memcpy(pattern + 1, path, plen);
-		dW("The pattern doesn't contain a leading caret - added. "
+		dI("The pattern '%s' doesn't contain a leading caret - added. "
 		   "All paths with the 'pattern match' operation must begin "
-		   "with a caret.");
+		   "with a caret.", path);
 	} else {
 		pattern = strdup(path);
 	}
@@ -645,7 +645,7 @@ static int process_pattern_match(const char *path, pcre **regex_out)
 #undef TEST_PATH1
 #undef TEST_PATH2
 
-OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t *behaviors)
+OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t *behaviors, SEXP_t* result)
 {
 	OVAL_FTS *ofts;
 
@@ -810,14 +810,14 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 	   without targets are accepted. */
 	if (lstat(paths[0], &st) == -1) {
 		if (errno) {
-			dE("lstat() failed: errno: %d, '%s'.",
+			dD("lstat() failed: errno: %d, '%s'.",
 			   errno, strerror(errno));
 		}
 		free((void *) paths[0]);
 		return NULL;
 	}
 
-	dI("fts_open args: path: \"%s\", options: %d.", paths[0], mtc_fts_options);
+	dI("Opening file '%s'.", paths[0]);
 
 	ofts = OVAL_FTS_new();
 	/* reset errno as fts_open() doesn't do it itself. */
@@ -887,6 +887,9 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		free_zones_path_list();
 	}
 #endif
+
+	ofts->result = result;
+
 	return (ofts);
 }
 
@@ -966,11 +969,11 @@ static FTSENT *oval_fts_read_match_path(OVAL_FTS *ofts)
 			if (ret < 0) {
 				switch (ret) {
 				case PCRE_ERROR_NOMATCH:
-					dI("Partial match optimization: PCRE_ERROR_NOMATCH, skipping.");
+					dD("Partial match optimization: PCRE_ERROR_NOMATCH, skipping.");
 					fts_set(ofts->ofts_match_path_fts, fts_ent, FTS_SKIP);
 					continue;
 				case PCRE_ERROR_PARTIAL:
-					dI("Partial match optimization: PCRE_ERROR_PARTIAL, continuing.");
+					dD("Partial match optimization: PCRE_ERROR_PARTIAL, continuing.");
 					continue;
 				default:
 					dE("pcre_exec() error: %d.", ret);
@@ -1099,8 +1102,20 @@ static FTSENT *oval_fts_read_recurse_path(OVAL_FTS *ofts)
 					SEXP_t *stmp;
 
 					stmp = SEXP_string_newf("%s", fts_ent->fts_name);
-					if (probe_entobj_cmp(ofts->ofts_sfilename, stmp) == OVAL_RESULT_TRUE)
-						out_fts_ent = fts_ent;
+					oval_result_t result = probe_entobj_cmp(ofts->ofts_sfilename, stmp);
+					switch (result){
+						case OVAL_RESULT_TRUE:
+							out_fts_ent = fts_ent;
+							break;
+
+						case OVAL_RESULT_ERROR:
+							probe_cobj_set_flag(ofts->result, SYSCHAR_FLAG_ERROR);
+							break;
+
+						default:
+							break;
+					}
+
 					SEXP_free(stmp);
 				}
 			}

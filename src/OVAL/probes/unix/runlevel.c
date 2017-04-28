@@ -69,6 +69,9 @@
 #include <alloc.h>
 #include "common/debug_priv.h"
 
+#define RELEASENAME_MAX_SIZE	256
+#define RELEASENAME_PATTERN	"CPE_NAME=\"%255s\""
+
 struct runlevel_req {
         SEXP_t *service_name_ent;
         SEXP_t *runlevel_ent;
@@ -85,15 +88,10 @@ struct runlevel_rep {
 static int get_runlevel (struct runlevel_req *req, struct runlevel_rep **rep);
 
 #if defined(__linux__) || defined(__GLIBC__) || (defined(__SVR4) && defined(__sun))
-static int get_runlevel_sysv (struct runlevel_req *req, struct runlevel_rep **rep)
+static int get_runlevel_sysv (struct runlevel_req *req, struct runlevel_rep **rep, bool suse, const char *init_path, const char *rc_path)
 {
 	const char runlevel_list[] = {'0', '1', '2', '3', '4', '5', '6'};
-#if defined(__linux__) || defined(__GLIBC__)
-	const char *init_path = "/etc/rc.d/init.d";
-#elif defined(__SVR4) && defined(__sun)
-	const char *init_path = "/etc/init.d";
-#endif
-	const char *rc_path = "/etc/rc%c.d";
+
 	char pathbuf[PATH_MAX];
 	DIR *init_dir, *rc_dir;
 	struct dirent *init_dp, *rc_dp;
@@ -164,7 +162,15 @@ static int get_runlevel_sysv (struct runlevel_req *req, struct runlevel_rep **re
 				continue;
 			}
 
-			start = kill = false;
+			// On SUSE, the presence of a symbolic link to the init.d/<service> in 
+			// a runlevel directory rcx.d implies that the sevice is started on x.
+			
+			if (suse) {			
+				start = false;
+				kill = true;
+			}
+			else
+				start = kill = false;
 
 			while ((rc_dp = readdir(rc_dir)) != NULL) {
 				if (stat(rc_dp->d_name, &rc_st) != 0) {
@@ -174,15 +180,27 @@ static int get_runlevel_sysv (struct runlevel_req *req, struct runlevel_rep **re
 				}
 
 				if (init_st.st_ino == rc_st.st_ino) {
-					if (rc_dp->d_name[0] == 'S') {
-						start = true;
-						break;
-					} else if (rc_dp->d_name[0] == 'K') {
-						kill = true;
-						break;
-					} else {
-						dI("Unexpected character in filename: %c, %s/%s.",
-						   rc_dp->d_name[0], pathbuf, rc_dp->d_name);
+
+					if (suse) {
+						if (rc_dp->d_name[0] == 'S') {
+						
+							start = true;
+							kill = false;
+
+							break;
+						}
+					}						
+					else {
+						if (rc_dp->d_name[0] == 'S') {
+							start = true;
+							break;
+						} else if (rc_dp->d_name[0] == 'K') {
+							kill = true;
+							break;
+						} else {
+							dI("Unexpected character in filename: %c, %s/%s.",
+							   rc_dp->d_name[0], pathbuf, rc_dp->d_name);
+						}
 					}
 				}
 			}
@@ -205,6 +223,19 @@ static int get_runlevel_sysv (struct runlevel_req *req, struct runlevel_rep **re
 	closedir(init_dir);
 
 	return (1);
+}
+
+static int get_runlevel_redhat (struct runlevel_req *req, struct runlevel_rep **rep)
+{
+#if defined(__linux__) || defined(__GLIBC__)
+	const char *init_path = "/etc/rc.d/init.d";
+#elif defined(__SVR4) && defined(__sun)
+	const char *init_path = "/etc/init.d";
+#endif
+	const char *rc_path = "/etc/rc%c.d";
+
+	bool suse = false;
+	return (get_runlevel_sysv (req, rep, suse, init_path, rc_path));
 }
 
 static int get_runlevel_debian (struct runlevel_req *req, struct runlevel_rep **rep)
@@ -234,6 +265,15 @@ static int get_runlevel_mandriva (struct runlevel_req *req, struct runlevel_rep 
 
 static int get_runlevel_suse (struct runlevel_req *req, struct runlevel_rep **rep)
 {
+	const char *init_path = "/etc/init.d";
+	const char *rc_path = "/etc/init.d/rc%c.d";
+
+	bool suse = true;
+	return (get_runlevel_sysv (req, rep, suse, init_path, rc_path));
+}
+
+static int get_runlevel_wrlinux (struct runlevel_req *req, struct runlevel_rep **rep)
+{
         return (-1);
 }
 
@@ -244,6 +284,48 @@ static int get_runlevel_common (struct runlevel_req *req, struct runlevel_rep **
 
 #if !defined(LINUX_DISTRO)
 # define LINUX_DISTRO generic
+
+/**
+ * Parse /etc/os-release and return 1 if CPE_NAME inside starts with given
+ * value in "cpe". Otherwise returns 0.
+ *
+ * Examples (on Fedora 25):
+ * - parse_os_release("cpe:/o:fedoraproject:fedora:25") returns 1
+ * - parse_os_release("cpe:/o:fedoraproject:fedora:24") returns 0
+ * - parse_os_release("aasdfasdfasdf") returns 0
+ * - parse_os_release("cpe") returns 1 (!!!)
+ * - parse_os_release("cpe:/o:fedoraproject:fedora:*") returns 0 (!!!)
+ */
+static int parse_os_release(const char *cpe)
+{
+	FILE *osrelease = fopen("/etc/os-release", "r");
+	if (osrelease == NULL)
+		// we cound't match the CPE because we couldn't open the file
+		return 0;
+
+	char releasename[RELEASENAME_MAX_SIZE];
+	memset(releasename, 0, RELEASENAME_MAX_SIZE);
+
+	int got = -1;
+	int c;
+	do {
+		got = fscanf(osrelease, RELEASENAME_PATTERN, releasename);
+		c = fgetc(osrelease);
+	} while (got == 0 && c != EOF);
+
+	int ret;
+	if (got < 0) {
+		ret = 0; // 0 means we couldn't find a match
+		goto done;
+	}
+
+	ret = strncmp(releasename, cpe, strlen(cpe)) == 0;
+
+done:
+	fclose(osrelease);
+	return ret;
+}
+
 static int is_redhat (void)
 {
         struct stat st;
@@ -295,6 +377,11 @@ static int is_solaris (void)
         return (stat ("/etc/release", &st)   == 0);
 }
 
+static int is_wrlinux(void)
+{
+	return parse_os_release("cpe:/o:windriver:wrlinux");
+}
+
 static int is_common (void)
 {
         return (1);
@@ -307,13 +394,14 @@ typedef struct {
 
 const distro_tbl_t distro_tbl[] = {
         { &is_debian,   &get_runlevel_debian   },
-        { &is_redhat,   &get_runlevel_sysv     },
+        { &is_redhat,   &get_runlevel_redhat   },
         { &is_slack,    &get_runlevel_slack    },
         { &is_gentoo,   &get_runlevel_gentoo   },
         { &is_arch,     &get_runlevel_arch     },
         { &is_mandriva, &get_runlevel_mandriva },
         { &is_suse,     &get_runlevel_suse     },
-        { &is_solaris,  &get_runlevel_sysv     },
+        { &is_solaris,  &get_runlevel_redhat   },
+        { &is_wrlinux,  &get_runlevel_wrlinux  },
         { &is_common,   &get_runlevel_common   }
 };
 

@@ -47,7 +47,13 @@ void *probe_worker_runfn(void *arg)
 	SEXP_t *probe_res, *obj, *oid;
 	int     probe_ret;
 
+#if defined(HAVE_PTHREAD_SETNAME_NP)
+# if defined(__APPLE__)
+	pthread_setname_np("probe_worker");
+# else
 	pthread_setname_np(pthread_self(), "probe_worker");
+# endif
+#endif
 	dD("handling SEAP message ID %u", pair->pth->sid);
 	//
 	probe_ret = -1;

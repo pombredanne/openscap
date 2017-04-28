@@ -43,28 +43,11 @@
 #include <fcntl.h>
 #include <pcre.h>
 
-/* RPM headers */
-#include <rpm/rpmdb.h>
-#include <rpm/rpmlib.h>
-#include <rpm/rpmts.h>
-#include <rpm/rpmmacro.h>
-#include <rpm/rpmlog.h>
+#include "rpm-helper.h"
+
+/* Individual RPM headers */
 #include <rpm/rpmfi.h>
-#include <rpm/header.h>
 #include <rpm/rpmcli.h>
-
-#ifndef HAVE_HEADERFORMAT
-# define HAVE_LIBRPM44 1 /* hack */
-# define headerFormat(_h, _fmt, _emsg) headerSprintf((_h),( _fmt), rpmTagTable, rpmHeaderFormats, (_emsg))
-#endif
-
-#ifndef HAVE_RPMFREECRYPTO
-# define rpmFreeCrypto() while(0)
-#endif
-
-#ifndef HAVE_RPMFREEFILESYSTEMS
-# define rpmFreeFilesystems() while(0)
-#endif
 
 /* SEAP */
 #include <probe-api.h>
@@ -72,6 +55,9 @@
 #include <common/assume.h>
 #include "debug_priv.h"
 #include "probe/entcmp.h"
+
+#include <probe/probe.h>
+#include <probe/option.h>
 
 struct rpmverify_res {
 	char *name;  /**< package name */
@@ -90,32 +76,26 @@ struct rpmverify_res {
 #define RPMVERIFY_SKIP_GHOST  0x2000000000000000
 #define RPMVERIFY_RPMATTRMASK 0x00000000ffffffff
 
-struct rpmverify_global {
-	rpmts	   rpmts;
-	pthread_mutex_t mutex;
-};
+/* In rmplib older than 4.7 some of the enum values aren't defined.
+ * We need to provide fallback definitions.
+ */
+#ifndef HAVE_RPM47
+	/* *VERIFY_FILEDIGEST were introduced as aliases to *VERIFY_MD5
+	 * They all have the same value (1) - see 'rpm/rpmvf.h'.
+	 */
+	#define RPMVERIFY_FILEDIGEST RPMVERIFY_MD5
+	#define VERIFY_FILEDIGEST VERIFY_MD5
+	/* VERIFY_CAPS is not supported in older rpmlib.
+	 * We can set it to 0 because 0 is neutral to bit OR operation.
+	 */
+	#define VERIFY_CAPS 0
+#endif
 
-static struct rpmverify_global g_rpm;
+static struct rpm_probe_global g_rpm;
 
-#define RPMVERIFY_LOCK	  \
-	do { \
-		int prev_cancel_state = -1; \
-		if (pthread_mutex_lock(&g_rpm.mutex) != 0) { \
-			dE("Can't lock mutex"); \
-			return (-1); \
-		} \
-		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &prev_cancel_state); \
-	} while(0)
+#define RPMVERIFY_LOCK   RPM_MUTEX_LOCK(&g_rpm.mutex)
 
-#define RPMVERIFY_UNLOCK	  \
-	do { \
-		int prev_cancel_state = -1; \
-		if (pthread_mutex_unlock(&g_rpm.mutex) != 0) { \
-			dE("Can't unlock mutex. Aborting..."); \
-			abort(); \
-		} \
-		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &prev_cancel_state); \
-	} while(0)
+#define RPMVERIFY_UNLOCK RPM_MUTEX_UNLOCK(&g_rpm.mutex)
 
 /* modify passed-in iterator to test also given entity */
 static int adjust_filter(rpmdbMatchIterator iterator, SEXP_t *ent, rpmTag rpm_tag) {
@@ -324,8 +304,17 @@ ret:
 	return (ret);
 }
 
+void probe_preload ()
+{
+	rpmLibsPreload();
+}
+
 void *probe_init (void)
 {
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
+#ifdef HAVE_RPM46
+	rpmlogSetCallback(rpmErrorCb, NULL);
+#endif
 	if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
 		dI("rpmReadConfigFiles failed: %u, %s.", errno, strerror (errno));
 		return (NULL);
@@ -334,13 +323,12 @@ void *probe_init (void)
 	g_rpm.rpmts = rpmtsCreate();
 
 	pthread_mutex_init(&(g_rpm.mutex), NULL);
-
 	return ((void *)&g_rpm);
 }
 
 void probe_fini (void *ptr)
 {
-	struct rpmverify_global *r = (struct rpmverify_global *)ptr;
+	struct rpm_probe_global *r = (struct rpm_probe_global *)ptr;
 
 	rpmtsFree(r->rpmts);
 	rpmFreeCrypto();
@@ -447,6 +435,15 @@ int probe_main (probe_ctx *ctx, void *arg)
 	uint64_t collect_flags = 0;
 	unsigned int i;
 
+	if (arg == NULL) {
+		return PROBE_EINIT;
+	}
+
+	if (g_rpm.rpmts == NULL) {
+		probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_NOT_APPLICABLE);
+		return 0;
+	}
+
 	/*
 	 * Get refs to object entities
 	 */
@@ -496,7 +493,7 @@ int probe_main (probe_ctx *ctx, void *arg)
 
 			if (aval != NULL) {
 				if (SEXP_strcmp(aval, "true") == 0) {
-					dI("omit verify attr: %s", rpmverifyfile_bhmap[i].a_name);
+					dD("omit verify attr: %s", rpmverifyfile_bhmap[i].a_name);
 					collect_flags |= rpmverifyfile_bhmap[i].a_flag;
 				}
 

@@ -27,6 +27,7 @@ import sys
 
 try:
     from Atomic.mount import DockerMount
+    from Atomic.mount import MountError
     import inspect
 
     if "mnt_mkdir" not in inspect.getargspec(DockerMount.__init__).args:
@@ -118,19 +119,19 @@ class OscapHelpers(object):
         os.environ["OSCAP_PROBE_"
                    "PRIMARY_HOST_NAME"] = "{0}-{1}".format(target, image)
         cmd = ['oscap'] + [x for x in oscap_args]
-        try:
-            run = subprocess.check_output(cmd)
-        except Exception as error:
-            print("\nCommand: {0} failed!\n".format(" ".join(cmd)))
-            print("Error was:\n")
-            print(error)
+        oscap_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        oscap_stdout, oscap_stderr = oscap_process.communicate()
+        if oscap_process.returncode not in [0, 2]:
+            sys.stderr.write("\nCommand: {0} failed!\n".format(" ".join(cmd)))
+            sys.stderr.write("Command returned exit code {0}.\n".format(oscap_process.returncode))
+            sys.stderr.write(oscap_stderr.decode("utf-8") + "\n")
 
             # Clean up
             self._cleanup_by_path(chroot_path)
 
             sys.exit(1)
 
-        return run.decode("utf-8")
+        return oscap_stdout.decode("utf-8")
 
     def _scan_cve(self, chroot, dist, scan_args):
         '''
@@ -177,48 +178,84 @@ class OscapHelpers(object):
 
 
 class OscapScan(object):
-    def __init__(self, tmp_dir=tempfile.gettempdir(), mnt_dir=os.getcwd(),
+    def __init__(self, tmp_dir=tempfile.gettempdir(), mnt_dir=None,
                  hours_old=2):
         self.tmp_dir = tmp_dir
         self.helper = OscapHelpers(tmp_dir)
         self.mnt_dir = mnt_dir
         self.hours_old = hours_old
 
+    def _ensure_mnt_dir(self):
+        '''
+        Ensure existing temporary directory
+        '''
+        if self.mnt_dir is None:
+            return tempfile.mkdtemp()
+        else:
+            return self.mnt_dir
+
+    def _remove_mnt_dir(self, mnt_dir):
+        '''
+        Remove temporary directory, but only if the directory was not
+        passed through __init__
+        '''
+        if self.mnt_dir is None:
+            os.rmdir(mnt_dir)
+
     def scan_cve(self, image, scan_args):
         '''
         Wrapper function for scanning a container or image
         '''
+
+        mnt_dir = self._ensure_mnt_dir()
+
         # Mount the temporary image/container to the dir
-        DM = DockerMount(self.mnt_dir, mnt_mkdir=True)
-        _tmp_mnt_dir = DM.mount(image)
+        DM = DockerMount(mnt_dir, mnt_mkdir=True)
+        try:
+            _tmp_mnt_dir = DM.mount(image)
+        except MountError as e:
+            sys.stderr.write(str(e) + "\n")
+            return None
 
         # Remeber actual mounted fs in 'rootfs'
         chroot = os.path.join(_tmp_mnt_dir, 'rootfs')
 
-        # Figure out which RHEL dist is in the chroot
-        dist = self.helper._get_dist(chroot)
 
-        # Fetch the CVE input data for the dist
-        fetch = getInputCVE(self.tmp_dir)
+        try:
+            # Figure out which RHEL dist is in the chroot
+            dist = self.helper._get_dist(chroot)
 
-        # TODO
-        # This should probably be in a try/except
-        fetch._fetch_single(dist)
+            if dist is None:
+                sys.stderr.write("{0} is not based on RHEL\n".format(image))
+                return None
 
-        # Scan the chroot
-        sys.stdout.write(self.helper._scan_cve(chroot, dist, scan_args))
+            # Fetch the CVE input data for the dist
+            fetch = getInputCVE(self.tmp_dir)
+            fetch._fetch_single(dist)
 
-        # Clean up
-        self.helper._cleanup_by_path(_tmp_mnt_dir)
+            # Scan the chroot
+            sys.stdout.write(self.helper._scan_cve(chroot, dist, scan_args))
+
+        finally:
+            # Clean up
+            self.helper._cleanup_by_path(_tmp_mnt_dir)
+            self._remove_mnt_dir(mnt_dir)
 
     def scan(self, image, scan_args):
         '''
         Wrapper function for basic security scans using
         openscap
         '''
+
+        mnt_dir = self._ensure_mnt_dir()
+
         # Mount the temporary image/container to the dir
-        DM = DockerMount(self.mnt_dir, mnt_mkdir=True)
-        _tmp_mnt_dir = DM.mount(image)
+        DM = DockerMount(mnt_dir, mnt_mkdir=True)
+        try:
+            _tmp_mnt_dir = DM.mount(image)
+        except MountError as e:
+            sys.stderr.write(str(e) + "\n")
+            return None
 
         # Remeber actual mounted fs in 'rootfs'
         chroot = os.path.join(_tmp_mnt_dir, 'rootfs')
@@ -228,3 +265,4 @@ class OscapScan(object):
 
         # Clean up
         self.helper._cleanup_by_path(_tmp_mnt_dir)
+        self._remove_mnt_dir(mnt_dir)

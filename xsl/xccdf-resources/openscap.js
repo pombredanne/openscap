@@ -137,19 +137,27 @@ function resetTreetable() {
     }
 }
 
-function newGroupLine(group_name)
+function newGroupLine(key, group_name)
 {
+    // ellipsize key in case it's too long
+    var maxKeyLength = 24;
+    if (key.length > maxKeyLength)
+        key = key.substring(0, maxKeyLength - 1) + "…";
+
     return "<tr class=\"rule-overview-inner-node\" data-tt-id=\"" + group_name + "\">" +
-        "<td colspan=\"3\"><strong>" + group_name + "</strong></td></tr>";
+        "<td colspan=\"3\"><small>" + key + "</small> = <strong>" + group_name + "</strong></td></tr>";
 }
 
 var KeysEnum = {
     DEFAULT: "default",
     SEVERITY: "severity",
     RESULT: "result",
-    NIST: "http://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r4.pdf",
-    DISA: "http://iase.disa.mil/stigs/cci/Pages/index.aspx",
-    PCI_DSS: "https://www.pcisecuritystandards.org/documents/PCI_DSS_v3.pdf"
+    NIST: "NIST SP 800-53 ID",
+    DISA_CCI: "DISA CCI",
+    DISA_SRG: "DISA SRG",
+    DISA_STIG_ID: "DISA STIG ID",
+    PCI_DSS: "PCI DSS Requirement",
+    CIS: "CIS Recommendation"
 };
 
 /* This function returns an array of target groups indentifiers */
@@ -179,44 +187,27 @@ function sortGroups(groups, key)
     switch(key) {
     case KeysEnum.SEVERITY:
         return ["high", "medium", "low"];
-    case KeysEnum.DISA:
+    case KeysEnum.RESULT:
+	return groups.sort();
+    default:
         return groups.sort(function(a, b){
-            return parseInt(a) - parseInt(b);
-        });
-    case KeysEnum.NIST:
-        return groups.sort(function(a, b){
-            var regex = /(\w\w)-(\d+)(.*)/;
-            var a_parts = regex.exec(a);
-            var b_parts = regex.exec(b);
-            if (a_parts == null)
-                return 1;
-            if (b_parts == null)
-                return -1;
-            var result = a_parts[1].localeCompare(b_parts[1]);
-            if (result != 0) {
-                return result;
-            } else {
-                result = a_parts[2] - b_parts[2];
-                if (result != 0) {
-                    return result;
+            var a_parts = a.split(/[.()-]/);
+            var b_parts = b.split(/[.()-]/);
+            var result = 0;
+            var min_length = Math.min(a_parts.length, b_parts.length);
+            var number = /^[1-9][0-9]*$/;
+            for (i = 0; i < min_length && result == 0; i++) {
+                if (a_parts[i].match(number) == null || a_parts[i].match(number) == null) {
+                    result = a_parts[i].localeCompare(b_parts[i]);
                 } else {
-                    return a_parts[3].localeCompare(b_parts[3]);
+                    result = parseInt(a_parts[i]) - parseInt(b_parts[i]);
                 }
             }
+            if (result == 0) {
+                result = a_parts.length - b_parts.length;
+            }
+            return result;
         });
-    case KeysEnum.PCI_DSS:
-        return groups.sort(function(a, b){
-            var regex = /Req-(\d+)/;
-            var a_parts = regex.exec(a);
-            var b_parts = regex.exec(b);
-            if (a_parts == null)
-                return 1;
-            if (b_parts == null)
-                return -1;
-            return parseInt(a_parts[1]) - parseInt(b_parts[1]);
-        });
-    default:
-        return groups.sort();
     }
 }
 
@@ -237,7 +228,7 @@ function groupRulesBy(key) {
             var target_group = target_groups[i];
             if (!lines.hasOwnProperty(target_group)) {
                 /* Create a new group */
-                lines[target_group] = [newGroupLine(target_group)];
+                lines[target_group] = [newGroupLine(key, target_group)];
             }
             var clone = $(this).clone();
             clone.attr("data-tt-id", id + "copy" + i);

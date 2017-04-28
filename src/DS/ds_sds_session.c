@@ -24,6 +24,7 @@
 #include <config.h>
 #endif
 
+#include "common/debug_priv.h"
 #include "common/oscap_acquire.h"
 #include "common/alloc.h"
 #include "common/elements.h"
@@ -51,7 +52,16 @@ struct ds_sds_session {
 	const char *datastream_id;              ///< ID of selected datastream
 	const char *checklist_id;               ///< ID of selected checklist
 	struct oscap_htable *component_sources;	///< oscap_source for parsed components
+	bool fetch_remote_resources;            ///< Allows loading of external components;
+	download_progress_calllback_t progress;	///< Callback to report progress of download.
 };
+
+/**
+ * "null object" for download callback
+ */
+void download_progress_empty_calllback (bool warning, const char * format, ...) {
+	; // no action
+}
 
 struct ds_sds_session *ds_sds_session_new_from_source(struct oscap_source *source)
 {
@@ -63,6 +73,7 @@ struct ds_sds_session *ds_sds_session_new_from_source(struct oscap_source *sourc
 	struct ds_sds_session *sds_session = (struct ds_sds_session *) oscap_calloc(1, sizeof(struct ds_sds_session));
 	sds_session->source = source;
 	sds_session->component_sources = oscap_htable_new();
+	sds_session->progress = download_progress_empty_calllback;
 	return sds_session;
 }
 
@@ -104,6 +115,7 @@ static const char *ds_sds_session_get_temp_dir(struct ds_sds_session *session)
 {
 	if (session->temp_dir == NULL) {
 		session->temp_dir = oscap_acquire_temp_dir();
+		dD("SDS session created temporary directory '%s'.", session->temp_dir);
 	}
 	return session->temp_dir;
 }
@@ -157,6 +169,14 @@ struct oscap_htable *ds_sds_session_get_component_sources(struct ds_sds_session 
 	return session->component_sources;
 }
 
+const char *ds_sds_session_get_readable_origin(const struct ds_sds_session *session)
+{
+	if (session->source == NULL)
+		return NULL;
+
+	return oscap_source_readable_origin(session->source);
+}
+
 struct oscap_source *ds_sds_session_select_checklist(struct ds_sds_session *session, const char *datastream_id, const char *component_id, const char *benchmark_id)
 {
 	session->datastream_id = datastream_id;
@@ -164,7 +184,7 @@ struct oscap_source *ds_sds_session_select_checklist(struct ds_sds_session *sess
 
 	// We only use benchmark ID if datastream ID and/or component ID were NOT supplied.
 	if (!datastream_id && !component_id && benchmark_id) {
-		if (ds_sds_index_select_checklist_by_benchmark_id(ds_sds_session_get_sds_idx(session), 	benchmark_id,
+		if (ds_sds_index_select_checklist_by_benchmark_id(ds_sds_session_get_sds_idx(session), benchmark_id,
 				(const char **) &(session->datastream_id), (const char **) &(session->checklist_id)) != 0) {
 			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Failed to locate a datastream with component-ref "
 				"that points to a component containing Benchmark with ID '%s'.", benchmark_id);
@@ -187,13 +207,13 @@ struct oscap_source *ds_sds_session_select_checklist(struct ds_sds_session *sess
 			return NULL;
 		}
 	}
-	if (ds_sds_session_register_component_with_dependencies(session, "checklists", session->checklist_id, "xccdf.xml") != 0) {
+	if (ds_sds_session_register_component_with_dependencies(session, "checklists", session->checklist_id, session->checklist_id) != 0) {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not extract %s with all dependencies from datastream.", session->checklist_id);
 		return NULL;
 	}
-	struct oscap_source *xccdf = oscap_htable_get(session->component_sources, "xccdf.xml");
+	struct oscap_source *xccdf = oscap_htable_get(session->component_sources, session->checklist_id);
 	if (xccdf == NULL) {
-		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Internal error: Could not acquire handle to xccdf.xml source.");
+		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Internal error: Could not acquire handle to '%s' source.", session->checklist_id);
 	}
 	return xccdf;
 }
@@ -233,7 +253,7 @@ xmlDoc *ds_sds_session_get_xmlDoc(struct ds_sds_session *session)
 int ds_sds_session_register_component_source(struct ds_sds_session *session, const char *relative_filepath, struct oscap_source *component)
 {
 	if (!oscap_htable_add(session->component_sources, relative_filepath, component)) {
-		oscap_seterr(OSCAP_EFAMILY_OSCAP, "File %s has already been register with Source DataStream session: %s",
+		dW("File %s has already been registered in Source DataStream session: %s",
 			relative_filepath, oscap_source_readable_origin(session->source));
 		return -1;
 	}
@@ -244,6 +264,24 @@ struct oscap_source *ds_sds_session_get_component_by_href(struct ds_sds_session 
 {
 	struct oscap_source *component = oscap_htable_get(session->component_sources, href);
 	return component;
+}
+
+bool ds_sds_session_can_register_component(struct ds_sds_session *session, const char *container_name, const char *component_id)
+{
+	xmlNode *datastream = ds_sds_session_get_selected_datastream(session);
+	if (!datastream)
+		return false;
+
+	xmlNodePtr container = node_get_child_element(datastream, container_name);
+	if (!container)
+		return false;
+
+	// it's fine if component_id is NULL, it will return any component in that case
+	xmlNode *component_ref = containter_get_component_ref_by_id(container, component_id);
+	if (component_ref == NULL)
+		return false;
+
+	return true;
 }
 
 int ds_sds_session_register_component_with_dependencies(struct ds_sds_session *session, const char *container_name, const char *component_id, const char *target_filename)
@@ -270,7 +308,7 @@ int ds_sds_session_register_component_with_dependencies(struct ds_sds_session *s
 		if (target_filename == NULL) {
 			res = ds_sds_dump_component_ref(component_ref, session);
 		} else {
-			res = ds_sds_dump_component_ref_as(component_ref, session, ds_sds_session_get_target_dir(session), target_filename);
+			res = ds_sds_dump_component_ref_as(component_ref, session, "." , target_filename);
 		}
 	}
 	else {
@@ -282,9 +320,25 @@ int ds_sds_session_register_component_with_dependencies(struct ds_sds_session *s
 	return res;
 }
 
+void ds_sds_session_set_remote_resources(struct ds_sds_session *session, bool allowed, download_progress_calllback_t callback)
+{
+	session->fetch_remote_resources = allowed;
+	session->progress = (callback != NULL) ? callback : download_progress_empty_calllback;
+}
+
 int ds_sds_session_dump_component_files(struct ds_sds_session *session)
 {
 	return ds_dump_component_sources(session->component_sources, ds_sds_session_get_target_dir(session));
+}
+
+bool ds_sds_session_fetch_remote_resources(struct ds_sds_session *session)
+{
+	return session->fetch_remote_resources;
+}
+
+download_progress_calllback_t ds_sds_session_remote_resources_progress(struct ds_sds_session *session)
+{
+	return session->progress;
 }
 
 char *ds_sds_session_get_html_guide(struct ds_sds_session *session, const char *profile_id)

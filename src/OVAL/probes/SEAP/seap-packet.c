@@ -730,13 +730,12 @@ eloop_exit:
                         } else {
                                 SEXP_list_free (sexp_buffer);
                                 SEXP_psetup_free (psetup);
-				SEXP_free(sexp_buffer);
                                 dI("eloop_restart");
                                 goto eloop_start;
                         }
                 } else {
 			if (pstate == NULL || SEXP_pstate_errorp(pstate)) {
-				dI("FAIL: S-exp parsing error, buffer: length: %ld, content:\n%*.s",
+				dI("FAIL: S-exp parsing error, buffer: length: %ld, content:\n%.*s",
 				   data_length, data_length, data_buffer);
 
 				SEXP_psetup_free(psetup);

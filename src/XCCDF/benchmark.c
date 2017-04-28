@@ -145,7 +145,6 @@ bool xccdf_benchmark_parse(struct xccdf_item * benchmark, xmlTextReaderPtr reade
 	xccdf_benchmark_set_schema_version(XBENCHMARK(benchmark), xccdf_detect_version_parser(reader));
 
 	if (!xccdf_item_process_attributes(benchmark, reader)) {
-		xccdf_benchmark_free(XBENCHMARK(benchmark));
 		return false;
 	}
 	benchmark->sub.benchmark.style = xccdf_attribute_copy(reader, XCCDFA_STYLE);
@@ -328,8 +327,17 @@ xmlNode *xccdf_benchmark_to_dom(struct xccdf_benchmark *benchmark, xmlDocPtr doc
 	oscap_string_iterator_free(platforms);
 
 	const char *version = xccdf_benchmark_get_version(benchmark);
-	if (version)
-		xmlNewTextChild(root_node, ns_xccdf, BAD_CAST "version", BAD_CAST version);
+	if (version) {
+		xmlNodePtr version_node = xmlNewTextChild(root_node, ns_xccdf, BAD_CAST "version", BAD_CAST version);
+
+		const char *version_time = xccdf_benchmark_get_version_time(benchmark);
+		if (version_time)
+			xmlNewProp(version_node, BAD_CAST "time", BAD_CAST version_time);
+
+		const char *version_update = xccdf_benchmark_get_version_update(benchmark);
+		if (version_update)
+			xmlNewProp(version_node, BAD_CAST "update", BAD_CAST version_update);
+	}
 
 	struct oscap_string_iterator* metadata = xccdf_item_get_metadata(XITEM(benchmark));
 	while (oscap_string_iterator_has_more(metadata))
@@ -689,8 +697,8 @@ bool xccdf_add_item(struct oscap_list *list, struct xccdf_item *parent, struct x
 	assert(list != NULL);
 	assert(item != NULL);
 
-    if (parent == NULL)
-        return false;
+	if (parent == NULL)
+		return false;
 
 	struct xccdf_benchmark *bench = xccdf_item_get_benchmark(parent);
 
@@ -707,7 +715,7 @@ bool xccdf_add_item(struct oscap_list *list, struct xccdf_item *parent, struct x
 	}
 	else return true;
 
-    return false;
+	return false;
 }
 
 struct xccdf_item *
