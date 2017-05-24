@@ -13,7 +13,10 @@ libprobe_la_CFLAGS=	@pthread_CFLAGS@				\
 			-DTHREAD_SAFE					\
 			-DSEAP_THREAD_SAFE
 
-libprobe_la_SOURCES=	fini.c			\
+libprobe_la_SOURCES=	\
+			fini.c		\
+			offline_mode.c		\
+			preload.c		\
 			init.c			\
 			main.c			\
 			input_handler.c		\

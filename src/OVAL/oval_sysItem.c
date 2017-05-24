@@ -236,12 +236,12 @@ int oval_sysitem_parse_tag(xmlTextReaderPtr reader, struct oval_parser_context *
 
 		return_code = oval_parser_parse_tag(reader, context, &_oval_sysitem_parse_subtag, sysitem);
 	} else {
-		dW("Unknown sysitem: %s\n", tagname);
+		dW("Unknown sysitem: %s", tagname);
 		return_code = oval_parser_skip_tag(reader, context);
 	}
 
         if (return_code != 0) {
-                dW("Parsing of <%s> terminated by an error at line %d.\n", tagname, xmlTextReaderGetParserLineNumber(reader));
+                dW("Parsing of <%s> terminated by an error at line %d.", tagname, xmlTextReaderGetParserLineNumber(reader));
         }
 
 	oscap_free(tagname);
@@ -260,13 +260,10 @@ void oval_sysitem_to_dom(struct oval_sysitem *sysitem, xmlDoc * doc, xmlNode * p
 			char tagname[strlen(subtype_text) + 6];
 			sprintf(tagname, "%s_item", subtype_text);
 
-			 /* get family URI */
-			const char *family = oval_family_get_text(oval_subtype_get_family(subtype));
-			char family_uri[strlen((const char *)OVAL_SYSCHAR_NAMESPACE) + strlen(family) + 2];
-			sprintf(family_uri, "%s#%s", OVAL_SYSCHAR_NAMESPACE, family);
+			oval_family_t family = oval_subtype_get_family(subtype);
 
 			/* search namespace & create child */
-			xmlNs *ns_family = xmlSearchNsByHref(doc, parent, BAD_CAST family_uri);
+			xmlNs *ns_family = oval_family_to_namespace(family, (const char *) OVAL_SYSCHAR_NAMESPACE, doc, parent);
 			xmlNode *tag_sysitem = xmlNewTextChild(parent, ns_family, BAD_CAST tagname, NULL);
 
 			/* attributes */

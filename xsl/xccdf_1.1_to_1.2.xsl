@@ -33,6 +33,11 @@ Authors:
 
   <xsl:param name="reverse_DNS"/>
 
+  <xsl:key name="profiles" match="/xccdf_11:Benchmark/xccdf_11:Profile" use="@id"/>
+  <xsl:key name="rules" match="/xccdf_11:Benchmark//xccdf_11:Rule" use="@id"/>
+  <xsl:key name="groups" match="/xccdf_11:Benchmark//xccdf_11:Group" use="@id"/>
+  <xsl:key name="values" match="/xccdf_11:Benchmark//xccdf_11:Value" use="@id"/>
+
   <!-- This is the generic matched template that by default copies everything
        verbatim, every template that is more specifically matched that this
        will take precedence -->  
@@ -124,6 +129,11 @@ Authors:
     </xsl:attribute>
   </xsl:template>
 
+  <!-- Change style from SCAP_1.1 to SCAP_1.2 -->
+  <xsl:template match="@style[parent::xccdf_11:Benchmark][.='SCAP_1.1']">
+    <xsl:attribute name="style">SCAP_1.2</xsl:attribute>
+  </xsl:template>
+
   <!-- idrefs -->
   <!-- we want to migrate all @idrefs except platform's, we don't migrate requires/@idref here, it's handled elsewhere -->
   <xsl:template match="@idref[parent::xccdf_11:*][not(parent::xccdf_11:platform)][not(parent::xccdf_11:requires)]">
@@ -134,19 +144,19 @@ Authors:
            change its format accordingly -->
 
       <xsl:choose>
-        <xsl:when test="//xccdf_11:Profile[@id = $old_idref]">
+        <xsl:when test="key('profiles', $old_idref)">
           <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_profile_', $old_idref)"/>
         </xsl:when>
 
-        <xsl:when test="//xccdf_11:Rule[@id = $old_idref]">
+        <xsl:when test="key('rules', $old_idref)">
           <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_rule_', $old_idref)"/>
         </xsl:when>
 
-        <xsl:when test="//xccdf_11:Group[@id = $old_idref]">
+        <xsl:when test="key('groups', $old_idref)">
           <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_group_', $old_idref)"/>
         </xsl:when>
 
-        <xsl:when test="//xccdf_11:Value[@id = $old_idref]">
+        <xsl:when test="key('values', $old_idref)">
           <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_value_', $old_idref)"/>
         </xsl:when>
         
@@ -169,10 +179,10 @@ Authors:
       </xsl:when>
       <xsl:otherwise>
         <xsl:choose>
-          <xsl:when test="//xccdf_11:Group[@id = substring-before($string, ' ')]">
+          <xsl:when test="key('groups', substring-before($string, ' '))">
            <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_group_', substring-before($string, ' '))"/>
           </xsl:when>
-          <xsl:when test="//xccdf_11:Rule[@id = substring-before($string, ' ')]">
+          <xsl:when test="key('rules', substring-before($string, ' '))">
             <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_rule_', substring-before($string, ' '))"/>
           </xsl:when>
           <xsl:otherwise>
@@ -207,7 +217,7 @@ Authors:
            change its format accordingly -->
 
       <xsl:choose>
-        <xsl:when test="//xccdf_11:Value[@id = $old_value_id]">
+        <xsl:when test="key('values', $old_value_id)">
           <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_value_', $old_value_id)"/>
         </xsl:when>
 
@@ -225,7 +235,7 @@ Authors:
 
     <xsl:attribute name="extends">
       <xsl:choose>
-       <xsl:when test="//xccdf_11:Group[@id = $old_extends]">
+       <xsl:when test="key('groups', $old_extends)">
           <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_group_', $old_extends)"/>
         </xsl:when>
         <xsl:otherwise>
@@ -242,7 +252,7 @@ Authors:
 
     <xsl:attribute name="extends">
       <xsl:choose>
-       <xsl:when test="//xccdf_11:Rule[@id = $old_extends]">
+       <xsl:when test="key('rules', $old_extends)">
           <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_rule_', $old_extends)"/>
         </xsl:when>
         <xsl:otherwise>
@@ -259,7 +269,7 @@ Authors:
 
     <xsl:attribute name="extends">
       <xsl:choose>
-       <xsl:when test="//xccdf_11:Value[@id = $old_extends]">
+       <xsl:when test="key('values', $old_extends)">
           <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_value_', $old_extends)"/>
         </xsl:when>
         <xsl:otherwise>
@@ -276,7 +286,7 @@ Authors:
 
     <xsl:attribute name="extends">
       <xsl:choose>
-       <xsl:when test="//xccdf_11:Profile[@id = $old_extends]">
+       <xsl:when test="key('profiles', $old_extends)">
           <xsl:value-of select="concat('xccdf_', $reverse_DNS, '_profile_', $old_extends)"/>
         </xsl:when>
         <xsl:otherwise>

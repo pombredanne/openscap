@@ -468,6 +468,9 @@ void probe_tfc54behaviors_canonicalize(SEXP_t **behaviors);
 #define PROBECMD_OBJ_EVAL  2 /**< Object eval command code */
 #define PROBECMD_RESET     3 /**< Reset command code */
 
+
+void probe_offline_mode(void);
+void probe_preload(void);
 void *probe_init(void) __attribute__ ((unused));
 void probe_fini(void *) __attribute__ ((unused));
 
@@ -513,7 +516,7 @@ SEXP_t *probe_item_create(oval_subtype_t item_subtype, probe_elmatr_t *item_attr
 #define PROBE_ENT_AREF(ent, dst, attr_name, invalid_exp)		\
 	do {								\
 		if (((dst) = probe_ent_getattrval(ent, attr_name)) == NULL) { \
-			dE("Attribute `%s' is missing!\n", attr_name);	\
+			dE("Attribute `%s' is missing!", attr_name);	\
 			invalid_exp					\
 		}               					\
 	} while(0)
@@ -523,11 +526,11 @@ SEXP_t *probe_item_create(oval_subtype_t item_subtype, probe_elmatr_t *item_attr
 		SEXP_t *___r;					\
 								\
 		if ((___r = probe_ent_getval(ent)) == NULL) {	\
-			dW("Entity has no value!\n");		\
+			dW("Entity has no value!");		\
 			invalid_exp				\
 		} else {					\
 			if (!SEXP_stringp(___r)) {		\
-				dE("Invalid type\n");		\
+				dE("Invalid type");		\
 				SEXP_free(___r);		\
 				invalid_exp			\
 			}					\
@@ -546,11 +549,11 @@ SEXP_t *probe_item_create(oval_subtype_t item_subtype, probe_elmatr_t *item_attr
 		SEXP_t *___r;					\
 								\
 		if ((___r = probe_ent_getval(ent)) == NULL) {	\
-			dW("Entity has no value!\n");		\
+			dW("Entity has no value!");		\
 			nil_exp;				\
 		} else {					\
 			if (!SEXP_numberp(___r)) {		\
-				dE("Invalid type\n");		\
+				dE("Invalid type");		\
 				SEXP_free(___r);		\
 				invalid_exp;			\
 			} else {				\
@@ -569,7 +572,8 @@ int probe_item_add_msg(SEXP_t *item, oval_message_level_t msglvl, char *msgfmt, 
 SEXP_t *probe_entval_from_cstr(oval_datatype_t type, const char *value, size_t vallen);
 SEXP_t *probe_ent_from_cstr(const char *name, oval_datatype_t type, const char *value, size_t vallen);
 
-oval_version_t probe_obj_get_schema_version(const SEXP_t *obj);
+OSCAP_DEPRECATED(oval_version_t probe_obj_get_schema_version(const SEXP_t *obj));
+oval_schema_version_t probe_obj_get_platform_schema_version(const SEXP_t *obj);
 
 /**
  * Get object entity mask

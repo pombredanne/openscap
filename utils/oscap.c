@@ -1,5 +1,5 @@
 /*
- * Copyright 2010--2014 Red Hat Inc., Durham, North Carolina.
+ * Copyright 2010--2017 Red Hat Inc., Durham, North Carolina.
  * All Rights Reserved.
  *
  * This library is free software; you can redistribute it and/or
@@ -108,7 +108,7 @@ bool getopt_root(int argc, char **argv, struct oscap_action *action)
 
 static int print_versions(const struct oscap_action *action)
 {
-	printf("OpenSCAP command line tool (oscap) %s\n" "Copyright 2009--2014 Red Hat Inc., Durham, North Carolina.\n\n",
+	printf("OpenSCAP command line tool (oscap) %s\n" "Copyright 2009--2017 Red Hat Inc., Durham, North Carolina.\n\n",
 		oscap_get_version());
 
 	printf("==== Supported specifications ====\n");
@@ -126,7 +126,8 @@ static int print_versions(const struct oscap_action *action)
 	const char * const *known_plugins = check_engine_plugin_get_known_plugins();
 	bool known_plugin_found = false;
 	while (*known_plugins) {
-		struct check_engine_plugin_def *plugin = check_engine_plugin_load(*known_plugins);
+		// try to load the plugin but output no errors if it fails (quiet=true)
+		struct check_engine_plugin_def *plugin = check_engine_plugin_load2(*known_plugins, true);
 		if (plugin) {
 			printf("%s (from %s)\n", check_engine_plugin_get_capabilities(plugin), *known_plugins);
 			check_engine_plugin_unload(plugin);
@@ -181,7 +182,9 @@ static int print_versions(const struct oscap_action *action)
 	printf("\n");
 
 	printf("==== Supported OVAL objects and associated OpenSCAP probes ====\n");
-	oval_probe_meta_list(stdout, OVAL_PROBEMETA_LIST_DYNAMIC);
+	printf("%-14s%-28s %-28s\n", "OVAL family", "OVAL object", "OpenSCAP probe");
+	printf("%-14s%-28s %-28s\n", "----------", "----------", "----------");
+	oval_probe_meta_list(stdout, OVAL_PROBEMETA_LIST_DYNAMIC | OVAL_PROBEMETA_LIST_OTYPE);
 
 	return OSCAP_OK;
 }

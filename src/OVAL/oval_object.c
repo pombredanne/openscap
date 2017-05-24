@@ -41,6 +41,7 @@
 #include "common/debug_priv.h"
 #include "common/elements.h"
 #include "public/oval_version.h"
+#include "public/oval_schema_version.h"
 
 typedef struct oval_object {
 	struct oval_definition_model *model;
@@ -133,18 +134,22 @@ int oval_object_get_version(struct oval_object *object)
 
 oval_version_t oval_object_get_schema_version(struct oval_object *object)
 {
-	struct oval_generator *gen;
-	const char *ver_str;
-
 	__attribute__nonnull__(object);
 
 	if (object->model == NULL)
 		return OVAL_VERSION_INVALID;
+	return oval_definition_model_get_schema_version(object->model);
+}
 
-	gen = oval_definition_model_get_generator(object->model);
-	ver_str = oval_generator_get_schema_version(gen);
-
-	return oval_version_from_cstr(ver_str);
+oval_schema_version_t oval_object_get_platform_schema_version(struct oval_object *object)
+{
+	__attribute__nonnull__(object);
+	if (object->model == NULL) {
+		return OVAL_SCHEMA_VERSION_INVALID;
+	}
+	oval_family_t family = oval_object_get_family(object);
+	const char *platform = oval_family_get_text(family);
+	return oval_definition_model_get_platform_schema_version(object->model, platform);
 }
 
 struct oval_object_content_iterator *oval_object_get_object_contents(struct
@@ -336,7 +341,7 @@ static int _oval_object_parse_tag(xmlTextReaderPtr reader, struct oval_parser_co
 	}
 
 	if (return_code != 0) {
-		dW("Parsing of <%s> terminated by an error at line %d.\n", tagname, xmlTextReaderGetParserLineNumber(reader));
+		dW("Parsing of <%s> terminated by an error at line %d.", tagname, xmlTextReaderGetParserLineNumber(reader));
 	}
 
 	oscap_free(tagname);
@@ -357,7 +362,7 @@ int oval_object_parse_tag(xmlTextReaderPtr reader, struct oval_parser_context *c
 
 	oval_subtype_t subtype = oval_subtype_parse(reader);
 	if ( subtype == OVAL_SUBTYPE_UNKNOWN) {
-		oscap_dlprintf(DBG_E,  "Unknown object %s.\n", id);
+		dE("Unknown object %s.", id);
 		ret = -1;
 		goto cleanup;
 	}
@@ -390,7 +395,7 @@ xmlNode *oval_object_to_dom(struct oval_object *object, xmlDoc * doc, xmlNode * 
 	/* skip unknown object */
 	oval_subtype_t subtype = oval_object_get_subtype(object);
         if ( subtype == OVAL_SUBTYPE_UNKNOWN ) {
-                oscap_dlprintf(DBG_E, "Unknown Object %s.\n", oval_object_get_id(object));
+                dE("Unknown Object %s.", oval_object_get_id(object));
                 return object_node;
         }
 
@@ -399,14 +404,10 @@ xmlNode *oval_object_to_dom(struct oval_object *object, xmlDoc * doc, xmlNode * 
 	char object_name[strlen(subtype_text) + 8];
 	sprintf(object_name, "%s_object", subtype_text);
 
-	/* get family URI */
 	oval_family_t family = oval_object_get_family(object);
-	const char *family_text = oval_family_get_text(family);
-	char family_uri[strlen((const char *)OVAL_DEFINITIONS_NAMESPACE) + strlen(family_text) + 2];
-	sprintf(family_uri,"%s#%s", OVAL_DEFINITIONS_NAMESPACE, family_text);
 
 	/* search namespace & create child */
-	xmlNs *ns_family = xmlSearchNsByHref(doc, parent, BAD_CAST family_uri);
+	xmlNs *ns_family = oval_family_to_namespace(family, (const char *) OVAL_DEFINITIONS_NAMESPACE, doc, parent);
 	object_node = xmlNewTextChild(parent, ns_family, BAD_CAST object_name, NULL);
 
 	char *id = oval_object_get_id(object);

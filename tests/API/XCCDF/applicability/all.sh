@@ -12,20 +12,14 @@ function test_api_xccdf_cpe_eval {
     local CPE_DICT=$srcdir/$2
     local EXPECTED_NA=$3
 
-    local TMP_RESULTS=`mktemp`
-    $OSCAP xccdf eval --cpe $CPE_DICT --results $TMP_RESULTS $INPUT
+    result=`mktemp`
+    $OSCAP xccdf eval --cpe $CPE_DICT --results $result $INPUT
     if [ "$?" != "0" ]; then
         return 1
     fi
 
-    local NOTAPPLICABLE_COUNT=$($XPATH $TMP_RESULTS 'count(//result[text()="notapplicable"])')
-    rm -f $TMP_RESULTS
-
-    if [ "$NOTAPPLICABLE_COUNT" == "$EXPECTED_NA" ]; then
-        return 0
-    fi
-
-    return 1
+    assert_exists $EXPECTED_NA '//result[text()="notapplicable"]'
+    rm -f $result
 }
 
 function test_api_xccdf_cpe2_eval {
@@ -33,45 +27,34 @@ function test_api_xccdf_cpe2_eval {
     local CPE_DICT=$srcdir/$2
     local EXPECTED_NA=$3
 
-    local TMP_RESULTS=`mktemp`
-    $OSCAP xccdf eval --cpe $CPE_DICT --results $TMP_RESULTS $INPUT
+    result=`mktemp`
+    $OSCAP xccdf eval --cpe $CPE_DICT --results $result $INPUT
     if [ "$?" != "0" ]; then
         return 1
     fi
 
-    local NOTAPPLICABLE_COUNT=$($XPATH $TMP_RESULTS 'count(//result[text()="notapplicable"])')
-    rm -f $TMP_RESULTS
-
-    if [ "$NOTAPPLICABLE_COUNT" == "$EXPECTED_NA" ]; then
-        return 0
-    fi
-
-    return 1
+    assert_exists $EXPECTED_NA '//result[text()="notapplicable"]'
+    rm -f $result
 }
 
 function test_api_xccdf_embedded_cpe_eval {
     local INPUT=$srcdir/$1
     local EXPECTED_NA=$2
 
-    local TMP_RESULTS=`mktemp`
-    $OSCAP xccdf eval --results $TMP_RESULTS $INPUT
+    result=`mktemp`
+    $OSCAP xccdf eval --results $result $INPUT
     if [ "$?" != "0" ]; then
         return 1
     fi
 
-    local NOTAPPLICABLE_COUNT=$($XPATH $TMP_RESULTS 'count(//result[text()="notapplicable"])')
-    rm -f $TMP_RESULTS
-
-    if [ "$NOTAPPLICABLE_COUNT" == "$EXPECTED_NA" ]; then
-        return 0
-    fi
-
-    return 1
+    assert_exists $EXPECTED_NA '//result[text()="notapplicable"]'
+    rm -f $result
 }
 # Testing.
 
 test_init "test_api_xccdf_applicability.log"
 
+test_run "Populate TestResult/platform sub element" $srcdir/test_platform_element.sh
 test_run "test_api_xccdf_applicability_cpe_applicable_rule" test_api_xccdf_cpe_eval applicable-rule-xccdf.xml cpe-dict.xml 0
 test_run "test_api_xccdf_applicability_cpe_applicable_embedded_rule" test_api_xccdf_embedded_cpe_eval applicable-rule-embedded-xccdf.xml 0
 test_run "test_api_xccdf_applicability_cpe_applicable_benchmark" test_api_xccdf_cpe_eval applicable-benchmark-xccdf.xml cpe-dict.xml 0

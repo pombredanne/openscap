@@ -36,7 +36,9 @@
 #include <string.h>
 #include <ctype.h>
 #include "oval_agent_api_impl.h"
+#include "oval_probe_impl.h"
 #include "results/oval_results_impl.h"
+#include "results/oval_status_counter.h"
 #include "oval_cmp_impl.h"
 #include "adt/oval_collection_impl.h"
 #include "adt/oval_string_map_impl.h"
@@ -235,7 +237,7 @@ oval_result_t ores_get_result_bychk(struct oresults *ores, oval_check_t check)
 		break;
 	case OVAL_CHECK_NONE_EXIST:
 		dW("The 'none exist' CheckEnumeration value has been deprecated. "
-		   "Converted to check='none satisfy'.\n");
+		   "Converted to check='none satisfy'.");
 		/* FALLTHROUGH */
 	case OVAL_CHECK_NONE_SATISFY:
 		if (ores->true_cnt > 0) {
@@ -410,13 +412,17 @@ static inline oval_result_t _evaluate_sysent_with_variable(struct oval_syschar_m
 			var_val = oval_value_iterator_next(val_itr);
 			state_entity_val_text = oval_value_get_text(var_val);
 			if (state_entity_val_text == NULL) {
-				dE("Found NULL variable value text.\n");
+				dE("Found NULL variable value text.");
 				ores_add_res(&var_ores, OVAL_RESULT_ERROR);
 				break;
 			}
 			oval_datatype_t state_entity_val_datatype = oval_value_get_datatype(var_val);
 
 			var_val_res = oval_ent_cmp_str(state_entity_val_text, state_entity_val_datatype, item_entity, state_entity_operation);
+			if (var_val_res == OVAL_RESULT_ERROR) {
+				dE("Error occured when comparing a variable '%s' value '%s' with collected item entity = '%s'",
+					oval_variable_get_id(state_entity_var), state_entity_val_text, oval_sysent_get_value(item_entity));
+			}
 			ores_add_res(&var_ores, var_val_res);
 		}
 		oval_value_iterator_free(val_itr);
@@ -481,9 +487,11 @@ static oval_result_t eval_item(struct oval_syschar_model *syschar_model, struct 
 		char *state_entity_name;
 		oval_operation_t state_entity_operation;
 		oval_check_t entity_check;
+		oval_existence_t check_existence;
 		oval_result_t ste_ent_res;
 		struct oval_sysent_iterator *item_entities_itr;
 		struct oresults ent_ores;
+		struct oval_status_counter counter;
 		bool found_matching_item;
 
 		if ((content = oval_state_content_iterator_next(state_contents_itr)) == NULL) {
@@ -507,24 +515,27 @@ static oval_result_t eval_item(struct oval_syschar_model *syschar_model, struct 
 			 * (textfilecontent_item). In OVAL 5.3 and below this syschar did not hold any usable
 			 * information ('text' ent). In OVAL 5.4 textfilecontent_test was deprecated. But the
 			 * 'text' ent has been added to textfilecontent_item, making it potentially usable. */
-			oval_version_t over = oval_state_get_schema_version(state);
-			if (oval_version_cmp(over, OVAL_VERSION(5.4)) >= 0) {
+			oval_schema_version_t over = oval_state_get_platform_schema_version(state);
+			if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.4)) >= 0) {
 				/* The OVAL-5.3 does not have textfilecontent_item/text */
 				state_entity_name = "text";
 			}
 		}
 
 		entity_check = oval_state_content_get_ent_check(content);
+		check_existence = oval_state_content_get_check_existence(content);
 		state_entity_operation = oval_entity_get_operation(state_entity);
 
 		ores_clear(&ent_ores);
 		found_matching_item = false;
+		oval_status_counter_clear(&counter);
 
 		item_entities_itr = oval_sysitem_get_sysents(cur_sysitem);
 		while (oval_sysent_iterator_has_more(item_entities_itr)) {
 			struct oval_sysent *item_entity;
 			oval_result_t ent_val_res;
 			char *item_entity_name;
+			oval_syschar_status_t item_status;
 
 			item_entity = oval_sysent_iterator_next(item_entities_itr);
 			if (item_entity == NULL) {
@@ -532,6 +543,8 @@ static oval_result_t eval_item(struct oval_syschar_model *syschar_model, struct 
 				oval_sysent_iterator_free(item_entities_itr);
 				goto fail;
 			}
+			item_status = oval_sysent_get_status(item_entity);
+			oval_status_counter_add_status(&counter, item_status);
 
 			item_entity_name = oval_sysent_get_name(item_entity);
 			if (strcmp(item_entity_name, state_entity_name))
@@ -545,6 +558,12 @@ static oval_result_t eval_item(struct oval_syschar_model *syschar_model, struct 
 
 			ent_val_res = _evaluate_sysent(syschar_model, item_entity, state_entity,
 					state_entity_operation, content);
+			if (ent_val_res == OVAL_RESULT_TRUE) {
+				dI("Entity '%s'='%s' of item '%s' matches corresponding entity in state '%s'.",
+						oval_sysent_get_name(item_entity),
+						oval_sysent_get_value(item_entity),
+						oval_sysitem_get_id(cur_sysitem), oval_state_get_id(state));
+			}
 			if (((signed) ent_val_res) == -1) {
 				oval_sysent_iterator_free(item_entities_itr);
 				goto fail;
@@ -555,16 +574,21 @@ static oval_result_t eval_item(struct oval_syschar_model *syschar_model, struct 
 		oval_sysent_iterator_free(item_entities_itr);
 
 		if (!found_matching_item)
-			dW("Entity name '%s' from state (id: '%s') not found in item (id: '%s').\n",
+			dW("Entity name '%s' from state (id: '%s') not found in item (id: '%s').",
 			   state_entity_name, oval_state_get_id(state), oval_sysitem_get_id(cur_sysitem));
 
 		ste_ent_res = ores_get_result_bychk(&ent_ores, entity_check);
 		ores_add_res(&ste_ores, ste_ent_res);
+		oval_result_t cres = oval_status_counter_get_result(&counter, check_existence);
+		ores_add_res(&ste_ores, cres);
 	}
 	oval_state_content_iterator_free(state_contents_itr);
 
 	operator = oval_state_get_operator(state);
 	result = ores_get_result_byopr(&ste_ores, operator);
+	dI("Item '%s' compared to state '%s' with result %s.",
+			   oval_sysitem_get_id(cur_sysitem), oval_state_get_id(state),
+			   oval_result_get_text(result));
 
 	return result;
 
@@ -603,6 +627,13 @@ static oval_result_t eval_check_state(struct oval_test *test, void **args)
 	ste_opr = oval_test_get_state_operator(test);
 	syschar_model = oval_result_system_get_syschar_model(SYSTEM);
 	ores_clear(&item_ores);
+
+	char *state_names = oval_test_get_state_names(test);
+	if (state_names) {
+		dI("In test '%s' %s of the collected items must satisfy these states: %s.",
+			oval_test_get_id(test), oval_check_get_description(ste_check), state_names);
+		oscap_free(state_names);
+	}
 
 	ritems_itr = oval_result_test_get_items(TEST);
 	while (oval_result_item_iterator_has_more(ritems_itr)) {
@@ -727,11 +758,15 @@ _oval_result_test_evaluate_items(struct oval_test *test, struct oval_syschar *sy
 	oval_result_t result;
 	int exists_cnt, error_cnt;
 	bool hasstate;
+	const char *test_id, *object_id, *flag_text;
 	oval_check_t test_check;
 	oval_existence_t test_check_existence;
 	struct oval_state_iterator *ste_itr;
+	oval_syschar_collection_flag_t flag;
+	struct oval_object *object;
 
 	exists_cnt = error_cnt = 0;
+	test_id = oval_test_get_id(test);
 	collected_items_itr = oval_syschar_get_sysitem(syschar_object);
 	while (oval_sysitem_iterator_has_more(collected_items_itr)) {
 		struct oval_sysitem *item;
@@ -764,9 +799,39 @@ _oval_result_test_evaluate_items(struct oval_test *test, struct oval_syschar *sy
 	ste_itr = oval_test_get_states(test);
 	hasstate = oval_state_iterator_has_more(ste_itr);
 	oval_state_iterator_free(ste_itr);
+	object = oval_syschar_get_object(syschar_object);
+	object_id = object ? oval_object_get_id(object) : "<UNKNOWN>";
 
-	switch (oval_syschar_get_flag(syschar_object)) {
+	switch (test_check_existence) {
+	case OVAL_ALL_EXIST:
+		dI("Test '%s' requires that every object defined by '%s' exists on the system.", test_id, object_id);
+		break;
+	case OVAL_ANY_EXIST:
+		dI("Test '%s' requires that zero or more objects defined by '%s' exist on the system.", test_id, object_id);
+		break;
+	case OVAL_AT_LEAST_ONE_EXISTS:
+		dI("Test '%s' requires that at least one object defined by '%s' exists on the system.", test_id, object_id);
+		break;
+	case OVAL_NONE_EXIST:
+		dI("Test '%s' requires that none of the objects defined by '%s' exist on the system.", test_id, object_id);
+		break;
+	case OVAL_ONLY_ONE_EXISTS:
+		dI("Test '%s' requires that only one object defined by '%s' exists on the system.", test_id, object_id);
+		break;
+	default:
+		oscap_seterr(OSCAP_EFAMILY_OVAL, "Check_existence parameter of test '%s' is unknown. This may indicate a bug in OpenSCAP.", test_id);
+	}
+
+	dI("%d objects defined by '%s' exist on the system.", exists_cnt, object_id);
+	if (!hasstate) {
+		dI("Test '%s' does not contain any state to compare object with.", test_id);
+	}
+	flag = oval_syschar_get_flag(syschar_object);
+	flag_text = oval_syschar_collection_flag_get_text(flag);
+
+	switch (flag) {
 	case SYSCHAR_FLAG_ERROR:
+		dI("An error occured while collecting items matching object '%s'. (flag=%s)", object_id, flag_text);
 		if (test_check_existence == OVAL_ANY_EXIST
 		    && !hasstate) {
 			result = OVAL_RESULT_TRUE;
@@ -775,6 +840,7 @@ _oval_result_test_evaluate_items(struct oval_test *test, struct oval_syschar *sy
 		}
 		break;
 	case SYSCHAR_FLAG_NOT_COLLECTED:
+		dI("No attempt was made to collect items matching object '%s'. (flag=%s)", object_id, flag_text);
 		if (test_check_existence == OVAL_ANY_EXIST
 		    && !hasstate) {
 			result = OVAL_RESULT_TRUE;
@@ -783,6 +849,7 @@ _oval_result_test_evaluate_items(struct oval_test *test, struct oval_syschar *sy
 		}
 		break;
 	case SYSCHAR_FLAG_NOT_APPLICABLE:
+		dI("Object '%s' is not applicable to the system. (flag=%s)", object_id, flag_text);
 		if (test_check_existence == OVAL_ANY_EXIST
 		    && !hasstate) {
 			result = OVAL_RESULT_TRUE;
@@ -791,6 +858,7 @@ _oval_result_test_evaluate_items(struct oval_test *test, struct oval_syschar *sy
 		}
 		break;
 	case SYSCHAR_FLAG_DOES_NOT_EXIST:
+		dI("No item matching object '%s' was found on the system. (flag=%s)", object_id, flag_text);
 		if (test_check_existence == OVAL_NONE_EXIST
 		    || test_check_existence == OVAL_ANY_EXIST) {
 			result = OVAL_RESULT_TRUE;
@@ -799,6 +867,7 @@ _oval_result_test_evaluate_items(struct oval_test *test, struct oval_syschar *sy
 		}
 		break;
 	case SYSCHAR_FLAG_COMPLETE:
+		dI("All items matching object '%s' were collected. (flag=%s)", object_id, flag_text);
 		result = eval_check_existence(test_check_existence, exists_cnt, error_cnt);
 		if (result == OVAL_RESULT_TRUE
 		    && hasstate) {
@@ -806,6 +875,7 @@ _oval_result_test_evaluate_items(struct oval_test *test, struct oval_syschar *sy
 		}
 		break;
 	case SYSCHAR_FLAG_INCOMPLETE:
+		dI("Only some of items matching object '%s' have been collected from the system. It is unknown if other matching items also exist. (flag=%s)", object_id, flag_text);
 		if (test_check_existence == OVAL_ANY_EXIST) {
 			result = OVAL_RESULT_TRUE;
 		} else if (test_check_existence == OVAL_AT_LEAST_ONE_EXISTS
@@ -833,9 +903,11 @@ _oval_result_test_evaluate_items(struct oval_test *test, struct oval_syschar *sy
 			}
 		}
 		break;
-	default:
-		oscap_seterr(OSCAP_EFAMILY_OVAL, "Unknown syschar flag: %d.", oval_syschar_get_flag(syschar_object));
+	default: {
+		oscap_seterr(OSCAP_EFAMILY_OVAL, "Item corresponding to object '%s' from test '%s' has an unknown flag. This may indicate a bug in OpenSCAP.",
+				object_id, test_id);
 		return OVAL_RESULT_ERROR;
+		}
 	}
 
 	return result;
@@ -848,7 +920,7 @@ static oval_result_t _oval_result_test_result(struct oval_result_test *rtest, vo
 
 	/* is the test already evaluated? */
 	if (rtest->result != OVAL_RESULT_NOT_EVALUATED) {
-		dI("Found result from previous evaluation: %d, returning without further processing.\n", rtest->result);
+		dI("Found result from previous evaluation: %d, returning without further processing.", rtest->result);
 		return (rtest->result);
 	}
 
@@ -858,11 +930,21 @@ static oval_result_t _oval_result_test_result(struct oval_result_test *rtest, vo
 	char * object_id = oval_object_get_id(object);
 
 	struct oval_result_system *sys = oval_result_test_get_system(rtest);
+	struct oval_results_model *results_model = oval_result_system_get_results_model(sys);
+	struct oval_probe_session *probe_session = oval_results_model_get_probe_session(results_model);
+	if (probe_session != NULL) {
+		/* probe test */
+		int ret = oval_probe_query_test(probe_session, test);
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
 	struct oval_syschar_model *syschar_model = oval_result_system_get_syschar_model(sys);
 
 	struct oval_syschar * syschar = oval_syschar_model_get_syschar(syschar_model, object_id);
 	if (syschar == NULL) {
-		dW("No syschar for object: %s\n", object_id);
+		dW("No syschar for object: %s", object_id);
 		return OVAL_RESULT_UNKNOWN;
 	}
 
@@ -959,11 +1041,19 @@ oval_result_t oval_result_test_eval(struct oval_result_test *rtest)
 {
 	__attribute__nonnull__(rtest);
 
+	struct oval_test *test = oval_result_test_get_test(rtest);
+	const char *type = oval_subtype_get_text(oval_test_get_subtype(test));
+	const char *test_id = oval_test_get_id(test);
+	const char *comment = oval_test_get_comment(test);
+	dI("Evaluating %s test '%s': %s.", type, test_id, comment);
+
 	if (rtest->result == OVAL_RESULT_NOT_EVALUATED) {
 		if ((oval_independent_subtype_t)oval_test_get_subtype(oval_result_test_get_test(rtest)) != OVAL_INDEPENDENT_UNKNOWN ) {
 			struct oval_string_map *tmp_map = oval_string_map_new();
 			void *args[] = { rtest->system, rtest, tmp_map };
+			dIndent(1);
 			rtest->result = _oval_result_test_result(rtest, args);
+			dIndent(-1);
 			oval_string_map_free(tmp_map, NULL);
 
 			if (!rtest->bindings_initialized) {
@@ -974,7 +1064,7 @@ oval_result_t oval_result_test_eval(struct oval_result_test *rtest)
 			rtest->result = OVAL_RESULT_UNKNOWN;
 	}
 
-        dI("\t%s => %s\n", oval_result_test_get_id(rtest), oval_result_get_text(rtest->result));
+	dI("Test '%s' evaluated as %s.", test_id, oval_result_get_text(rtest->result));
 
 	return rtest->result;
 }
@@ -1085,7 +1175,7 @@ static int _oval_result_test_parse(xmlTextReaderPtr reader, struct oval_parser_c
 	} else if (strcmp((const char *)localName, "tested_variable") == 0) {
 		return_code = _oval_result_test_binding_parse(reader, context, args);
 	} else {
-		dW( "Unhandled tag: <%s>.\n", localName);
+		dW("Unhandled tag: <%s>.", localName);
 		oval_parser_skip_tag(reader, context);
 	}
 
@@ -1121,7 +1211,7 @@ int oval_result_test_parse_tag(xmlTextReaderPtr reader, struct oval_parser_conte
 	if (tst_check_existence == OVAL_EXISTENCE_UNKNOWN) {
 		oval_test_set_existence(ovaltst, check_existence);
 	} else if (tst_check_existence != check_existence) {
-		oscap_dlprintf(DBG_W, "@check_existence does not match, test_id: %s.\n", test_id);
+		dW("@check_existence does not match, test_id: %s.", test_id);
 	}
 
 	oval_check_t check = oval_check_parse(reader, "check", OVAL_CHECK_UNKNOWN);
@@ -1129,7 +1219,7 @@ int oval_result_test_parse_tag(xmlTextReaderPtr reader, struct oval_parser_conte
 	if (tst_check == OVAL_CHECK_UNKNOWN) {
 		oval_test_set_check(ovaltst, check);
 	} else if (tst_check != check) {
-		oscap_dlprintf(DBG_W, "@check does not match, test_id: %s.\n", test_id);
+		dW("@check does not match, test_id: %s.", test_id);
 	}
 
 	int version = oval_parser_int_attribute(reader, "version", 0);
@@ -1137,7 +1227,7 @@ int oval_result_test_parse_tag(xmlTextReaderPtr reader, struct oval_parser_conte
 	if (tst_version == 0) {
 		oval_test_set_version(ovaltst, version);
 	} else if (tst_version != version) {
-		oscap_dlprintf(DBG_W, "@version does not match, test_id: %s.\n", test_id);
+		dW("@version does not match, test_id: %s.", test_id);
 	}
 
 	struct oval_string_map *itemmap = oval_string_map_new();

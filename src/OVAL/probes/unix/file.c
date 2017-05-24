@@ -84,7 +84,7 @@
 # error "Sorry, your OS isn't supported."
 #endif
 
-oval_version_t over;
+oval_schema_version_t over;
 
 static SEXP_t *gr_true   = NULL, *gr_false  = NULL, *gr_t_reg  = NULL;
 static SEXP_t *gr_t_dir  = NULL, *gr_t_lnk  = NULL, *gr_t_blk  = NULL;
@@ -130,7 +130,7 @@ static SEXP_t *ID_cache_get(int32_t id)
 	if (rbt_i32_get(g_ID_cache, id, (void *)&s_id) == 0)
 		return SEXP_ref(s_id); /* cache hit (first attempt) */
 
-	if (oval_version_cmp(over, OVAL_VERSION(5.8)) < 0) {
+	if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.8)) < 0) {
 		s_id = SEXP_string_newf("%u", id);
 	} else {
 		s_id = SEXP_number_newu_32(id);
@@ -182,7 +182,7 @@ static SEXP_t *get_atime(struct stat *st, SEXP_t *sexp)
 #endif
 		);
 
-	if (oval_version_cmp(over, OVAL_VERSION(5.8)) < 0) {
+	if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.8)) < 0) {
 		return SEXP_string_newf_r(sexp, "%llu", (long long unsigned) t);
 	} else {
 		return SEXP_number_newu_64_r(sexp, t);
@@ -203,7 +203,7 @@ static SEXP_t *get_ctime(struct stat *st, SEXP_t *sexp)
 #endif
 		);
 
-	if (oval_version_cmp(over, OVAL_VERSION(5.8)) < 0) {
+	if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.8)) < 0) {
 		return SEXP_string_newf_r(sexp, "%llu", (long long unsigned) t);
 	} else {
 		return SEXP_number_newu_64_r(sexp, t);
@@ -224,7 +224,7 @@ static SEXP_t *get_mtime(struct stat *st, SEXP_t *sexp)
 #endif
 		);
 
-	if (oval_version_cmp(over, OVAL_VERSION(5.8)) < 0) {
+	if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.8)) < 0) {
 		return SEXP_string_newf_r(sexp, "%llu", (long long unsigned) t);
 	} else {
 		return SEXP_number_newu_64_r(sexp, t);
@@ -256,12 +256,12 @@ static SEXP_t *has_extended_acl(const char *path)
 #if defined(HAVE_ACL_EXTENDED_FILE)
 	int has_acl = acl_extended_file(path);
 	if (has_acl == -1) {
-		dW("acl_extended_file(%s), %s", path, strerror(errno));
+		dD("Getting extended ACL for file '%s' has failed, %s", path, strerror(errno));
 		return NULL;
 	}
 	return (has_acl == 1) ? gr_true : gr_false;
 #elif defined(OS_SOLARIS)
-	return acl_trivial(st_path) ? gr_true : gr_false;
+	return acl_trivial(path) ? gr_true : gr_false;
 #else
 	return NULL;
 #endif
@@ -283,14 +283,14 @@ static int file_cb (const char *p, const char *f, void *ptr)
 	}
 
         if (lstat (st_path, &st) == -1) {
-                dI("FAIL: errno=%u, %s.\n", errno, strerror (errno));
-                return (-1);
+                dI("lstat failed when processing %s: errno=%u, %s.", st_path, errno, strerror (errno));
+		return strncmp(st_path, "/proc", 4) == 0 ? 0 : -1;
         } else {
                 SEXP_t *se_usr_id, *se_grp_id;
                 SEXP_t  se_atime_mem, se_ctime_mem, se_mtime_mem, se_size_mem;
 		SEXP_t *se_filepath, *se_acl;
 
-		if (oval_version_cmp(over, OVAL_VERSION(5.6)) < 0
+		if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.6)) < 0
 		    || f == NULL) {
 			se_filepath = NULL;
 		} else {
@@ -308,7 +308,7 @@ static int file_cb (const char *p, const char *f, void *ptr)
 		} else
 			SEXP_string_new_r(&gr_lastpath, p, strlen(p));
 
-		if (oval_version_cmp(over, OVAL_VERSION(5.7)) < 0) {
+		if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.7)) < 0) {
 			se_acl = NULL;
 		} else {
 			se_acl = has_extended_acl(st_path);
@@ -366,6 +366,7 @@ static pthread_mutex_t __file_probe_mutex;
 
 void *probe_init (void)
 {
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
         /*
          * Initialize true/false global reference.
          */
@@ -415,13 +416,12 @@ void *probe_init (void)
         case 0:
                 return ((void *)&__file_probe_mutex);
         default:
-                dI("Can't initialize mutex: errno=%u, %s.\n", errno, strerror (errno));
+                dI("Can't initialize mutex: errno=%u, %s.", errno, strerror (errno));
         }
 #if 0
 	probe_setoption(PROBEOPT_VARREF_HANDLING, false, "path");
 	probe_setoption(PROBEOPT_VARREF_HANDLING, false, "filename");
 #endif
-		probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
         return (NULL);
 }
 
@@ -469,7 +469,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
 
         probe_in  = probe_ctx_getobject(ctx);
 
-	over = probe_obj_get_schema_version(probe_in);
+	over = probe_obj_get_platform_schema_version(probe_in);
         path      = probe_obj_getent (probe_in, "path",      1);
         filename  = probe_obj_getent (probe_in, "filename",  1);
         behaviors = probe_obj_getent (probe_in, "behaviors", 1);
@@ -491,7 +491,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
         case 0:
                 break;
         default:
-                dI("Can't lock mutex(%p): %u, %s.\n", &__file_probe_mutex, errno, strerror (errno));
+                dI("Can't lock mutex(%p): %u, %s.", &__file_probe_mutex, errno, strerror (errno));
 
 		SEXP_free(path);
 		SEXP_free(filename);
@@ -504,7 +504,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
         cbargs.ctx     = ctx;
 	cbargs.error   = 0;
 
-	if ((ofts = oval_fts_open(path, filename, filepath, behaviors)) != NULL) {
+	if ((ofts = oval_fts_open(path, filename, filepath, behaviors, probe_ctx_getresult(ctx))) != NULL) {
 		while ((ofts_ent = oval_fts_read(ofts)) != NULL) {
 			if (file_cb(ofts_ent->path, ofts_ent->file, &cbargs) != 0) {
 				oval_ftsent_free(ofts_ent);
@@ -526,7 +526,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
         case 0:
                 break;
         default:
-                dI("Can't unlock mutex(%p): %u, %s.\n", &__file_probe_mutex, errno, strerror (errno));
+                dI("Can't unlock mutex(%p): %u, %s.", &__file_probe_mutex, errno, strerror (errno));
 
                 return PROBE_EFATAL;
         }

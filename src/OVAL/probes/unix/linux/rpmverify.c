@@ -41,28 +41,11 @@
 #include <fcntl.h>
 #include <pcre.h>
 
-/* RPM headers */
-#include <rpm/rpmdb.h>
-#include <rpm/rpmlib.h>
-#include <rpm/rpmts.h>
-#include <rpm/rpmmacro.h>
-#include <rpm/rpmlog.h>
+#include "rpm-helper.h"
+
+/* Individual RPM headers */
 #include <rpm/rpmfi.h>
-#include <rpm/header.h>
 #include <rpm/rpmcli.h>
-
-#ifndef HAVE_HEADERFORMAT
-# define HAVE_LIBRPM44 1 /* hack */
-# define headerFormat(_h, _fmt, _emsg) headerSprintf((_h),( _fmt), rpmTagTable, rpmHeaderFormats, (_emsg))
-#endif
-
-#ifndef HAVE_RPMFREECRYPTO
-# define rpmFreeCrypto() while(0)
-#endif
-
-#ifndef HAVE_RPMFREEFILESYSTEMS
-# define rpmFreeFilesystems() while(0)
-#endif
 
 /* SEAP */
 #include <probe-api.h>
@@ -70,6 +53,9 @@
 #include <common/assume.h>
 #include "debug_priv.h"
 #include "probe/entcmp.h"
+
+#include <probe/probe.h>
+#include <probe/option.h>
 
 struct rpmverify_res {
         char *name;  /**< package name */
@@ -83,32 +69,10 @@ struct rpmverify_res {
 #define RPMVERIFY_SKIP_GHOST  0x2000000000000000
 #define RPMVERIFY_RPMATTRMASK 0x00000000ffffffff
 
-struct rpmverify_global {
-        rpmts           rpmts;
-        pthread_mutex_t mutex;
-};
+static struct rpm_probe_global g_rpm;
 
-static struct rpmverify_global g_rpm;
-
-#define RPMVERIFY_LOCK	  \
-	do { \
-		int prev_cancel_state = -1; \
-		if (pthread_mutex_lock(&g_rpm.mutex) != 0) { \
-			dE("Can't lock mutex\n"); \
-			return (-1); \
-		} \
-		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &prev_cancel_state); \
-	} while(0)
-
-#define RPMVERIFY_UNLOCK	  \
-	do { \
-		int prev_cancel_state = -1; \
-		if (pthread_mutex_unlock(&g_rpm.mutex) != 0) { \
-			dE("Can't unlock mutex. Aborting...\n"); \
-			abort(); \
-		} \
-		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &prev_cancel_state); \
-	} while(0)
+#define RPMVERIFY_LOCK   RPM_MUTEX_LOCK(&g_rpm.mutex)
+#define RPMVERIFY_UNLOCK RPM_MUTEX_UNLOCK(&g_rpm.mutex)
 
 static int rpmverify_collect(probe_ctx *ctx,
                              const char *name, oval_operation_t name_op,
@@ -183,7 +147,7 @@ static int rpmverify_collect(probe_ctx *ctx,
                 break;
         default:
                 /* not supported */
-                dE("package name: operation not supported\n");
+                dE("package name: operation not supported");
                 ret = -1;
                 goto ret;
         }
@@ -255,10 +219,19 @@ ret:
         return (ret);
 }
 
+void probe_preload ()
+{
+	rpmLibsPreload();
+}
+
 void *probe_init (void)
 {
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
+#ifdef HAVE_RPM46
+	rpmlogSetCallback(rpmErrorCb, NULL);
+#endif
         if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
-                dI("rpmReadConfigFiles failed: %u, %s.\n", errno, strerror (errno));
+                dI("rpmReadConfigFiles failed: %u, %s.", errno, strerror (errno));
                 return (NULL);
         }
 
@@ -271,14 +244,19 @@ void *probe_init (void)
 
 void probe_fini (void *ptr)
 {
-        struct rpmverify_global *r = (struct rpmverify_global *)ptr;
+        struct rpm_probe_global *r = (struct rpm_probe_global *)ptr;
 
-        rpmtsFree(r->rpmts);
 	rpmFreeCrypto();
-        rpmFreeRpmrc();
-        rpmFreeMacros(NULL);
-        rpmlogClose();
-        pthread_mutex_destroy (&(r->mutex));
+	rpmFreeRpmrc();
+	rpmFreeMacros(NULL);
+	rpmlogClose();
+
+	// If probe_init() failed r->rpmts and r->mutex were not initialized
+	if (r == NULL)
+		return;
+
+	rpmtsFree(r->rpmts);
+	pthread_mutex_destroy (&(r->mutex));
 
         return;
 }
@@ -348,6 +326,12 @@ int probe_main (probe_ctx *ctx, void *arg)
         uint64_t collect_flags = 0;
         unsigned int i;
 
+	// If probe_init() failed it's because there was no rpm config files
+	if (arg == NULL) {
+		probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_NOT_APPLICABLE);
+		return 0;
+	}
+
         /*
          * Get refs to object entities
          */
@@ -356,7 +340,7 @@ int probe_main (probe_ctx *ctx, void *arg)
         file_ent = probe_obj_getent(probe_in, "filepath", 1);
 
         if (name_ent == NULL || file_ent == NULL) {
-                dE("Missing \"name\" (%p) or \"filepath\" (%p) entity\n", name_ent, file_ent);
+                dE("Missing \"name\" (%p) or \"filepath\" (%p) entity", name_ent, file_ent);
 
                 SEXP_free(name_ent);
                 SEXP_free(file_ent);
@@ -398,7 +382,7 @@ int probe_main (probe_ctx *ctx, void *arg)
 
                         if (aval != NULL) {
                                 if (SEXP_strcmp(aval, "true") == 0) {
-                                        dI("omit verify attr: %s\n", rpmverify_bhmap[i].a_name);
+                                        dI("omit verify attr: %s", rpmverify_bhmap[i].a_name);
                                         collect_flags |= rpmverify_bhmap[i].a_flag;
                                 }
 
@@ -409,7 +393,7 @@ int probe_main (probe_ctx *ctx, void *arg)
                 SEXP_free(bh_ent);
         }
 
-        dI("Collecting rpmverify data, query: n=\"%s\" (%d), f=\"%s\" (%d)\n",
+        dI("Collecting rpmverify data, query: n=\"%s\" (%d), f=\"%s\" (%d)",
            name, name_op, file, file_op);
 
         if (rpmverify_collect(ctx,
@@ -419,7 +403,7 @@ int probe_main (probe_ctx *ctx, void *arg)
                               collect_flags,
                               rpmverify_additem) != 0)
         {
-                dE("An error ocured while collecting rpmverify data\n");
+                dE("An error ocured while collecting rpmverify data");
                 probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_ERROR);
         }
 

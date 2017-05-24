@@ -43,29 +43,13 @@
 #include <fcntl.h>
 #include <pcre.h>
 
-/* RPM headers */
-#include <rpm/rpmdb.h>
-#include <rpm/rpmlib.h>
-#include <rpm/rpmts.h>
-#include <rpm/rpmmacro.h>
-#include <rpm/rpmlog.h>
+#include "rpm-helper.h"
+#include "probe-chroot.h"
+
+/* Individual RPM headers */
 #include <rpm/rpmfi.h>
-#include <rpm/header.h>
 #include <rpm/rpmcli.h>
 #include <popt.h>
-
-#ifndef HAVE_HEADERFORMAT
-# define HAVE_LIBRPM44 1 /* hack */
-# define headerFormat(_h, _fmt, _emsg) headerSprintf((_h),( _fmt), rpmTagTable, rpmHeaderFormats, (_emsg))
-#endif
-
-#ifndef HAVE_RPMFREECRYPTO
-# define rpmFreeCrypto() while(0)
-#endif
-
-#ifndef HAVE_RPMFREEFILESYSTEMS
-# define rpmFreeFilesystems() while(0)
-#endif
 
 /* SEAP */
 #include <probe-api.h>
@@ -73,6 +57,9 @@
 #include <common/assume.h>
 #include "debug_priv.h"
 #include "probe/entcmp.h"
+
+#include <probe/probe.h>
+#include <probe/option.h>
 
 typedef struct {
 	const char *a_name;
@@ -102,12 +89,10 @@ struct rpmverify_res {
 #define RPMVERIFY_SKIP_GHOST  0x2000000000000000
 #define RPMVERIFY_RPMATTRMASK 0x00000000ffffffff
 
-struct rpmverify_global {
-	rpmts	   rpmts;
-	pthread_mutex_t mutex;
-};
-
-static struct rpmverify_global g_rpm;
+static struct verifypackage_global {
+	struct rpm_probe_global rpm;
+	struct probe_chroot chr;
+} g_rpm;
 
 static struct poptOption optionsTable[] = {
 	{ NULL, '\0', POPT_ARG_INCLUDE_TABLE, rpmcliAllPoptTable, 0,
@@ -119,35 +104,30 @@ static struct poptOption optionsTable[] = {
 	POPT_TABLEEND
 };
 
-#define RPMVERIFY_LOCK	  \
-	do { \
-		int prev_cancel_state = -1; \
-		if (pthread_mutex_lock(&g_rpm.mutex) != 0) { \
-			dE("Can't lock mutex\n"); \
-			return (-1); \
-		} \
-		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &prev_cancel_state); \
-	} while(0)
+#define RPMVERIFY_LOCK   RPM_MUTEX_LOCK(&g_rpm.rpm.mutex)
 
-#define RPMVERIFY_UNLOCK	  \
-	do { \
-		int prev_cancel_state = -1; \
-		if (pthread_mutex_unlock(&g_rpm.mutex) != 0) { \
-			dE("Can't unlock mutex. Aborting...\n"); \
-			abort(); \
-		} \
-		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &prev_cancel_state); \
-	} while(0)
+#define RPMVERIFY_UNLOCK RPM_MUTEX_UNLOCK(&g_rpm.rpm.mutex)
+
+#define CHROOT_ENTER() probe_chroot_enter(&g_rpm.chr)
+
+#define CHROOT_LEAVE() probe_chroot_leave(&g_rpm.chr)
+
+#define CHROOT_IS_SET() probe_chroot_is_set(&g_rpm.chr)
+
+#define CHROOT_PATH() probe_chroot_get_path(&g_rpm.chr)
 
 /* modify passed-in iterator to test also given entity */
 static int adjust_filter(rpmdbMatchIterator iterator, SEXP_t *ent, rpmTag rpm_tag) {
 	oval_operation_t ent_op;
-	char ent_str[1024];
+	char ent_str[1024] = "";
 	int ret = 0;
 
 	if (ent) {
 		ent_op = probe_ent_getoperation(ent, OVAL_OPERATION_EQUALS);
 		PROBE_ENT_STRVAL(ent, ent_str, sizeof ent_str, /* void */, strcpy(ent_str, ""););
+		if (rpm_tag == RPMTAG_EPOCH && strcmp(ent_str, "(none)") == 0) {
+			return ret;
+		}
 
 		switch (ent_op) {
 		case OVAL_OPERATION_EQUALS:
@@ -183,7 +163,7 @@ static int rpmverify_collect(probe_ctx *ctx,
 
 	RPMVERIFY_LOCK;
 
-	match = rpmtsInitIterator (g_rpm.rpmts, RPMDBI_PACKAGES, NULL, 0);
+	match = rpmtsInitIterator (g_rpm.rpm.rpmts, RPMDBI_PACKAGES, NULL, 0);
 	if (match == NULL) {
 		ret = 0;
 		goto ret;
@@ -272,15 +252,38 @@ static int rpmverify_collect(probe_ctx *ctx,
 			rpmcli_argv[rpmcli_argc++] = res.name;
 			rpmcli_argv[rpmcli_argc] = NULL;
 
+			if (CHROOT_IS_SET())
+			{
+				rpmLibsPreload();
+				if (CHROOT_ENTER() < 0) {
+					ret = 1;
+					goto ret;
+				}
+			}
+
 			rpmcli_context = rpmcliInit(rpmcli_argc, (char * const*)rpmcli_argv, optionsTable);
 			qva = &rpmQVKArgs;
 			rpmVerifyFlags verifyFlags = VERIFY_ALL;
 			verifyFlags &= ~qva->qva_flags;
 			qva->qva_flags = (rpmQueryFlags) verifyFlags;
 
+			// rpmcliFini() causes free of rpmrc, macros, ...
+			// so we have to reload everything again
 			rpmReadConfigFiles ((const char *)NULL, (const char *)NULL);
+
 			rpmts ts = rpmtsCreate();
-			ret = rpmcliVerify(ts, qva, poptGetArgs(rpmcli_context));
+			char* const * args = (char* const *)poptGetArgs(rpmcli_context);
+
+			if (CHROOT_IS_SET()){
+
+				// plugins for offline mode can cause, that .so from
+				// container are loaded - we don't want it
+				DISABLE_PLUGINS(ts);
+				CHROOT_LEAVE();
+			} else {
+				ret = rpmcliVerify(ts, qva, args);
+			}
+
 			ts = rpmtsFree(ts);
 			rpmcli_context = rpmcliFini(rpmcli_context);
 
@@ -307,30 +310,74 @@ ret:
 	return (ret);
 }
 
+void probe_offline_mode ()
+{
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_OWN);
+}
+
 void *probe_init (void)
 {
-	if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
-		dI("rpmReadConfigFiles failed: %u, %s.\n", errno, strerror (errno));
-		return (NULL);
+	const char* root = getenv("OSCAP_PROBE_ROOT");
+	if ((root!= NULL) && (strlen(root) == 0)) {
+		root = NULL;
+	}
+	probe_chroot_init(&g_rpm.chr, root);
+
+#ifdef HAVE_RPM46
+	rpmlogSetCallback(rpmErrorCb, NULL);
+#endif
+
+	if (CHROOT_IS_SET()) {
+		rpmLibsPreload();
+		if (CHROOT_ENTER() < 0) {
+			return (NULL);
+		}
 	}
 
-	g_rpm.rpmts = rpmtsCreate();
+	if (rpmReadConfigFiles (NULL, (const char *)NULL) != 0) {
+		dI("rpmReadConfigFiles failed: %u, %s.", errno, strerror (errno));
+		g_rpm.rpm.rpmts = NULL;
+		return ((void *)&g_rpm);
+	}
 
-	pthread_mutex_init(&(g_rpm.mutex), NULL);
+	g_rpm.rpm.rpmts = rpmtsCreate();
 
+	if (CHROOT_IS_SET()) {
+		CHROOT_LEAVE();
+
+		// plugins for offline mode can cause, that .so from
+		// container are loaded - we don't want it
+		DISABLE_PLUGINS(g_rpm.rpm.rpmts);
+
+		rpmtsSetRootDir(g_rpm.rpm.rpmts, CHROOT_PATH());
+	}
+
+	pthread_mutex_init(&(g_rpm.rpm.mutex), NULL);
 	return ((void *)&g_rpm);
 }
 
 void probe_fini (void *ptr)
 {
-	struct rpmverify_global *r = (struct rpmverify_global *)ptr;
+	struct verifypackage_global *r = (struct verifypackage_global *)ptr;
 
-	rpmtsFree(r->rpmts);
 	rpmFreeCrypto();
 	rpmFreeRpmrc();
 	rpmFreeMacros(NULL);
 	rpmlogClose();
-	pthread_mutex_destroy (&(r->mutex));
+
+	// This will be always set by probe_init(), lets free it
+	probe_chroot_free(&g_rpm.chr);
+
+	// If r is null, probe_init() failed during chroot
+	if (r == NULL)
+		return;
+
+	// If r->rpm.rpmts was not initialized the mutex was not as well
+	if (r->rpm.rpmts == NULL)
+		return;
+
+	rpmtsFree(r->rpm.rpmts);
+	pthread_mutex_destroy (&(r->rpm.mutex));
 
 	return;
 }
@@ -349,25 +396,25 @@ static int rpmverifypackage_additem(probe_ctx *ctx, struct rpmverify_res *res)
 				 NULL);
 
 	if (res->vflags & VERIFY_DEPS) {
-		dI("VERIFY_DEPS %d\n", res->vresults & VERIFY_DEPS);
+		dI("VERIFY_DEPS %d", res->vresults & VERIFY_DEPS);
 		value = probe_entval_from_cstr(OVAL_DATATYPE_BOOLEAN, (res->vresults & VERIFY_DEPS ? "1" : "0"), 1);
 		probe_item_ent_add(item, "dependency_check_passed", NULL, value);
 		SEXP_free(value);
 	}
 	if (res->vflags & VERIFY_DIGEST) {
-		dI("VERIFY_DIGEST %d\n", res->vresults & VERIFY_DIGEST);
+		dI("VERIFY_DIGEST %d", res->vresults & VERIFY_DIGEST);
 		value = probe_entval_from_cstr(OVAL_DATATYPE_BOOLEAN, (res->vresults & VERIFY_DIGEST ? "1" : "0"), 1);
 		probe_item_ent_add(item, "digest_check_passed", NULL, value);
 		SEXP_free(value);
 	}
 	if (res->vflags & VERIFY_SCRIPT) {
-		dI("VERIFY_SCRIPT %d\n", res->vresults & VERIFY_SCRIPT);
+		dI("VERIFY_SCRIPT %d", res->vresults & VERIFY_SCRIPT);
 		value = probe_entval_from_cstr(OVAL_DATATYPE_BOOLEAN, (res->vresults & VERIFY_SCRIPT ? "1" : "0"), 1);
 		probe_item_ent_add(item, "verification_script_successful", NULL, value);
 		SEXP_free(value);
 	}
 	if (res->vflags & VERIFY_SIGNATURE) {
-		dI("VERIFY_SIGNATURE %d\n", res->vresults & VERIFY_SIGNATURE);
+		dI("VERIFY_SIGNATURE %d", res->vresults & VERIFY_SIGNATURE);
 		value = probe_entval_from_cstr(OVAL_DATATYPE_BOOLEAN, (res->vresults & VERIFY_SIGNATURE ? "1" : "0"), 1);
 		probe_item_ent_add(item, "signature_check_passed", NULL, value);
 		SEXP_free(value);
@@ -381,6 +428,17 @@ int probe_main (probe_ctx *ctx, void *arg)
 	SEXP_t *name_ent, *epoch_ent, *version_ent, *release_ent, *arch_ent;
 	uint64_t collect_flags = 0;
 	unsigned int i;
+
+	// arg is NULL if we were not able to chroot during probe_init()
+	if (arg == NULL) {
+		return PROBE_EINIT;
+	}
+
+	// There was no rpm config files
+	if (g_rpm.rpm.rpmts == NULL) {
+		probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_NOT_APPLICABLE);
+		return 0;
+	}
 
 	/*
 	 * Get refs to object entities
@@ -406,7 +464,7 @@ int probe_main (probe_ctx *ctx, void *arg)
 
 			if (aval != NULL) {
 				if (SEXP_strcmp(aval, "true") == 0) {
-					dI("omit verify attr: %s\n", rpmverifypackage_bhmap[i].a_name);
+					dI("omit verify attr: %s", rpmverifypackage_bhmap[i].a_name);
 					collect_flags |= rpmverifypackage_bhmap[i].a_flag;
 				}
 
@@ -422,7 +480,7 @@ int probe_main (probe_ctx *ctx, void *arg)
 			      collect_flags,
 			      rpmverifypackage_additem) != 0)
 	{
-		dE("An error ocured while collecting rpmverifypackage data\n");
+		dE("An error ocured while collecting rpmverifypackage data");
 		probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_ERROR);
 	}
 

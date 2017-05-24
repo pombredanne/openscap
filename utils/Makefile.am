@@ -40,5 +40,29 @@ if WANT_UTIL_SCAP_AS_RPM
 bin_SCRIPTS += scap-as-rpm
 man_MANS += scap-as-rpm.8
 endif
+if WANT_UTIL_OSCAP_DOCKER
+bin_SCRIPTS += oscap-docker
+man_MANS += oscap-docker.8
+oscap_docker_PYTHON = \
+	oscap_docker_python/__init__.py \
+	oscap_docker_python/get_cve_input.py \
+	oscap_docker_python/oscap_docker_util.py
+oscap_dockerdir = $(oscapdocker_pythondir)/oscap_docker_python
+endif
+if WANT_UTIL_OSCAP_SSH
+bin_SCRIPTS += oscap-ssh
+man_MANS += oscap-ssh.8
+endif
+if WANT_UTIL_OSCAP_VM
+bin_SCRIPTS += oscap-vm
+man_MANS += oscap-vm.8
+endif
+if WANT_UTIL_OSCAP_CHROOT
+bin_SCRIPTS += oscap-chroot
+man_MANS += oscap-chroot.8
+endif
 
-EXTRA_DIST	= $(bin_SCRIPTS) $(man_MANS)
+CONFIG_CLEAN_FILES = oscap-docker
+
+
+EXTRA_DIST = $(filter-out oscap-docker, $(bin_SCRIPTS)) $(man_MANS)

@@ -25,20 +25,20 @@
 #include <config.h>
 #endif
 
-#ifdef HAVE_BZ2
-
 #include "common/public/oscap.h"
 #include "common/util.h"
 #include <libxml/tree.h>
 
 OSCAP_HIDDEN_START;
 
+#ifdef HAVE_BZ2
+
 /**
  * Parse *.xml.bz2 file to XML DOM
- * @param filepath The path to *.xml.bz2 file
+ * @param fd The file descriptor to bz2 file
  * @returns DOM representation of the file
  */
-xmlDoc *bz2_file_read_doc(const char *filepath);
+xmlDoc *bz2_fd_read_doc(int fd);
 
 /**
  * Parse bzip2ed memory to XML DOM.
@@ -48,15 +48,25 @@ xmlDoc *bz2_file_read_doc(const char *filepath);
  */
 xmlDoc *bz2_mem_read_doc(const char *buffer, size_t size);
 
+#endif // HAVE_BZ2
+
 /**
  * Recognize whether the file can be parsed by this
- * bz2 parser.
- * @param filepath The path to *.xml.bz2 file
+ * bz2 parser. Do not close the file.
+ * @param file descriptor to opened file
  * @returns true if can be parsed.
  */
-bool bz2_file_is_bzip(const char *filepath);
+bool bz2_fd_is_bzip(int fd);
+
+/**
+ * @brief Recognize whether the file can be parsed by this
+ * bz2 parser
+ * @param memory Raw memory with file content
+ * @param size Size of memory
+ * @return true if can be parsed
+ */
+bool bz2_memory_is_bzip(const char* memory, const size_t size);
 
 OSCAP_HIDDEN_END;
 
-#endif
-#endif
+#endif // OSCAP_SOURCE_BZIP2_H

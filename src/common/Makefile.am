@@ -12,6 +12,8 @@ liboscapcommon_la_SOURCES = \
 	memusage.c memusage.h \
 	oscap_acquire.c oscap_acquire.h \
 	oscapxml.c oscapxml.h \
+	oscap_buffer.c oscap_buffer.h \
+	oscap_string.c oscap_string.h \
 	reference.c reference_priv.h \
 	text.c text_priv.h \
 	tsort.c tsort.h \
@@ -33,7 +35,9 @@ liboscapcommon_la_LIBADD = \
 	@xml2_LIBS@ @xslt_LIBS@ @exslt_LIBS@ @pthread_LIBS@
 
 pkginclude_HEADERS =\
+	public/oscap_debug.h \
 	public/oscap_error.h \
 	public/oscap.h \
 	public/oscap_reference.h \
+	public/oscap_download_cb.h \
 	public/oscap_text.h

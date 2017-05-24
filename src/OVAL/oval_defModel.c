@@ -123,32 +123,24 @@ struct oval_definition_model *oval_definition_model_clone(struct oval_definition
 
 void oval_definition_model_free(struct oval_definition_model *model)
 {
-	__attribute__nonnull__(model);
-
-	oval_string_map_free(model->definition_map, (oscap_destruct_func) oval_definition_free);
-	oval_string_map_free(model->object_map, (oscap_destruct_func) oval_object_free);
-	oval_string_map_free(model->state_map, (oscap_destruct_func) oval_state_free);
-	oval_string_map_free(model->test_map, (oscap_destruct_func) oval_test_free);
-	oval_string_map_free(model->variable_map, (oscap_destruct_func) oval_variable_free);
-	if (model->vardef_map != NULL)
-		oval_string_map_free(model->vardef_map, (oscap_destruct_func) oval_string_map_free0);
-	if (model->bound_variable_models)
-		oval_collection_free_items(model->bound_variable_models,
+	if (model != NULL) {
+		oval_string_map_free(model->definition_map, (oscap_destruct_func) oval_definition_free);
+		oval_string_map_free(model->object_map, (oscap_destruct_func) oval_object_free);
+		oval_string_map_free(model->state_map, (oscap_destruct_func) oval_state_free);
+		oval_string_map_free(model->test_map, (oscap_destruct_func) oval_test_free);
+		oval_string_map_free(model->variable_map, (oscap_destruct_func) oval_variable_free);
+		if (model->vardef_map != NULL)
+			oval_string_map_free(model->vardef_map, (oscap_destruct_func) oval_string_map_free0);
+		if (model->bound_variable_models)
+			oval_collection_free_items(model->bound_variable_models,
 					   (oscap_destruct_func) oval_variable_model_free);
 
-        if (model->schema != NULL)
-            oscap_free(model->schema);
+	        if (model->schema != NULL)
+			oscap_free(model->schema);
 
-	model->definition_map = NULL;
-	model->object_map = NULL;
-	model->state_map = NULL;
-	model->test_map = NULL;
-	model->variable_map = NULL;
-        model->schema = NULL;
-
-	oval_generator_free(model->generator);
-
-	oscap_free(model);
+		oval_generator_free(model->generator);
+		oscap_free(model);
+	}
 }
 
 struct oval_generator *oval_definition_model_get_generator(struct oval_definition_model *model)
@@ -167,6 +159,33 @@ const char * oval_definition_model_get_schema(struct oval_definition_model * mod
         __attribute__nonnull__(model);
 
         return model->schema;
+}
+
+oval_version_t oval_definition_model_get_schema_version(struct oval_definition_model *model)
+{
+	if (model == NULL || model->generator == NULL) {
+		return OVAL_VERSION_INVALID;
+	}
+	const char *ver_str = oval_generator_get_core_schema_version(model->generator);
+	return oval_version_from_cstr(ver_str);
+}
+
+oval_schema_version_t oval_definition_model_get_core_schema_version(struct oval_definition_model *model)
+{
+	if (model == NULL || model->generator == NULL) {
+		return OVAL_SCHEMA_VERSION_INVALID;
+	}
+	const char *version = oval_generator_get_core_schema_version(model->generator);
+	return oval_schema_version_from_cstr(version);
+}
+
+oval_schema_version_t oval_definition_model_get_platform_schema_version(struct oval_definition_model *model, const char *platform)
+{
+	if (model == NULL || model->generator == NULL) {
+		return OVAL_SCHEMA_VERSION_INVALID;
+	}
+	const char *version = oval_generator_get_platform_schema_version(model->generator, platform);
+	return oval_schema_version_from_cstr(version);
 }
 
 void oval_definition_model_add_definition(struct oval_definition_model *model, struct oval_definition *definition)
@@ -478,12 +497,14 @@ xmlNode *oval_definition_model_to_dom(struct oval_definition_model *definition_m
 	xmlNs *ns_unix = xmlNewNs(root_node, OVAL_DEFINITIONS_UNIX_NS, BAD_CAST "unix-def");
 	xmlNs *ns_ind = xmlNewNs(root_node, OVAL_DEFINITIONS_IND_NS, BAD_CAST "ind-def");
 	xmlNs *ns_lin = xmlNewNs(root_node, OVAL_DEFINITIONS_LIN_NS, BAD_CAST "lin-def");
+	xmlNs *ns_win = xmlNewNs(root_node, OVAL_DEFINITIONS_WIN_NS, BAD_CAST "win-def");
 	xmlNs *ns_defntns = xmlNewNs(root_node, OVAL_DEFINITIONS_NAMESPACE, NULL);
 
 	xmlSetNs(root_node, ns_common);
 	xmlSetNs(root_node, ns_unix);
 	xmlSetNs(root_node, ns_ind);
 	xmlSetNs(root_node, ns_lin);
+	xmlSetNs(root_node, ns_win);
 	xmlSetNs(root_node, ns_defntns);
 
 	/* Always report the generator */

@@ -25,7 +25,6 @@
 #include <config.h>
 #endif
 
-#ifndef NDEBUG
 # include <stdio.h>
 # include <stdarg.h>
 # include <string.h>
@@ -34,23 +33,34 @@
 # include <sys/file.h>
 # include <unistd.h>
 # include <time.h>
+# include <errno.h>
 
 # include <sexp.h>
 # include <sexp-output.h>
 
 # include "debug_priv.h"
 
+#include <oscap_debug.h>
+#include "_error.h"
+
 #ifndef PATH_SEPARATOR
 # define PATH_SEPARATOR '/'
 #endif
+
+static const struct oscap_string_map OSCAP_VERBOSITY_LEVELS[] = {
+    {DBG_E, "ERROR"},
+    {DBG_W, "WARNING"},
+    {DBG_I, "INFO"},
+    {DBG_D, "DEVEL"},
+    {DBG_UNKNOWN, NULL}
+};
 
 #  if defined(OSCAP_THREAD_SAFE)
 #   include <pthread.h>
 static pthread_mutex_t __debuglog_mutex = PTHREAD_MUTEX_INITIALIZER;
 #  endif
-static FILE *__debuglog_fp = NULL;
-int __debuglog_level  = -1;
-static int __debuglog_pstrip = -1;
+FILE *__debuglog_fp = NULL;
+oscap_verbosity_levels __debuglog_level = DBG_UNKNOWN;
 
 #if defined(OSCAP_THREAD_SAFE)
 # define __LOCK_FP    do { if (pthread_mutex_lock   (&__debuglog_mutex) != 0) abort(); } while(0)
@@ -60,95 +70,80 @@ static int __debuglog_pstrip = -1;
 # define __UNLOCK_FP while(0)
 #endif
 
+#define THREAD_NAME_LEN 16
+
 static void __oscap_debuglog_close(void)
 {
         fclose(__debuglog_fp);
 }
 
-static const char *__oscap_path_rstrip(const char *path, int num)
+oscap_verbosity_levels oscap_verbosity_level_from_cstr(const char *level_name)
 {
-	register size_t len;
+	return oscap_string_to_enum(OSCAP_VERBOSITY_LEVELS, level_name);
+}
 
-	len = strlen(path);
+bool oscap_set_verbose(const char *verbosity_level, const char *filename, bool is_probe)
+{
+	if (verbosity_level == NULL) {
+		verbosity_level = "WARNING";
+	}
+	__debuglog_level = oscap_verbosity_level_from_cstr(verbosity_level);
+	if (__debuglog_level == DBG_UNKNOWN) {
+		return false;
+	}
+	if (!is_probe) {
+		setenv("OSCAP_PROBE_VERBOSITY_LEVEL", verbosity_level, 1);
+	}
+	if (filename == NULL) {
+		__debuglog_fp = stderr;
+		return true;
+	}
+	int fd;
+	if (is_probe) {
+		fd = open(filename, O_APPEND | O_WRONLY);
+	} else {
+		setenv("OSCAP_PROBE_VERBOSE_LOG_FILE", filename, 1);
+		/* Open a file. If the file doesn't exist, create it.
+		 * If the file exists, erase its content.
+		 * File is opened in "append" mode.
+		 * Append mode is necessary when more processes write to same file.
+		 * Every process using the log file must open it in append mode,
+		 * because otherwise some data may be missing on output.
+		 */
+		fd = open(filename, O_APPEND | O_CREAT | O_TRUNC | O_WRONLY,
+			S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+	}
+	if (fd == -1) {
+		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Failed to open file %s: %s.", filename, strerror(errno));
+		return false;
+	}
+	__debuglog_fp = fdopen(fd, "a");
+	if (__debuglog_fp == NULL) {
+		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Failed to associate stream with file %s: %s.", filename, strerror(errno));
+		return false;
+	}
+	setbuf(__debuglog_fp, NULL);
+	atexit(&__oscap_debuglog_close);
+	return true;
+}
 
-	for (len = strlen(path); len > 0; --len) {
-		if (path[len - 1] == PATH_SEPARATOR)
-			--num;
-		if (num == 0)
-			return (path + len);
+
+static const char *__oscap_path_rstrip(const char *path)
+{
+	const char *separator = strrchr(path, PATH_SEPARATOR);
+	if (separator) {
+		return (separator + 1);
 	}
 
 	return (path);
 }
 
-static void __oscap_vdlprintf(int level, const char *file, const char *fn, size_t line, const char *fmt, va_list ap)
+
+static void debug_message_start(int level, int indent)
 {
 	char  l;
-	const char *f;
 
 	__LOCK_FP;
-
-	if (__debuglog_level == -1) {
-		char *env;
-
-		env = getenv(OSCAP_DEBUG_LEVEL_ENV);
-		if (env == NULL)
-			__debuglog_level = DBG_I;
-		else
-			__debuglog_level = atoi(env);
-	}
-	if (__debuglog_level < level) {
-		__UNLOCK_FP;
-		return;
-	}
-	if (__debuglog_fp == NULL) {
-		char *logfile, pathbuf[4096];
-		char *st;
-		time_t ut;
-
-		logfile = getenv(OSCAP_DEBUG_FILE_ENV);
-
-		if (logfile == NULL)
-			logfile = OSCAP_DEBUG_FILE;
-
-		if (snprintf(pathbuf, sizeof pathbuf, "%s.%u",
-			     logfile, (unsigned int)getpid()) >= (signed int) sizeof pathbuf)
-		{
-                        __UNLOCK_FP;
-			return;
-		}
-
-                __debuglog_fp = fopen (pathbuf, "w");
-
-		if (__debuglog_fp == NULL) {
-			__UNLOCK_FP;
-			return;
-		}
-
-		setbuf(__debuglog_fp, NULL);
-
-		ut = time(NULL);
-		st = ctime(&ut);
-
-		fprintf(__debuglog_fp, "\n=============== LOG: %.24s ===============\n", st);
-                atexit(&__oscap_debuglog_close);
-	}
-	if (__debuglog_pstrip == -1) {
-		char *pstrip;
-
-		pstrip = getenv(OSCAP_DEBUG_PATHSTRIP_ENV);
-
-		if (pstrip == NULL)
-			__debuglog_pstrip = 0;
-		else
-			__debuglog_pstrip = atol(pstrip);
-
-	}
-	if (__debuglog_pstrip != 0)
-		f = __oscap_path_rstrip(file, __debuglog_pstrip);
-	else
-		f = file;
-
 #if defined(__SVR4) && defined (__sun)
 	if (lockf(fileno(__debuglog_fp), F_LOCK, 0L) == -1) {
 #else
@@ -168,19 +163,42 @@ static void __oscap_vdlprintf(int level, const char *file, const char *fn, size_
 	case DBG_I:
 		l = 'I';
 		break;
+	case DBG_D:
+		l = 'D';
+		break;
 	default:
 		l = '0';
 	}
-#if defined(OSCAP_THREAD_SAFE)
-	/* XXX: non-portable usage of pthread_t */
-	fprintf(__debuglog_fp, "(%u:%llx) [%c:%s:%zu:%s] ", (unsigned int) getpid(),
-		(unsigned long long) pthread_self(), l, f, line, fn);
-#else
-	fprintf(__debuglog_fp, "(%u) [%c:%s:%zu:%s] ", (unsigned int) getpid(),
-		l, f, line, fn);
-#endif
-	vfprintf(__debuglog_fp, fmt, ap);
+	fprintf(__debuglog_fp, "%c: %s: ", l, program_invocation_short_name);
+	for (int i = 0; i < indent; i++) {
+		fprintf(__debuglog_fp, "  ");
+	}
+}
 
+static void debug_message_devel_metadata(const char *file, const char *fn, size_t line)
+{
+	const char *f = __oscap_path_rstrip(file);
+#if defined(OSCAP_THREAD_SAFE)
+	char thread_name[THREAD_NAME_LEN];
+	pthread_t thread = pthread_self();
+#if defined(HAVE_PTHREAD_GETNAME_NP)
+	pthread_getname_np(thread, thread_name, THREAD_NAME_LEN);
+#else
+	snprintf(thread_name, THREAD_NAME_LEN, "unknown");
+#endif
+	/* XXX: non-portable usage of pthread_t */
+	fprintf(__debuglog_fp, " [%s(%ld):%s(%llx):%s:%zu:%s]",
+		program_invocation_short_name, (long) getpid(), thread_name,
+		(unsigned long long) thread, f, line, fn);
+#else
+	fprintf(__debuglog_fp, " [%ld:%s:%zu:%s]", (long) getpid(),
+		f, line, fn);
+#endif
+}
+
+static void debug_message_end()
+{
+	fputc('\n', __debuglog_fp);
 #if defined(__SVR4) && defined (__sun)
 	if (lockf(fileno(__debuglog_fp), F_ULOCK, 0L) == -1) {
 #else
@@ -194,84 +212,47 @@ static void __oscap_vdlprintf(int level, const char *file, const char *fn, size_
 	return;
 }
 
-void __oscap_dlprintf(int level, const char *file, const char *fn, size_t line, const char *fmt, ...)
+void __oscap_dlprintf(int level, const char *file, const char *fn, size_t line, int delta_indent, const char *fmt, ...)
 {
+	static int indent = 0;
 	va_list ap;
 
+	if (__debuglog_fp == NULL) {
+		return;
+	}
+	indent += delta_indent;
+	if (fmt == NULL) {
+		return;
+	}
+	if (__debuglog_level < level) {
+		return;
+	}
 	va_start(ap, fmt);
-	__oscap_vdlprintf(level, file, fn, line, fmt, ap);
+	debug_message_start(level, indent);
+	vfprintf(__debuglog_fp, fmt, ap);
+	if (__debuglog_level == DBG_D) {
+		debug_message_devel_metadata(file, fn, line);
+	}
+	debug_message_end();
 	va_end(ap);
 }
 
 void __oscap_debuglog_object (const char *file, const char *fn, size_t line, int objtype, void *obj)
 {
-        __LOCK_FP;
-
-        if (__debuglog_fp == NULL) {
-                char  *logfile, pathbuf[4096];
-                char  *st;
-                time_t ut;
-
-                logfile = getenv (OSCAP_DEBUG_FILE_ENV);
-
-                if (logfile == NULL)
-                        logfile = OSCAP_DEBUG_FILE;
-
-		if (snprintf(pathbuf, sizeof pathbuf, "%s.%u",
-			     logfile, (unsigned int)getpid()) >= (signed int) sizeof pathbuf)
-		{
-                        __UNLOCK_FP;
-			return;
-		}
-
-                __debuglog_fp = fopen (pathbuf, "w");
-
-                if (__debuglog_fp == NULL) {
-                        __UNLOCK_FP;
-                        return;
-                }
-
-                setbuf (__debuglog_fp, NULL);
-
-                ut = time (NULL);
-                st = ctime (&ut);
-
-                fprintf (__debuglog_fp, "=============== LOG: %.24s ===============\n", st);
-                atexit(&__oscap_debuglog_close);
-        }
-#if defined(__SVR4) && defined (__sun)
-        if (lockf (fileno (__debuglog_fp), F_LOCK, 0L) == -1) {
-#else
-        if (flock (fileno (__debuglog_fp), LOCK_EX | LOCK_NB) == -1) {
-#endif
-                __UNLOCK_FP;
-                return;
-        }
-
-#if defined(SEAP_THREAD_SAFE)
-        /* XXX: non-portable usage of pthread_t */
-        fprintf (__debuglog_fp, "(%u:%llx) [%s:%zu:%s]\n------ \n", (unsigned int)getpid (), (unsigned long long)pthread_self(), file, line, fn);
-#else
-        fprintf (__debuglog_fp, "(%u) [%s:%zu:%s]\n------\n ", (unsigned int)getpid (), file, line, fn);
-#endif
-
-        switch (objtype) {
-        case OSCAP_DEBUGOBJ_SEXP:
-                SEXP_fprintfa(__debuglog_fp, (SEXP_t *)obj);
-        }
-
-        fprintf(__debuglog_fp, "\n-----------\n");
-#if defined(__SVR4) && defined (__sun)
-        if (lockf (fileno (__debuglog_fp), F_ULOCK, 0L) == -1) {
-#else
-        if (flock (fileno (__debuglog_fp), LOCK_UN | LOCK_NB) == -1) {
-#endif
-                /* __UNLOCK_FP; */
-                abort ();
-        }
-
-        __UNLOCK_FP;
-        return;
+	if (__debuglog_fp == NULL) {
+		return;
+	}
+	if (__debuglog_level < DBG_D) {
+		return;
+	}
+	debug_message_start(DBG_D, 0);
+	switch (objtype) {
+	case OSCAP_DEBUGOBJ_SEXP:
+		SEXP_fprintfa(__debuglog_fp, (SEXP_t *)obj);
+		break;
+	default:
+		fprintf(__debuglog_fp, "Attempt to dump a not supported object.");
+	}
+	debug_message_devel_metadata(file, fn, line);
+	debug_message_end();
 }
-
-#endif

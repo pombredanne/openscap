@@ -39,6 +39,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <common/assume.h>
+#include <common/_error.h>
 #include <errno.h>
 
 #include "generic/common.h"
@@ -168,11 +169,16 @@ static int check_child (pid_t pid, int waitf)
         case -1: return (-1);
         default:
                 /* child is dead */
+		if (WIFSIGNALED(status)) {
+			oscap_seterr(OSCAP_EFAMILY_OVAL, "Probe with PID=%ld has been killed with signal %d", (long)pid, WTERMSIG(status));
+			errno = EINTR;
+		}
+		if (WCOREDUMP(status)) {
+			oscap_seterr(OSCAP_EFAMILY_OVAL, "Probe with PID=%ld has core dumped.", (long)pid);
+			errno = EINTR;
+		}
                 if (WIFEXITED(status)) {
                         errno = WEXITSTATUS(status);
-                }
-                if (WIFSIGNALED(status)) {
-                        errno = EINTR;
                 }
         }
         return (1);
@@ -213,21 +219,12 @@ int sch_pipe_connect (SEAP_desc_t *desc, const char *uri, uint32_t flags)
                 close (pfd[0]);
 
                 /*
-                 * setup input, output and error streams
+                 * setup input and output streams
                  */
                 if (dup2 (pfd[1], STDIN_FILENO) != STDIN_FILENO)
                         _exit (errno);
                 if (dup2 (pfd[1], STDOUT_FILENO) != STDOUT_FILENO)
                         _exit (errno);
-#ifdef NDEBUG
-                pfd[0] = open ("/dev/null", O_WRONLY);
-
-                if (pfd[0] < 0)
-                        _exit (errno);
-
-                if (dup2 (pfd[0], STDERR_FILENO) != STDERR_FILENO)
-                        _exit (errno);
-#endif
                 execl (data->execpath, data->execpath, NULL);
                 _exit (errno);
         default: /* parent */

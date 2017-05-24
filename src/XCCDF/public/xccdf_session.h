@@ -33,13 +33,7 @@
 #define XCCDF_SESSION_H_
 
 #include "xccdf_policy.h"
-
-/**
- * Type of the function used to report progress of download.
- * @param warning indicates whether the message is rather warning or notice
- * @param format printf-like format string
- */
-typedef void (*download_progress_calllback_t) (bool warning, const char * format, ...);
+#include "oscap_download_cb.h"
 
 /**
  * @struct xccdf_session
@@ -55,6 +49,15 @@ struct xccdf_session;
  * @retval NULL is returned in case of error. Details might be found through \ref oscap_err_desc()
  */
 struct xccdf_session *xccdf_session_new(const char *filename);
+
+/**
+ * Costructor of xccdf_session. It creates a new xccdf_session from an oscap_source structure.
+ * @memberof xccdf_session
+ * @param source oscap_source which can represent a DS or XCCDF file.
+ * @returns newly created \ref xccdf_session.
+ * @retval NULL is returned in case of error. Details might be found through \ref oscap_err_desc()
+ */
+struct xccdf_session *xccdf_session_new_from_source(struct oscap_source *source);
 
 /**
  * Destructor of xccdf_session.
@@ -78,13 +81,26 @@ const char *xccdf_session_get_filename(const struct xccdf_session *session);
 bool xccdf_session_is_sds(const struct xccdf_session *session);
 
 /**
- * Set XSD validation level.
+ * Set XSD validation level to one of three possibilities:
+ *	- None: 	All XSD validations will be skipped.
+ *	- Default:	Partial (input) XSD validations will be done.
+ *	- Full Valid.:	Every possible (input & output) XSD validation will be done.
  * @memberof xccdf_session
  * @param session XCCDF Session
  * @param validate False value indicates to skip any XSD validation.
  * @param full_validation True value indicates that every possible step will be validated by XSD.
  */
 void xccdf_session_set_validation(struct xccdf_session *session, bool validate, bool full_validation);
+
+/**
+ * Set whether the thin results override is enabled.
+ * If true the OVAL results put in ARF or separate files will have thin results.
+ * Thin results do not contain details about the evaluated criteria, only
+ * minimal OVAL results.
+ * @memberof xccdf_session
+ * @param thin_results true to enable thin_results, default is false
+ */
+void xccdf_session_set_thin_results(struct xccdf_session *session, bool thin_result);
 
 /**
  * Set requested datastream_id for this session. This datastream_id is later
@@ -199,6 +215,14 @@ void xccdf_session_set_custom_oval_eval_fn(struct xccdf_session *session, xccdf_
  * @returns true on success
  */
 bool xccdf_session_set_product_cpe(struct xccdf_session *session, const char *product_cpe);
+
+/**
+ * Set whether the System Characteristics shall be exported in result files.
+ * @memberof xccdf_session
+ * @param session XCCDF Session
+ * @param without_sys_chars whether to export System Characteristics or not.
+ */
+void xccdf_session_set_without_sys_chars_export(struct xccdf_session *session, bool without_sys_chars);
 
 /**
  * Set whether the OVAL result files shall be exported.
@@ -334,8 +358,11 @@ int xccdf_session_load_oval(struct xccdf_session *session);
  *
  * @memberof xccdf_session
  * @param session XCCDF Session
+ * @param plugin_name Name of the plugin to load
+ * @param quiet If true we will not output errors if loading fails
  * @returns zero on success
  */
+int xccdf_session_load_check_engine_plugin2(struct xccdf_session *session, const char* plugin_name, bool quiet);
 int xccdf_session_load_check_engine_plugin(struct xccdf_session *session, const char* plugin_name);
 
 /**
@@ -489,6 +516,15 @@ int xccdf_session_remediate(struct xccdf_session *session);
  * @returns zero on success.
  */
 int xccdf_session_build_policy_from_testresult(struct xccdf_session *session, const char *testresult_id);
+
+/**
+ * Load xccdf:TestResult to the session from oscap_source
+ * @memberof xccdf_session
+ * @param session XCCDF Session
+ * @param report_source Structure conataining oscap_source of the test results
+ * @returns zero on success.
+ */
+int xccdf_session_add_report_from_source(struct xccdf_session *session, struct oscap_source *report_source);
 
 /// @}
 /// @}

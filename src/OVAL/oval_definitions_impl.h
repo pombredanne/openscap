@@ -40,6 +40,7 @@
 OSCAP_HIDDEN_START;
 
 oval_family_t oval_family_parse(xmlTextReaderPtr);
+xmlNs *oval_family_to_namespace(oval_family_t family, const char *schema_ns, xmlDoc *doc, xmlNode *parent);
 oval_subtype_t oval_subtype_parse(xmlTextReaderPtr);
 oval_affected_family_t oval_affected_family_parse(xmlTextReaderPtr);
 oval_operator_t oval_operator_parse(xmlTextReaderPtr, char *, oval_operator_t);
@@ -47,6 +48,7 @@ oval_operation_t oval_operation_parse(xmlTextReaderPtr, char *, oval_operation_t
 oval_definition_class_t oval_definition_class_parse(xmlTextReaderPtr);
 oval_existence_t oval_existence_parse(xmlTextReaderPtr, char *, oval_existence_t);
 oval_check_t oval_check_parse(xmlTextReaderPtr, char *, oval_check_t);
+const char *oval_check_get_description(oval_check_t);
 oval_entity_type_t oval_entity_type_parse(xmlTextReaderPtr);
 oval_datatype_t oval_datatype_parse(xmlTextReaderPtr, char *, oval_datatype_t);
 oval_entity_varref_type_t oval_entity_varref_type_parse(xmlTextReaderPtr);
@@ -68,6 +70,7 @@ const char *oval_definition_class_text(oval_definition_class_t);
 typedef void (*oval_affected_consumer) (struct oval_affected *, void *);
 int oval_affected_parse_tag(xmlTextReaderPtr reader, struct oval_parser_context *context, oval_affected_consumer, void *);
 
+char *oval_test_get_state_names(struct oval_test *test);
 int oval_test_parse_tag(xmlTextReaderPtr reader, struct oval_parser_context *context, void *);
 xmlNode *oval_test_to_dom(struct oval_test *, xmlDoc *, xmlNode *);
 
@@ -87,7 +90,8 @@ struct oval_object *oval_object_clone2(struct oval_definition_model *, struct ov
 struct oval_object *oval_object_create_internal(struct oval_object *, char *);
 struct oval_object *oval_object_get_base_obj(struct oval_object *);
 
-oval_version_t oval_state_get_schema_version(const struct oval_state *state);
+OSCAP_DEPRECATED(oval_version_t oval_state_get_schema_version(const struct oval_state *state));
+oval_schema_version_t oval_state_get_platform_schema_version(const struct oval_state *state);
 int oval_state_parse_tag(xmlTextReaderPtr reader, struct oval_parser_context *context, void *);
 xmlNode *oval_state_to_dom(struct oval_state *, xmlDoc *, xmlNode *);
 
@@ -107,8 +111,6 @@ xmlNode *oval_filter_to_dom(struct oval_filter *, xmlDoc *, xmlNode *);
 typedef void (*oval_object_content_consumer) (struct oval_object_content *, void *);
 xmlNode *oval_object_content_to_dom(struct oval_object_content *, xmlDoc *, xmlNode *);
 int oval_object_content_parse_tag(xmlTextReaderPtr, struct oval_parser_context *, oval_object_content_consumer, void *);
-struct oval_filter *oval_object_content_get_filter(struct oval_object_content *);
-void oval_object_content_set_filter(struct oval_object_content *, struct oval_filter *);
 
 int oval_state_content_parse_tag(xmlTextReaderPtr, struct oval_parser_context *, oscap_consumer_func, void *);
 xmlNode *oval_state_content_to_dom(struct oval_state_content *, xmlDoc *, xmlNode *);
@@ -171,6 +173,9 @@ void oval_definition_model_add_variable(struct oval_definition_model *, struct o
 
 const char * oval_definition_model_get_schema(struct oval_definition_model * model);
 void oval_definition_model_set_schema(struct oval_definition_model *model, const char *version);
+OSCAP_DEPRECATED(oval_version_t oval_definition_model_get_schema_version(struct oval_definition_model *model));
+oval_schema_version_t oval_definition_model_get_core_schema_version(struct oval_definition_model *model);
+oval_schema_version_t oval_definition_model_get_platform_schema_version(struct oval_definition_model *model, const char *platform);
 
 struct oval_string_map *oval_definition_model_build_vardef_mapping(struct oval_definition_model *model);
 struct oval_string_iterator *oval_definition_model_get_definitions_dependent_on_variable(struct oval_definition_model *model, struct oval_variable *variable);

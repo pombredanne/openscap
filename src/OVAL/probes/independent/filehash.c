@@ -75,7 +75,7 @@ static int mem2hex (uint8_t *mem, size_t mlen, char *str, size_t slen)
         return (0);
 }
 
-static int filehash_cb (const char *p, const char *f, probe_ctx *ctx, oval_version_t over)
+static int filehash_cb (const char *p, const char *f, probe_ctx *ctx, oval_schema_version_t over)
 {
         SEXP_t *itm;
         char   pbuf[PATH_MAX+1];
@@ -104,7 +104,7 @@ static int filehash_cb (const char *p, const char *f, probe_ctx *ctx, oval_versi
 
         memcpy (pbuf + plen, f, sizeof (char) * flen);
         pbuf[plen+flen] = '\0';
-	include_filepath = oval_version_cmp(over, OVAL_VERSION(5.6)) >= 0;
+	include_filepath = oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.6)) >= 0;
 
         /*
          * Open the file
@@ -180,6 +180,8 @@ static int filehash_cb (const char *p, const char *f, probe_ctx *ctx, oval_versi
 
 void *probe_init (void)
 {
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
+
         /*
          * Initialize crypto API
          */
@@ -193,10 +195,9 @@ void *probe_init (void)
         case 0:
                 return ((void *)&__filehash_probe_mutex);
         default:
-                dI("Can't initialize mutex: errno=%u, %s.\n", errno, strerror (errno));
+                dI("Can't initialize mutex: errno=%u, %s.", errno, strerror (errno));
         }
 
-        probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
 
         return (NULL);
 }
@@ -219,7 +220,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
 
 	OVAL_FTS    *ofts;
 	OVAL_FTSENT *ofts_ent;
-	oval_version_t over;
+	oval_schema_version_t over;
 
         if (mutex == NULL) {
 		return (PROBE_EINIT);
@@ -233,7 +234,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
         filename  = probe_obj_getent (probe_in, "filename",  1);
         behaviors = probe_obj_getent (probe_in, "behaviors", 1);
         filepath = probe_obj_getent (probe_in, "filepath", 1);
-	over = probe_obj_get_schema_version(probe_in);
+	over = probe_obj_get_platform_schema_version(probe_in);
 
         /* we want either path+filename or filepath */
         if ( (path == NULL || filename == NULL) && filepath==NULL ) {
@@ -251,7 +252,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
         case 0:
                 break;
         default:
-                dI("Can't lock mutex(%p): %u, %s.\n", &__filehash_probe_mutex, errno, strerror (errno));
+                dI("Can't lock mutex(%p): %u, %s.", &__filehash_probe_mutex, errno, strerror (errno));
 
 		SEXP_free (behaviors);
 		SEXP_free (path);
@@ -261,7 +262,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
 		return (PROBE_EFATAL);
         }
 
-	if ((ofts = oval_fts_open(path, filename, filepath, behaviors)) != NULL) {
+	if ((ofts = oval_fts_open(path, filename, filepath, behaviors, probe_ctx_getresult(ctx))) != NULL) {
 		while ((ofts_ent = oval_fts_read(ofts)) != NULL) {
 			filehash_cb(ofts_ent->path, ofts_ent->file, ctx, over);
 			oval_ftsent_free(ofts_ent);
@@ -279,7 +280,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
         case 0:
                 break;
         default:
-                dI("Can't unlock mutex(%p): %u, %s.\n", &__filehash_probe_mutex, errno, strerror (errno));
+                dI("Can't unlock mutex(%p): %u, %s.", &__filehash_probe_mutex, errno, strerror (errno));
 
 		return (PROBE_EFATAL);
         }

@@ -56,19 +56,27 @@ struct oval_results_model {
 	struct oval_directives_model *directives_model;
 	struct oval_definition_model *definition_model;
 	struct oval_collection *systems;
+	struct oval_probe_session *probe_session;
+	bool   export_sys_chars;
 };
 
 struct oval_results_model *oval_results_model_new(struct oval_definition_model *definition_model,
 						  struct oval_syschar_model **syschar_models)
 {
+	return oval_results_model_new_with_probe_session(definition_model, syschar_models, NULL);
+}
+
+struct oval_results_model *oval_results_model_new_with_probe_session(struct oval_definition_model *definition_model,
+						  struct oval_syschar_model **syschar_models,
+						  struct oval_probe_session *probe_session)
+{
 	struct oval_results_model *model = (struct oval_results_model *) oscap_alloc(sizeof(struct oval_results_model));
 	if (model == NULL)
 		return NULL;
 
-	model->generator = oval_generator_new();
 	struct oval_generator *generator = oval_definition_model_get_generator(definition_model);
-	char * schema_version = oval_generator_get_schema_version(generator);
-	oval_generator_set_schema_version(model->generator, schema_version);
+	model->generator = oval_generator_clone(generator);
+	oval_generator_update_timestamp(model->generator);
 
 	model->systems = oval_collection_new();
 	model->definition_model = definition_model;
@@ -79,6 +87,8 @@ struct oval_results_model *oval_results_model_new(struct oval_definition_model *
 		}
 	}
 	model->directives_model = oval_directives_model_new();
+	model->probe_session = probe_session;
+	model->export_sys_chars = true;
 	return model;
 }
 
@@ -96,6 +106,16 @@ struct oval_results_model *oval_results_model_clone(struct oval_results_model *o
 	/* ToDo: Directives Model clone */
 
 	return new_resmodel;
+}
+
+void oval_results_model_set_export_system_characteristics(struct oval_results_model *model, bool export)
+{
+	model->export_sys_chars = export;
+}
+
+bool oval_results_model_get_export_system_characteristics(struct oval_results_model *model)
+{
+	return model->export_sys_chars;
 }
 
 void oval_results_model_free(struct oval_results_model *model)
@@ -126,6 +146,12 @@ void oval_results_model_set_generator(struct oval_results_model *model, struct o
 	model->generator = generator;
 }
 
+struct oval_directives_model *oval_results_model_get_directives_model(struct oval_results_model *model) {
+	__attribute__nonnull__(model);
+
+	return model->directives_model;
+}
+
 struct oval_definition_model *oval_results_model_get_definition_model(struct oval_results_model *model) {
 	__attribute__nonnull__(model);
 
@@ -138,6 +164,12 @@ struct oval_result_system_iterator *oval_results_model_get_systems(struct oval_r
 
 	return (struct oval_result_system_iterator *)
 	    oval_collection_iterator(model->systems);
+}
+
+struct oval_probe_session *oval_results_model_get_probe_session(struct oval_results_model *model)
+{
+	__attribute__nonnull__(model);
+	return model->probe_session;
 }
 
 void oval_results_model_add_system(struct oval_results_model *model, struct oval_result_system *sys)
@@ -332,7 +364,7 @@ int oval_results_model_parse(xmlTextReaderPtr reader, struct oval_parser_context
                         } else if (is_ovalres && (strcmp(tagname, "results") == 0)) {
                                 ret = oval_parser_parse_tag(reader, context, &oval_result_system_parse_tag , NULL);
                         } else {
-                                dW("Unprocessed tag: <%s:%s>.\n", namespace, tagname);
+                                dW("Unprocessed tag: <%s:%s>.", namespace, tagname);
                                 oval_parser_skip_tag(reader, context);
                         }
 

@@ -39,6 +39,7 @@
 #include "oval_definitions_impl.h"
 #include "adt/oval_collection_impl.h"
 #include "oval_agent_api_impl.h"
+#include "common/oscap_string.h"
 #include "common/util.h"
 #include "common/debug_priv.h"
 #include "common/elements.h"
@@ -158,6 +159,33 @@ struct oval_state_iterator *oval_test_get_states(struct oval_test *test)
 	__attribute__nonnull__(test);
 
 	return (struct oval_state_iterator *) oval_collection_iterator(test->states);
+}
+
+char *oval_test_get_state_names(struct oval_test *test)
+{
+	__attribute__nonnull__(test);
+
+	struct oval_state_iterator *ste_itr = oval_test_get_states(test);
+	if (!oval_state_iterator_has_more(ste_itr)) {
+		oval_state_iterator_free(ste_itr);
+		return NULL;
+	}
+	struct oscap_string *state_list = oscap_string_new();
+	oscap_string_append_char(state_list, '\'');
+	while (1) {
+		struct oval_state *ste = oval_state_iterator_next(ste_itr);
+		const char *ste_id = oval_state_get_id(ste);
+		oscap_string_append_string(state_list, ste_id);
+		if (!oval_state_iterator_has_more(ste_itr)) {
+			break;
+		}
+		oscap_string_append_string(state_list, "', '");
+	}
+	oscap_string_append_char(state_list, '\'');
+	char *state_names = oscap_strdup(oscap_string_get_cstr(state_list));
+	oscap_string_free(state_list);
+	oval_state_iterator_free(ste_itr);
+	return state_names;
 }
 
 struct oval_test *oval_test_new(struct oval_definition_model *model, const char *id)
@@ -346,7 +374,7 @@ static int _oval_test_parse_tag(xmlTextReaderPtr reader, struct oval_parser_cont
 			state_ref = NULL;
 		}
 	} else {
-		oscap_dlprintf(DBG_W, "Skipping tag <%s>.\n", tagname);
+		dW("Skipping tag <%s>.", tagname);
 		return_code = oval_parser_skip_tag(reader, context);
 	}
 
@@ -383,7 +411,7 @@ int oval_test_parse_tag(xmlTextReaderPtr reader, struct oval_parser_context *con
 	oval_check_t check = oval_check_parse(reader, "check", OVAL_CHECK_UNKNOWN);
 	if (check == OVAL_CHECK_NONE_EXIST) {
 		dW("The 'none exist' CheckEnumeration value has been deprecated. "
-		   "Converted to check='none satisfy' and check_existence='none exist'.\n");
+		   "Converted to check='none satisfy' and check_existence='none exist'.");
 		oval_test_set_check(test, OVAL_CHECK_NONE_SATISFY);
 		oval_test_set_existence(test, OVAL_NONE_EXIST);
 	} else {
@@ -425,7 +453,7 @@ xmlNode *oval_test_to_dom(struct oval_test *test, xmlDoc * doc, xmlNode * parent
 	/* skip unknown test */
 	oval_subtype_t subtype = oval_test_get_subtype(test);
 	if ( subtype == OVAL_SUBTYPE_UNKNOWN ) {
-		oscap_dlprintf(DBG_E, "Unknown Test %s.\n", oval_test_get_id(test));
+		dE("Unknown Test %s.", oval_test_get_id(test));
 		return test_node;
 	}
 
@@ -434,14 +462,10 @@ xmlNode *oval_test_to_dom(struct oval_test *test, xmlDoc * doc, xmlNode * parent
 	char test_name[strlen(subtype_text) + 6];
 	sprintf(test_name, "%s_test", subtype_text);
 
-	/* get family URI */
 	oval_family_t family = oval_test_get_family(test);
-	const char *family_text = oval_family_get_text(family);
-	char family_uri[strlen((const char *)OVAL_DEFINITIONS_NAMESPACE) + strlen(family_text) + 2];
-	sprintf(family_uri,"%s#%s", OVAL_DEFINITIONS_NAMESPACE, family_text);
 
 	/* search namespace & create child */
-	xmlNs *ns_family = xmlSearchNsByHref(doc, parent, BAD_CAST family_uri);
+	xmlNs *ns_family = oval_family_to_namespace(family, (const char *) OVAL_DEFINITIONS_NAMESPACE, doc, parent);
 	test_node = xmlNewTextChild(parent, ns_family, BAD_CAST test_name, NULL);
 
 	char *id = oval_test_get_id(test);

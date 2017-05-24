@@ -63,6 +63,9 @@ function test_rhel {
                 EXPECTED_NA=0
             elif echo "$RHEL_RELEASE" | grep "\.el${RHEL_VERSION}[._]"; then
                 EXPECTED_NA=0
+            elif echo "$RHEL_RELEASE" | grep "\.ael${RHEL_VERSION}b"; then
+                # Little obscure but valid rpm release
+                EXPECTED_NA=0
             elif [ "$RHEL_VERSION" == "5" ] && echo "$RHEL_RELEASE" | grep '^redhat-release-5'; then
                 # On RHEL 5 the redhat-release package does not have %{RELEASE} defined.
                 EXPECTED_NA=0
@@ -94,12 +97,13 @@ function test_rhel {
 
 test_init "test_api_xccdf_default_cpe.log"
 
-test_run "test_api_xccdf_default_cpe_fedora16" test_fedora 16
 test_run "test_api_xccdf_default_cpe_fedora17" test_fedora 17
 test_run "test_api_xccdf_default_cpe_fedora18" test_fedora 18
 test_run "test_api_xccdf_default_cpe_fedora19" test_fedora 19
 test_run "test_api_xccdf_default_cpe_fedora20" test_fedora 20
 test_run "test_api_xccdf_default_cpe_fedora21" test_fedora 21
+test_run "test_api_xccdf_default_cpe_fedora23" test_fedora 23
+test_run "test_api_xccdf_default_cpe_fedora24" test_fedora 24
 test_run "test_api_xccdf_default_cpe_rhel5" test_rhel 5
 test_run "test_api_xccdf_default_cpe_rhel6" test_rhel 6
 test_run "test_api_xccdf_default_cpe_rhel7" test_rhel 7

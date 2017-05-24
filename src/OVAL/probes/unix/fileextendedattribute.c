@@ -102,31 +102,31 @@ static int file_cb (const char *p, const char *f, void *ptr)
 	}
 
         SEXP_init(&xattr_name);
-retry_list:
-        /* estimate the size of the buffer */
-        xattr_count = llistxattr(st_path, NULL, 0);
 
-        if (xattr_count == 0)
-                return (0);
+	do {
+		/* estimate the size of the buffer */
+		xattr_count = llistxattr(st_path, NULL, 0);
+
+		if (xattr_count == 0)
+				return (0);
+
+		if (xattr_count < 0) {
+				dI("FAIL: llistxattr(%s, %p, %zu): errno=%u, %s.", errno, strerror(errno));
+				return 0;
+		}
+
+		/* allocate space for xattr names */
+		xattr_buflen = xattr_count;
+		xattr_buf    = oscap_realloc(xattr_buf, sizeof(char) * xattr_buflen);
+
+		/* fill the buffer */
+		xattr_count = llistxattr(st_path, xattr_buf, xattr_buflen);
+
+		/* check & retry if needed */
+	} while (errno == ERANGE);
 
         if (xattr_count < 0) {
-                dI("FAIL: llistxattr(%s, %p, %zu): errno=%u, %s.\n", errno, strerror(errno));
-                return 0;
-        }
-
-        /* allocate space for xattr names */
-        xattr_buflen = xattr_count;
-        xattr_buf    = oscap_realloc(xattr_buf, sizeof(char) * xattr_buflen);
-
-        /* fill the buffer */
-        xattr_count = llistxattr(st_path, xattr_buf, xattr_buflen);
-
-        /* check & retry if needed */
-        if (errno == ERANGE)
-                goto retry_list;
-
-        if (xattr_count < 0) {
-                dI("FAIL: llistxattr(%s, %p, %zu): errno=%u, %s.\n", errno, strerror(errno));
+                dI("FAIL: llistxattr(%s, %p, %zu): errno=%u, %s.", errno, strerror(errno));
                 oscap_free(xattr_buf);
         }
 
@@ -151,11 +151,23 @@ retry_list:
                         xattr_vallen = lgetxattr(st_path, xattr_buf + i, NULL, 0);
                 retry_value:
                         if (xattr_vallen >= 0) {
-                                xattr_val    = oscap_realloc(xattr_val, sizeof(char) * xattr_vallen);
+				// Check possible buffer overflow
+				if (sizeof(char) * (xattr_vallen + 1) <= sizeof(char) * xattr_vallen) {
+					dE("Attribute is too long.");
+					abort();
+				}
+
+				// Allocate buffer, '+1' is for trailing '\0'
+ 				xattr_val    = oscap_realloc(xattr_val, sizeof(char) * (xattr_vallen + 1));
+
+				// we don't want to override space for '\0' by call of 'lgetxattr'
+				// we pass only 'xattr_vallen' instead of 'xattr_vallen + 1'
                                 xattr_vallen = lgetxattr(st_path, xattr_buf + i, xattr_val, xattr_vallen);
 
                                 if (xattr_vallen < 0 || errno == ERANGE)
                                         goto retry_value;
+
+				xattr_val[xattr_vallen] = '\0';
 
                                 item = probe_item_create(OVAL_UNIX_FILEEXTENDEDATTRIBUTE, NULL,
                                                          "filepath", OVAL_DATATYPE_STRING, f == NULL ? NULL : st_path,
@@ -167,7 +179,7 @@ retry_list:
 
                                 oscap_free(xattr_val);
                         } else {
-                                dI("FAIL: lgetxattr(%s, %s, NULL, 0): errno=%u, %s.\n", errno, strerror(errno));
+                                dI("FAIL: lgetxattr(%s, %s, NULL, 0): errno=%u, %s.", errno, strerror(errno));
 
                                 item = probe_item_create(OVAL_UNIX_FILEEXTENDEDATTRIBUTE, NULL, NULL);
                                 probe_item_setstatus(item, SYSCHAR_STATUS_ERROR);
@@ -184,7 +196,8 @@ retry_list:
                 /* skip to next name */
                 while (i < xattr_buflen && xattr_buf[i] != '\0')
                         ++i;
-        } while (xattr_buf + i != xattr_buf + xattr_buflen - 1);
+		++i;
+        } while (xattr_buf + i < xattr_buf + xattr_buflen - 1);
 
         oscap_free(xattr_buf);
 
@@ -195,6 +208,8 @@ static pthread_mutex_t __file_probe_mutex;
 
 void *probe_init (void)
 {
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
+
 	SEXP_init(&gr_lastpath);
 
         /*
@@ -204,13 +219,12 @@ void *probe_init (void)
         case 0:
                 return ((void *)&__file_probe_mutex);
         default:
-                dI("Can't initialize mutex: errno=%u, %s.\n", errno, strerror (errno));
+                dI("Can't initialize mutex: errno=%u, %s.", errno, strerror (errno));
         }
 #if 0
 	probe_setoption(PROBEOPT_VARREF_HANDLING, false, "path");
 	probe_setoption(PROBEOPT_VARREF_HANDLING, false, "filename");
 #endif
-		probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
         return (NULL);
 }
 
@@ -270,7 +284,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
         case 0:
                 break;
         default:
-                dI("Can't lock mutex(%p): %u, %s.\n", &__file_probe_mutex, errno, strerror (errno));
+                dI("Can't lock mutex(%p): %u, %s.", &__file_probe_mutex, errno, strerror (errno));
 
 		SEXP_free(path);
 		SEXP_free(filename);
@@ -285,7 +299,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
 	cbargs.error    = 0;
         cbargs.attr_ent = attribute_;
 
-	if ((ofts = oval_fts_open(path, filename, filepath, behaviors)) != NULL) {
+	if ((ofts = oval_fts_open(path, filename, filepath, behaviors, probe_ctx_getresult(ctx))) != NULL) {
 		while ((ofts_ent = oval_fts_read(ofts)) != NULL) {
 			file_cb(ofts_ent->path, ofts_ent->file, &cbargs);
 			oval_ftsent_free(ofts_ent);
@@ -305,7 +319,7 @@ int probe_main (probe_ctx *ctx, void *mutex)
         case 0:
                 break;
         default:
-                dI("Can't unlock mutex(%p): %u, %s.\n", &__file_probe_mutex, errno, strerror (errno));
+                dI("Can't unlock mutex(%p): %u, %s.", &__file_probe_mutex, errno, strerror (errno));
 
                 return PROBE_EFATAL;
         }

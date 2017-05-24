@@ -329,6 +329,16 @@ struct xccdf_value_binding_iterator  * xccdf_policy_get_values(const struct xccd
 struct xccdf_policy_iterator * xccdf_policy_model_get_policies(const struct xccdf_policy_model *model);
 
 /**
+ * Build all policies that can be useful for user. The useful policy is any
+ * that contains at least one Rule. For example the default profile oftentimes
+ * does not contain any rules.
+ * @memberof xccdf_policy_model
+ * @param policy_model - XCCDF Policy Model
+ * @return 0 on success
+ */
+int xccdf_policy_model_build_all_useful_policies(struct xccdf_policy_model *policy_model);
+
+/**
  * Get selected rules from policy
  * @memberof xccdf_policy
  * @return Pointer to select iterator.
@@ -540,8 +550,9 @@ int xccdf_policy_generate_fix(struct xccdf_policy *policy, struct xccdf_result *
  * @param policy Policy with profile
  * @param item XCCDF item to be tailored
  * @return new item that has to be freed by user
+ * @deprecated This function is deprecated and might be dropped from future releases.
  */
-struct xccdf_item * xccdf_policy_tailor_item(struct xccdf_policy * policy, struct xccdf_item * item);
+OSCAP_DEPRECATED(struct xccdf_item * xccdf_policy_tailor_item(struct xccdf_policy * policy, struct xccdf_item * item));
 
 /**
  * xccdf_policy_model_get_files and xccdf_item_get_files each return oscap_file_entries instead of raw strings
@@ -690,6 +701,14 @@ void xccdf_value_binding_iterator_reset(struct xccdf_value_binding_iterator *it)
  * @return XCCDF Score
  */
 struct xccdf_score * xccdf_policy_get_score(struct xccdf_policy * policy, struct xccdf_result * test_result, const char * system);
+
+/**
+ * Recalculate score of the XCCDF Benchmark
+ * @param policy XCCDF Policy
+ * @param test_result Test Result model
+ * @returns zero on success
+ */
+int xccdf_policy_recalculate_score(struct xccdf_policy * policy, struct xccdf_result * test_result);
 
 /**
  * Get value of given value item in context of given policy

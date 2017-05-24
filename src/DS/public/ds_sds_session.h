@@ -29,6 +29,7 @@
 #include "oscap.h"
 #include "oscap_source.h"
 #include "scap_ds.h"
+#include "oscap_download_cb.h"
 
 /**
  * The ds_sds_session is structure tight closely to oscap_source.
@@ -131,13 +132,23 @@ const char *ds_sds_session_get_checklist_id(const struct ds_sds_session *session
 struct oscap_source *ds_sds_session_get_component_by_href(struct ds_sds_session *session, const char *href);
 
 /**
+ * Check whether given component can be registered.
+ * @param session The Source DataStream session
+ * @param container_name The name of container like: "checks", "checklists", or "dictionaries".
+ * @param component_id Id of component within selected datastream or NULL
+ * @returns true if at least one matching component exists, false otherwise
+ * @see ds_sds_session_register_component_with_dependencies
+ */
+bool ds_sds_session_can_register_component(struct ds_sds_session *session, const char *container_name, const char *component_id);
+
+/**
  * Register component and its dependencies to internal cache. This functions extracts
  * component from selected datastream within collection and all it dependencies.
  * The components may be later queried by ds_sds_session_get_component_by_href.
  * @memberof ds_sds_session
  * @param session The Source DataStream session
  * @param container_name The name of container like: "checks", "checklists", or "dictionaries".
- * @param component_id Id of component within selected datastream
+ * @param component_id Id of component within selected datastream or NULL
  * @param target filename or NULL
  * @returns 0 on success
  */
@@ -171,6 +182,16 @@ int ds_sds_session_set_target_dir(struct ds_sds_session *session, const char *ta
  * @param session The Source DataStream session to reset
  */
 void ds_sds_session_reset(struct ds_sds_session *session);
+
+/**
+ * Set property of remote content.
+ * @memberof ds_sds_session
+ * @param session The Source DataStream Session
+ * @param allowed Whether is download of remote resources allowed in this session (defaults to false)
+ * @param callback used to notify user about download proceeds. This might be safely set
+ * to NULL -- ignoring user notification.
+ */
+void ds_sds_session_set_remote_resources(struct ds_sds_session *session, bool allowed, download_progress_calllback_t callback);
 
 /**
  * Returns HTML representation of selected checklist in form of OpenSCAP guide.

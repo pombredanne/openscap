@@ -3,6 +3,10 @@
 . ../../../test_common.sh
 
 test_init test_api_oval_unittests.log
+test_run "comment before root element" $srcdir/test_comment.sh
+test_run "--without-syschar" $srcdir/test_without_syschars.sh
+test_run "cim_datetime format" $srcdir/test_cim_datetime.sh
+test_run "remove <oval_definiton> using oval directives" $srcdir/test_directives.sh
 test_run "empty filename(pattern match)" $srcdir/test_empty_filename.sh
 test_run "deprecated definition" $srcdir/test_deprecated_def.sh
 test_run "applicability_check element" $srcdir/test_applicability_check.sh
@@ -14,6 +18,7 @@ test_run "Import content without proper namespaces" $srcdir/test_xmlns_missing.s
 test_run "int comparison - intmax_t" $srcdir/test_int_comparison.sh
 test_run "evr_string comparison is superior to rpmvercmp" $srcdir/test_evr_string_comparison.sh
 test_run "evr_string comparison regards missing epoch in content" $srcdir/test_evr_string_missing_epoch.sh
+test_run "possible values and restrictions in external variables" $srcdir/test_external_variable.sh
 test_run "float comparison" $srcdir/test_float_comparison.sh
 test_run "insensitive_equals on properties" $srcdir/test_envvar_insensitive_equals.sh
 test_run "ipv6_address: 'superset of' operation" $srcdir/test_ipv6_super_set_of.sh
@@ -23,4 +28,10 @@ test_run "ipv4_address: 'subset of' operation" $srcdir/test_ipv4_subset_of.sh
 test_run "ipv4_address: comparison" $srcdir/test_ipv4_comparison.sh
 test_run "textfilecontent: 'line' comparison" $srcdir/test_filecontent_line.sh
 test_run "anyxml element" $srcdir/test_anyxml.sh
+test_run "invalid regular expression" $srcdir/test_invalid_regex.sh
+test_run "glob to regex" $srcdir/test_glob_to_regex.sh
+test_run "test platform schema version" $srcdir/test_platform_version.sh
+test_run "state entity check_existence attribute" $srcdir/test_state_check_existence.sh
+test_run "skip validation" $srcdir/test_skip_valid.sh
+test_run "object component data type evaluation" $srcdir/test_object_component_type.sh
 test_exit

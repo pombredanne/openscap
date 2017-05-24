@@ -60,25 +60,7 @@
 #include <regex.h>
 
 /* RPM headers */
-#include <rpm/rpmdb.h>
-#include <rpm/rpmlib.h>
-#include <rpm/rpmts.h>
-#include <rpm/rpmmacro.h>
-#include <rpm/rpmlog.h>
-#include <rpm/header.h>
-
-#ifndef HAVE_HEADERFORMAT
-# define HAVE_LIBRPM44 1 /* hack */
-# define headerFormat(_h, _fmt, _emsg) headerSprintf((_h),( _fmt), rpmTagTable, rpmHeaderFormats, (_emsg))
-#endif
-
-#ifndef HAVE_RPMFREECRYPTO
-# define rpmFreeCrypto() while(0)
-#endif
-
-#ifndef HAVE_RPMFREEFILESYSTEMS
-# define rpmFreeFilesystems() while(0)
-#endif
+#include "rpm-helper.h"
 
 /* SEAP */
 #include <seap.h>
@@ -107,32 +89,11 @@ struct rpminfo_rep {
 	char extended_name[1024];
 };
 
-struct rpminfo_global {
-        rpmts           rpmts;
-        pthread_mutex_t mutex;
-};
+#define RPMINFO_LOCK	RPM_MUTEX_LOCK(&g_rpm.mutex)
 
-#define RPMINFO_LOCK	  \
-	do { \
-		int prev_cancel_state = -1; \
-		if (pthread_mutex_lock(&g_rpm.mutex) != 0) { \
-			dE("Can't lock mutex\n"); \
-			return (-1); \
-		} \
-		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &prev_cancel_state); \
-	} while(0)
+#define RPMINFO_UNLOCK	RPM_MUTEX_UNLOCK(&g_rpm.mutex)
 
-#define RPMINFO_UNLOCK	  \
-	do { \
-		int prev_cancel_state = -1; \
-		if (pthread_mutex_unlock(&g_rpm.mutex) != 0) { \
-			dE("Can't unlock mutex. Aborting...\n"); \
-			abort(); \
-		} \
-		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &prev_cancel_state); \
-	} while(0)
-
-static struct rpminfo_global g_rpm;
+static struct rpm_probe_global g_rpm;
 static const char g_keyid_regex_string[] = "Key ID [a-fA-F0-9]{16}";
 static regex_t g_keyid_regex;
 
@@ -182,7 +143,7 @@ static void pkgh2rep (Header h, struct rpminfo_rep *r)
 
 	if (regexec(&g_keyid_regex, str, 1, keyid_match, 0) != 0) {
 		sid = NULL;
-		dW("Failed to extract the Key ID value: regex=\"%s\", string=\"%s\"\n",
+		dD("Failed to extract the Key ID value: regex=\"%s\", string=\"%s\"",
 		   g_keyid_regex_string, str);
 	} else {
 		size_t keyid_start, keyid_length;
@@ -301,44 +262,55 @@ ret:
         return (ret);
 }
 
+void probe_preload ()
+{
+	rpmLibsPreload();
+}
+
 void *probe_init (void)
 {
-	probe_offline_flags offline_mode = PROBE_OFFLINE_NONE;
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT|PROBE_OFFLINE_RPMDB);
+	addMacro(NULL, "_dbpath", NULL, getenv("OSCAP_PROBE_RPMDB_PATH"), 0);
 
-        if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
-                dI("rpmReadConfigFiles failed: %u, %s.\n", errno, strerror (errno));
-                return (NULL);
-        }
+#ifdef HAVE_RPM46
+	rpmlogSetCallback(rpmErrorCb, NULL);
+#endif
+	if (regcomp(&g_keyid_regex, g_keyid_regex_string, REG_EXTENDED) != 0) {
+		dE("regcomp(%s) failed.");
+		return NULL;
+	}
 
-        probe_getoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, NULL, &offline_mode);
-        if (offline_mode & PROBE_OFFLINE_RPMDB) {
-	        addMacro(NULL, "_dbpath", NULL, getenv("OSCAP_PROBE_RPMDB_PATH"), 0);
+	if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
+		dI("rpmReadConfigFiles failed: %u, %s.", errno, strerror (errno));
+		g_rpm.rpmts = NULL;
+		return ((void *)&g_rpm);
         }
 
         g_rpm.rpmts = rpmtsCreate();
         pthread_mutex_init (&(g_rpm.mutex), NULL);
-
-	if (regcomp(&g_keyid_regex, g_keyid_regex_string, REG_EXTENDED) != 0) {
-		dE("regcomp(%s) failed.\n");
-		return NULL;
-	}
-
-	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT|PROBE_OFFLINE_RPMDB);
 
         return ((void *)&g_rpm);
 }
 
 void probe_fini (void *ptr)
 {
-        struct rpminfo_global *r = (struct rpminfo_global *)ptr;
+        struct rpm_probe_global *r = (struct rpm_probe_global *)ptr;
+
+	rpmFreeCrypto();
+	rpmFreeRpmrc();
+	rpmFreeMacros(NULL);
+	rpmlogClose();
+
+	if (r == NULL)
+		return;
+
+	regfree(&g_keyid_regex);
+
+	if (r->rpmts == NULL)
+		return;
 
         rpmtsFree(r->rpmts);
-	rpmFreeCrypto();
-        rpmFreeRpmrc();
-        rpmFreeMacros(NULL);
-        rpmlogClose();
         pthread_mutex_destroy (&(r->mutex));
-	regfree(&g_keyid_regex);
 
         return;
 }
@@ -409,17 +381,28 @@ cleanup:
 int probe_main (probe_ctx *ctx, void *arg)
 {
 	SEXP_t *val, *item, *ent, *probe_in;
-	oval_version_t over;
+	oval_schema_version_t over;
 	int rpmret, i;
 
         struct rpminfo_req request_st;
         struct rpminfo_rep *reply_st;
 
+	// arg is NULL if regex compilation failed
+	if (arg == NULL) {
+		return PROBE_EINIT;
+	}
+
+	// There was no rpm config files
+	if (g_rpm.rpmts == NULL) {
+		probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_NOT_APPLICABLE);
+		return 0;
+	}
+
 	probe_in = probe_ctx_getobject(ctx);
 	if (probe_in == NULL)
 		return PROBE_ENOOBJ;
 
-	over = probe_obj_get_schema_version(probe_in);
+	over = probe_obj_get_platform_schema_version(probe_in);
 
         ent = probe_obj_getent (probe_in, "name", 1);
 
@@ -430,7 +413,7 @@ int probe_main (probe_ctx *ctx, void *arg)
         val = probe_ent_getval (ent);
 
         if (val == NULL) {
-                dI("%s: no value\n", "name");
+                dI("%s: no value", "name");
                 SEXP_free (ent);
                 return (PROBE_ENOVAL);
         }
@@ -464,11 +447,11 @@ int probe_main (probe_ctx *ctx, void *arg)
 		SEXP_free (ent);
                 switch (errno) {
                 case EINVAL:
-                        dI("%s: invalid value type\n", "name");
+                        dI("%s: invalid value type", "name");
 			return PROBE_EINVAL;
                         break;
                 case EFAULT:
-                        dI("%s: element not found\n", "name");
+                        dI("%s: element not found", "name");
 			return PROBE_ENOELM;
                         break;
 		default:
@@ -481,10 +464,10 @@ int probe_main (probe_ctx *ctx, void *arg)
         /* get info from RPM db */
         switch (rpmret = get_rpminfo (&request_st, &reply_st)) {
         case 0: /* Not found */
-                dI("Package \"%s\" not found.\n", request_st.name);
+                dI("Package \"%s\" not found.", request_st.name);
                 break;
         case -1: /* Error */
-                dI("get_rpminfo failed\n");
+                dI("get_rpminfo failed");
 
                 item = probe_item_create(OVAL_LINUX_RPM_INFO, NULL,
                                          "name", OVAL_DATATYPE_STRING, request_st.name,
@@ -518,7 +501,7 @@ int probe_main (probe_ctx *ctx, void *arg)
                                                          NULL);
 
 				/* OVAL 5.10 added extended_name and filepaths behavior */
-				if (oval_version_cmp(over, OVAL_VERSION(5.10)) >= 0) {
+				if (oval_schema_version_cmp(over, OVAL_SCHEMA_VERSION(5.10)) >= 0) {
 					SEXP_t *value, *bh_value;
 					value = probe_entval_from_cstr(
 							OVAL_DATATYPE_STRING,
@@ -551,9 +534,9 @@ int probe_main (probe_ctx *ctx, void *arg)
 				SEXP_free(name);
                                 __rpminfo_rep_free (&(reply_st[i]));
 
-				if (probe_item_collect(ctx, item)) {
+				if (probe_item_collect(ctx, item) < 0) {
 					SEXP_vfree(ent, NULL);
-					return 1;
+					return PROBE_EUNKNOWN;
 				}
                         }
 

@@ -320,12 +320,24 @@ int oval_entity_parse_tag(xmlTextReaderPtr reader,
 			struct oval_consume_varref_context ctx = {.model = model, .variable = &variable, .value = &value};
 			return_code = oscap_parser_text_value(reader, &oval_consume_varref, &ctx);
 		} else {
-			struct oval_definition_model *model = context->definition_model;
-			variable = oval_definition_model_get_variable(model, varref);
 			varref_type = OVAL_ENTITY_VARREF_ATTRIBUTE;
-			oscap_free(varref);
-			varref = NULL;
-			value = NULL;
+			struct oval_definition_model *model = context->definition_model;
+			oval_schema_version_t version = oval_definition_model_get_core_schema_version(model);
+			if (oval_schema_version_cmp(version, OVAL_SCHEMA_VERSION(5.6)) > 0) {
+				oscap_seterr(OSCAP_EFAMILY_OVAL, "The var_ref attribute for the var_ref entity "
+						"of a variable_object is prohibited since OVAL 5.6. Use plain "
+						"var_ref instead.");
+			}
+			variable = oval_definition_model_get_variable(model, varref);
+			if (variable == NULL) {
+				oscap_seterr(OSCAP_EFAMILY_OVAL,
+						"Could not found variable '%s' referenced by var_ref element.", varref);
+				return_code = -1;
+			} else {
+				oscap_free(varref);
+				varref = NULL;
+				value = NULL;
+			}
 		}
 	} else if (varref == NULL) {
 		variable = NULL;
@@ -358,7 +370,7 @@ int oval_entity_parse_tag(xmlTextReaderPtr reader,
 	(*consumer) (entity, user);
 
 	if (return_code != 0) {
-		dW("Parsing of <%s> terminated by an error at line %d.\n", name, xmlTextReaderGetParserLineNumber(reader));
+		dW("Parsing of <%s> terminated by an error at line %d.", name, xmlTextReaderGetParserLineNumber(reader));
 	}
 
 	oscap_free(name);
@@ -387,7 +399,10 @@ xmlNode *oval_entity_to_dom(struct oval_entity *entity, xmlDoc * doc, xmlNode * 
 	bool mask = oval_entity_get_mask(entity);
 
 	/* omit the value and operation used for testing in oval_results if mask=true */
-	if (mask && !xmlStrcmp(root_node->name, BAD_CAST OVAL_ROOT_ELM_RESULTS)) {
+	/* Omit it only for older versions of OVAL than 5.10 */
+	oval_schema_version_t oval_version = oval_definition_model_get_core_schema_version(entity->model);
+	if (oval_schema_version_cmp(oval_version, OVAL_SCHEMA_VERSION(5.10)) < 0 &&
+		mask && !xmlStrcmp(root_node->name, BAD_CAST OVAL_ROOT_ELM_RESULTS)) {
 		entity_node = xmlNewTextChild(parent, ent_ns, BAD_CAST tagname, BAD_CAST "");
 	} else {
 		entity_node = xmlNewTextChild(parent, ent_ns, BAD_CAST tagname, BAD_CAST content);

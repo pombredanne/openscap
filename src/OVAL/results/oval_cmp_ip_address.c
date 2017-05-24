@@ -123,6 +123,9 @@ oval_result_t oval_ipaddr_cmp(int af, const char *s1, const char *s2, oval_opera
 			result = OVAL_RESULT_FALSE;
 		break;
 	case OVAL_OPERATION_GREATER_THAN:
+		if (mask1 != mask2) {
+			return OVAL_RESULT_ERROR;
+		}
 		ipaddr_mask(af, &addr1, mask1);
 		ipaddr_mask(af, &addr2, mask2);
 		if (ipaddr_cmp(af, &addr1, &addr2) < 0)
@@ -131,6 +134,9 @@ oval_result_t oval_ipaddr_cmp(int af, const char *s1, const char *s2, oval_opera
 			result = OVAL_RESULT_FALSE;
 		break;
 	case OVAL_OPERATION_GREATER_THAN_OR_EQUAL:
+		if (mask1 != mask2) {
+			return OVAL_RESULT_ERROR;
+		}
 		ipaddr_mask(af, &addr1, mask1);
 		ipaddr_mask(af, &addr2, mask2);
 		if (ipaddr_cmp(af, &addr1, &addr2) <= 0)
@@ -158,6 +164,9 @@ oval_result_t oval_ipaddr_cmp(int af, const char *s1, const char *s2, oval_opera
 			result = OVAL_RESULT_FALSE;
 		break;
 	case OVAL_OPERATION_LESS_THAN:
+		if (mask1 != mask2) {
+			return OVAL_RESULT_ERROR;
+		}
 		ipaddr_mask(af, &addr1, mask1);
 		ipaddr_mask(af, &addr2, mask2);
 		if (ipaddr_cmp(af, &addr1, &addr2) > 0)
@@ -166,6 +175,9 @@ oval_result_t oval_ipaddr_cmp(int af, const char *s1, const char *s2, oval_opera
 			result = OVAL_RESULT_FALSE;
 		break;
 	case OVAL_OPERATION_LESS_THAN_OR_EQUAL:
+		if (mask1 != mask2) {
+			return OVAL_RESULT_ERROR;
+		}
 		ipaddr_mask(af, &addr1, mask1);
 		ipaddr_mask(af, &addr2, mask2);
 		if (ipaddr_cmp(af, &addr1, &addr2) >= 0)
@@ -174,7 +186,7 @@ oval_result_t oval_ipaddr_cmp(int af, const char *s1, const char *s2, oval_opera
 			result = OVAL_RESULT_FALSE;
 		break;
 	default:
-		dE("Unexpected compare operation: %d.\n", op);
+		dE("Unexpected compare operation: %d.", op);
 		assert(false);
 	}
 
@@ -204,7 +216,7 @@ static inline int ipv4addr_parse(const char *oval_ipv4_string, uint32_t *netmask
 	}
 
 	if (inet_pton(AF_INET, s, ip_out) <= 0)
-		dW("inet_pton() failed.\n");
+		dW("inet_pton() failed.");
 	else
 		result = 0;
 
@@ -232,7 +244,7 @@ static inline int ipv6addr_parse(const char *oval_ipv6_string, uint32_t *len_out
 	}
 
 	if (inet_pton(AF_INET6, s, ip_out) <= 0)
-		dW("inet_pton() failed.\n");
+		dW("inet_pton() failed.");
 	else
 		result = 0;
 

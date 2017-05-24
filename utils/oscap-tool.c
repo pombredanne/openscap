@@ -35,6 +35,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <cvss_score.h>
+#include <oscap_debug.h>
 
 #ifndef PATH_MAX
 # define PATH_MAX 1024
@@ -376,3 +377,27 @@ void oscap_print_error(void)
 	}
 }
 
+bool check_verbose_options(struct oscap_action *action)
+{
+	if (action->verbosity_level == NULL && action->f_verbose_log != NULL) {
+		oscap_module_usage(action->module, stderr,
+			"Verbosity level is not specified! Please provide --verbose VERBOSITY_LEVEL option together with --verbose-log-file.");
+		return false;
+	}
+	if (action->verbosity_level != NULL && oscap_verbosity_level_from_cstr(action->verbosity_level) == -1) {
+		oscap_module_usage(action->module, stderr,
+			"Invalid verbosity level! Verbosity level must be one of: DEVEL, INFO, WARNING, ERROR.");
+		return false;
+	}
+	return true;
+}
+
+void download_reporting_callback(bool warning, const char *format, ...)
+{
+	FILE *dest = stderr;
+	va_list argptr;
+	va_start(argptr, format);
+	vfprintf(dest, format, argptr);
+	va_end(argptr);
+	fflush(dest);
+}

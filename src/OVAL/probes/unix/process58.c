@@ -102,6 +102,8 @@ extern char const *_cap_names[];
 #include "probe/entcmp.h"
 #include "alloc.h"
 #include "common/debug_priv.h"
+#include <ctype.h>
+#include "common/oscap_buffer.h"
 
 /* Convenience structure for the results being reported */
 struct result_info {
@@ -208,7 +210,7 @@ static int get_uids(int pid, struct result_info *r)
 	sf = fopen(buf, "rt");
 	if (sf) {
 		if (fscanf(sf, "%u", &r->loginuid) < 1) {
-			dW("fscanf failed from %s\n", buf);
+			dW("fscanf failed from %s", buf);
 		}
 		fclose(sf);
 	}
@@ -242,7 +244,7 @@ static char *get_selinux_label(int pid) {
 
 	if (getpidcon(pid, &pid_context) == -1) {
 		/* error getting pid selinux context */
-		dW("Can't get selinux context for process %d\n", pid);
+		dW("Can't get selinux context for process %d", pid);
 		return NULL;
 	}
 	context = context_new(pid_context);
@@ -256,29 +258,30 @@ static char *get_selinux_label(int pid) {
 #endif /* HAVE_SELINUX_SELINUX_H */
 }
 
-static char **get_posix_capability(int pid) {
+static char **get_posix_capability(int pid, int max_cap_id) {
 #ifdef HAVE_SYS_CAPABILITY_H
 	cap_t pid_caps;
 	char *cap_name, **ret = NULL;
 	unsigned cap_value, ret_index = 0;
 	cap_flag_value_t cap_flag;
+	int cap_id;
 
 #if LIBCAP_VERSION == 1
 	pid_caps = cap_init();
 	if (capgetp(pid, pid_caps) == -1) {
-		dW("Can't get capabilities for process %d\n", pid);
+		dW("Can't get capabilities for process %d", pid);
 		cap_free(pid_caps);
 		return NULL;
 	}
 #elif LIBCAP_VERSION == 2
 	pid_caps = cap_get_pid(pid);
 #else
-	dW("Can't detect libcap version\n");
+	dW("Can't detect libcap version");
 	return NULL;
 #endif
 
 	if (pid_caps == NULL) {
-		dW("Can't get capabilities for process %d\n", pid);
+		dW("Can't get capabilities for process %d", pid);
 		return NULL;
 	}
 
@@ -297,7 +300,9 @@ static char **get_posix_capability(int pid) {
 					*cap_name_p = toupper(*cap_name_p);
 					cap_name_p++;
 				}
-				if (oscap_string_to_enum(CapabilityType, cap_name) > -1) {
+
+				cap_id = oscap_string_to_enum(CapabilityType, cap_name);
+				if (cap_id > -1 && cap_id <= max_cap_id) {
 					ret = realloc(ret, (ret_index + 1) * sizeof(char *));
 					ret[ret_index] = strdup(cap_name);
 					ret_index++;
@@ -351,11 +356,90 @@ static int get_exec_shield_status(int pid) {
 	return ret;
 }
 
+/**
+ * Parse /proc/%d/cmdline file
+ * @param filepath Path to file ~ use preallocated buffer for the path
+ * @param buffer output buffer with non-zero size
+ * @return ps-like command info or NULL
+ */
+static inline bool get_process_cmdline(const char* filepath, struct oscap_buffer* const buffer){
+
+	int fd = open(filepath, O_RDONLY, 0);
+
+	if (fd < 0) {
+		return false;
+	}
+
+	oscap_buffer_clear(buffer);
+
+
+
+	for(;;) {
+		static const int chunk_size = 1024;
+		char chunk[chunk_size];
+		// Read data, store to buffer
+		ssize_t read_size = read(fd, chunk, chunk_size );
+		if (read_size < 0) {
+			close(fd);
+			return false;
+		}
+		oscap_buffer_append_binary_data(buffer, chunk, read_size);
+
+		// If reach end of file, then end the loop
+		if (chunk_size != read_size) {
+			break;
+		}
+	}
+
+	close(fd);
+
+	int length = oscap_buffer_get_length(buffer);
+	char* buffer_mem = oscap_buffer_get_raw(buffer);
+
+	if ( length == 0 ) { // empty file
+		return false;
+	} else {
+
+		// Skip multiple trailing zeros
+		int i = length - 1;
+		while ( (i > 0) && (buffer_mem[i] == '\0') ) {
+			--i;
+		}
+
+		// Program and args are separated by '\0'
+		// Replace them with spaces ' '
+		while( i >= 0 ){
+			char chr = buffer_mem[i];
+			if ( ( chr == '\0') || ( chr == '\n' ) ) {
+				buffer_mem[i] = ' ';
+			} else if ( !isprint(chr) ) { // "ps" replace non-printable characters with '.' (LC_ALL=C)
+				buffer_mem[i] = '.';
+			}
+			--i;
+		}
+	}
+	return true;
+}
+
+/**
+ * Make "[%s] <defunct>" from cmd string - inplace
+ * @param cmd_buffer @see read_process() > cmd_buffer
+ * @return pointer to start of string
+ */
+static inline char *make_defunc_str(char* const cmd_buffer){
+	static const char DEFUNC_STR[] = "] <defunct>";
+
+	size_t len = strlen(cmd_buffer);
+	memcpy(cmd_buffer + len, DEFUNC_STR, sizeof(DEFUNC_STR));
+	return cmd_buffer;
+}
+
 static int read_process(SEXP_t *cmd_ent, SEXP_t *pid_ent, probe_ctx *ctx)
 {
-	int err = 1;
+	int err = 1, max_cap_id;
 	DIR *d;
 	struct dirent *ent;
+	oval_schema_version_t oval_version;
 
 	d = opendir("/proc");
 	if (d == NULL)
@@ -365,11 +449,23 @@ static int read_process(SEXP_t *cmd_ent, SEXP_t *pid_ent, probe_ctx *ctx)
 	ticks = (unsigned long)sysconf(_SC_CLK_TCK);
 	get_boot_time();
 
+	oval_version = probe_obj_get_platform_schema_version(probe_ctx_getobject(ctx));
+	if (oval_schema_version_cmp(oval_version, OVAL_SCHEMA_VERSION(5.11)) < 0) {
+		max_cap_id = OVAL_5_8_MAX_CAP_ID;
+	} else {
+		max_cap_id = OVAL_5_11_MAX_CAP_ID;
+	}
+
+	struct oscap_buffer *cmdline_buffer = oscap_buffer_new();
+	
+	char cmd_buffer[1 + 15 + 11 + 1]; // Format:" [ cmd:15 ] <defunc>"
+	cmd_buffer[0] = '[';
+
 	// Scan the directories
 	while (( ent = readdir(d) )) {
 		int fd, len;
 		char buf[256];
-		char *tmp, cmd[16], state, tty_dev[128];
+		char *tmp, state, tty_dev[128];
 		int pid, ppid, pgrp, session, tty_nr, tpgid;
 		unsigned flags, sched_policy;
 		unsigned long minflt, cminflt, majflt, cmajflt, uutime, ustime;
@@ -400,8 +496,8 @@ static int read_process(SEXP_t *cmd_ent, SEXP_t *pid_ent, probe_ctx *ctx)
 			*tmp = 0;
 		else
 			continue;
-		memset(cmd, 0, sizeof(cmd));
-		sscanf(buf, "%d (%15c", &ppid, cmd);
+		memset(cmd_buffer + 1, 0, sizeof(cmd_buffer)-1); // clear cmd after starting '['
+		sscanf(buf, "%d (%15c", &ppid, cmd_buffer + 1);
 		sscanf(tmp+2,	"%c %d %d %d %d %d "
 				"%u %lu %lu %lu %lu "
 				"%lu %lu %lu %ld %ld "
@@ -416,8 +512,21 @@ static int read_process(SEXP_t *cmd_ent, SEXP_t *pid_ent, probe_ctx *ctx)
 		if (ppid == 2)
 			continue;
 
+		const char* cmd;
+		if (state == 'Z') { // zombie
+			cmd = make_defunc_str(cmd_buffer);
+		} else {
+			snprintf(buf, 32, "/proc/%d/cmdline", pid);
+			if (get_process_cmdline(buf, cmdline_buffer)) {
+				cmd = oscap_buffer_get_raw(cmdline_buffer); // use full cmdline
+			} else {
+				cmd = cmd_buffer + 1;
+			}
+		}
+
+
 		err = 0; // If we get this far, no permission problems
-		dI("Have command: %s\n", cmd);
+		dI("Have command: %s", cmd);
 		cmd_sexp = SEXP_string_newf("%s", cmd);
 		pid_sexp = SEXP_number_newu_32(pid);
 		if ((cmd_sexp == NULL || probe_entobj_cmp(cmd_ent, cmd_sexp) == OVAL_RESULT_TRUE) &&
@@ -492,7 +601,7 @@ static int read_process(SEXP_t *cmd_ent, SEXP_t *pid_ent, probe_ctx *ctx)
 			selinux_domain_label = get_selinux_label(pid);
 			r.selinux_domain_label = selinux_domain_label;
 
-			posix_capabilities = get_posix_capability(pid);
+			posix_capabilities = get_posix_capability(pid, max_cap_id);
 			r.posix_capability = posix_capabilities;
 
 			r.session_id = session;
@@ -514,7 +623,7 @@ static int read_process(SEXP_t *cmd_ent, SEXP_t *pid_ent, probe_ctx *ctx)
 		SEXP_free(pid_sexp);
 	}
         closedir(d);
-
+	oscap_buffer_free(cmdline_buffer);
 	return err;
 }
 
@@ -606,7 +715,7 @@ static int read_process(SEXP_t *cmd_ent, probe_ctx *ctx)
 
 
 		err = 0; // If we get this far, no permission problems
-		dI("Have command: %s\n", psinfo->pr_fname);
+		dI("Have command: %s", psinfo->pr_fname);
 		cmd_sexp = SEXP_string_newf("%s", psinfo->pr_fname);
 		if (probe_entobj_cmp(cmd_ent, cmd_sexp) == OVAL_RESULT_TRUE) {
 			struct result_info r;

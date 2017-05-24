@@ -211,7 +211,7 @@ struct oval_result_definition *oval_result_system_get_new_definition
 		}
 		else if (oval_result_definition_get_variable_instance_hint(rslt_definition) != oval_result_definition_get_instance(rslt_definition)) {
 			int hint = oval_result_definition_get_variable_instance_hint(rslt_definition);
-			dI("Creating another result-definition for id=%s based on variable_instance: %d\n", id, hint);
+			dI("Creating another result-definition for id=%s based on variable_instance: %d", id, hint);
 			rslt_definition = make_result_definition_from_oval_definition(sys, oval_definition, hint);
 			oval_result_system_add_definition(sys, rslt_definition);
 		}
@@ -228,7 +228,7 @@ struct oval_result_test *oval_result_system_get_new_test(struct oval_result_syst
 		oval_result_system_add_test(sys, rslt_testtest);
 	}
 	else if (variable_instance != 0 && oval_result_test_get_instance(rslt_testtest) != variable_instance) {
-		dI("Creating another result-test for id=%s based on variable_instance: %d\n", id, variable_instance);
+		dI("Creating another result-test for id=%s based on variable_instance: %d", id, variable_instance);
 		rslt_testtest = make_result_test_from_oval_test(sys, oval_test, variable_instance);
 		oval_result_system_add_test(sys, rslt_testtest);
 	}
@@ -285,12 +285,12 @@ static int oval_result_system_parse(xmlTextReaderPtr reader, struct oval_parser_
 	} else if (strcmp((const char *)localName, OVAL_ROOT_ELM_SYSCHARS) == 0) {
 		return_code = oval_syschar_model_parse(reader, context);
 	} else {
-                dW("Skipping tag: %s\n", localName);
+                dW("Skipping tag: %s", localName);
                 oval_parser_skip_tag(reader, context);
 	}
 
         if (return_code != 0) {
-                dW("Parsing of <%s> terminated by an error at line %d.\n", localName, xmlTextReaderGetParserLineNumber(reader));
+                dW("Parsing of <%s> terminated by an error at line %d.", localName, xmlTextReaderGetParserLineNumber(reader));
         }
 
 	oscap_free(localName);
@@ -314,12 +314,12 @@ int oval_result_system_parse_tag(xmlTextReaderPtr reader, struct oval_parser_con
 		/* populate results system  */
 		return_code = oval_parser_parse_tag(reader, context, oval_result_system_parse, sys);
         } else {
-                dW("Skipping tag: %s\n", tagname);
+                dW("Skipping tag: %s", tagname);
                 oval_parser_skip_tag(reader, context);
         }
 
         if (return_code != 0) {
-                dW("Parsing of <%s> terminated by an error at line %d.\n", tagname, xmlTextReaderGetParserLineNumber(reader));
+                dW("Parsing of <%s> terminated by an error at line %d.", tagname, xmlTextReaderGetParserLineNumber(reader));
         }
 
         oscap_free(tagname);
@@ -353,6 +353,16 @@ int oval_result_system_eval(struct oval_result_system *sys)
 
 int oval_result_system_eval_definition(struct oval_result_system *sys, const char *id)
 {
+	struct oval_result_definition *rslt_definition = oval_result_system_prepare_definition(sys, id);
+	if (rslt_definition == NULL) {
+		return -1;
+	}
+	oval_result_definition_eval(rslt_definition);
+	return 0;
+}
+
+struct oval_result_definition *oval_result_system_prepare_definition(struct oval_result_system *sys, const char *id)
+{
         struct oval_results_model *res_model;
         struct oval_definition_model *definition_model;
         struct oval_definition *oval_definition;
@@ -363,7 +373,7 @@ int oval_result_system_eval_definition(struct oval_result_system *sys, const cha
 	oval_definition = oval_definition_model_get_definition(definition_model, id);
 	if (oval_definition == NULL) {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "No definition with ID: %s in definition model.", id);
-		return -1;
+		return NULL;
 	}
 
         rslt_definition = oval_result_system_get_definition(sys, id);
@@ -373,14 +383,11 @@ int oval_result_system_eval_definition(struct oval_result_system *sys, const cha
         }
 	else if (oval_result_definition_get_variable_instance_hint(rslt_definition) != oval_result_definition_get_instance(rslt_definition)) {
 		int hint = oval_result_definition_get_variable_instance_hint(rslt_definition);
-		dI("Creating another result-definition for id=%s based on variable_instance: %d\n", id, hint);
+		dI("Creating another result-definition for id=%s based on variable_instance: %d", id, hint);
 		rslt_definition = make_result_definition_from_oval_definition(sys, oval_definition, hint);
 		oval_result_system_add_definition(sys, rslt_definition);
 	}
-
-	oval_result_definition_eval(rslt_definition);
-
-	return 0;
+	return rslt_definition;
 }
 
 static void _oval_result_definition_to_dom_based_on_directives(struct oval_result_definition *rslt_definition,
@@ -399,6 +406,8 @@ static void _oval_result_definition_to_dom_based_on_directives(struct oval_resul
 			/* collect the tests that are referenced from reported definitions */
 			if (criteria)
 				_oval_result_system_scan_criteria_for_references(criteria, tstmap);
+		} else if (content == OVAL_DIRECTIVE_CONTENT_THIN) {
+			// NOOP
 		}
 	}
 }
@@ -497,8 +506,9 @@ xmlNode *oval_result_system_to_dom(struct oval_result_system * sys,
 	}
 	oval_smc_iterator_free(result_tests);
 
+	bool export_sys_char = oval_results_model_get_export_system_characteristics(results_model);
 	oval_syschar_model_to_dom(syschar_model, doc, system_node, 
-				  (oval_syschar_resolver *) _oval_result_system_resolve_syschar, sysmap);
+				  (oval_syschar_resolver *) _oval_result_system_resolve_syschar, sysmap, export_sys_char);
 
 	oval_string_map_free(sysmap, NULL);
 	oval_string_map_free(objmap, NULL);

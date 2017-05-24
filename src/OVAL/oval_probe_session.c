@@ -118,13 +118,11 @@ static void __init_once(void)
         return;
 }
 
-oval_probe_session_t *oval_probe_session_new(struct oval_syschar_model *model)
+static void oval_probe_session_init(oval_probe_session_t *sess, struct oval_syschar_model *model)
 {
-        oval_probe_session_t *sess;
         void *handler_arg;
         register size_t i;
 
-        sess = oscap_talloc(oval_probe_session_t);
         sess->ph = oval_phtbl_new();
         sess->sys_model = model;
         sess->flg = 0;
@@ -134,7 +132,7 @@ oval_probe_session_t *oval_probe_session_new(struct oval_syschar_model *model)
 
         __init_once();
 
-        dI("__probe_meta_count = %zu\n", OSCAP_GSYM(__probe_meta_count));
+        dD("__probe_meta_count = %zu", OSCAP_GSYM(__probe_meta_count));
 
         for (i = 0; i < OSCAP_GSYM(__probe_meta_count); ++i) {
                 handler_arg = NULL;
@@ -148,19 +146,37 @@ oval_probe_session_t *oval_probe_session_new(struct oval_syschar_model *model)
         }
 
         oval_probe_handler_set(sess->ph, OVAL_SUBTYPE_ALL, oval_probe_ext_handler, sess->pext); /* special case for reset */
-        return(sess);
+}
+
+oval_probe_session_t *oval_probe_session_new(struct oval_syschar_model *model)
+{
+        oval_probe_session_t *sess = oscap_talloc(oval_probe_session_t);
+        oval_probe_session_init(sess, model);
+        return sess;
+}
+
+static void oval_probe_session_free(oval_probe_session_t *sess)
+{
+	if (sess == NULL) {
+		dE("Invalid session (NULL)");
+		return;
+	}
+
+	oval_phtbl_free(sess->ph);
+	oval_pext_free(sess->pext);
+}
+
+void oval_probe_session_reinit(oval_probe_session_t *sess, struct oval_syschar_model *model)
+{
+	oval_probe_session_free(sess);
+
+	oval_probe_session_init(sess, model);
 }
 
 void oval_probe_session_destroy(oval_probe_session_t *sess)
 {
-	if (sess == NULL) {
-		dE("Invalid session (NULL)\n");
-		return;
-	}
-
-        oval_phtbl_free(sess->ph);
-        oval_pext_free(sess->pext);
-        oscap_free(sess);
+	oval_probe_session_free(sess);
+	oscap_free(sess);
 }
 
 int oval_probe_session_close(oval_probe_session_t *sess)
@@ -174,7 +190,7 @@ int oval_probe_session_reset(oval_probe_session_t *sess, struct oval_syschar_mod
         oval_ph_t *ph;
 
         if ((ph = oval_probe_handler_get(sess->ph, OVAL_SUBTYPE_ALL)) == NULL) {
-		dE("No probe handler for OVAL_SUBTYPE_ALL\n");
+		dE("No probe handler for OVAL_SUBTYPE_ALL");
 		return (-1);
 	}
 
@@ -192,7 +208,7 @@ int oval_probe_session_abort(oval_probe_session_t *sess)
 	oval_ph_t *ph;
 
 	if ((ph = oval_probe_handler_get(sess->ph, OVAL_SUBTYPE_ALL) ) == NULL) {
-		dE("No probe handler for OVAL_SUBTYPE_ALL\n");
+		dE("No probe handler for OVAL_SUBTYPE_ALL");
 		return (-1);
 	}
 
@@ -201,14 +217,14 @@ int oval_probe_session_abort(oval_probe_session_t *sess)
 
 int oval_probe_session_sethandler(oval_probe_session_t *sess, oval_subtype_t type, oval_probe_handler_t handler, void *ptr)
 {
-	dE("Operation not supported\n");
+	dE("Operation not supported");
         return(-1);
 }
 
 struct oval_syschar_model *oval_probe_session_getmodel(oval_probe_session_t *sess)
 {
 	if (sess == NULL) {
-		dE("Invalid session (NULL)\n");
+		dE("Invalid session (NULL)");
 		return (NULL);
 	}
 

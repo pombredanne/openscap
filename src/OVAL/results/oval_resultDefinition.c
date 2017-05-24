@@ -147,13 +147,20 @@ int oval_result_definition_get_instance(const struct oval_result_definition *def
 oval_result_t oval_result_definition_eval(struct oval_result_definition * definition)
 {
 	__attribute__nonnull__(definition);
+	const char *id = oval_result_definition_get_id(definition);
+	const char *title = oval_definition_get_title(oval_result_definition_get_definition(definition));
+	dI("Evaluating definition '%s': %s.", id, title);
 
 	if (definition->result == OVAL_RESULT_NOT_EVALUATED) {
 		struct oval_result_criteria_node *criteria = oval_result_definition_get_criteria(definition);
-
-		definition->result = (criteria == NULL)
-		    ? OVAL_RESULT_ERROR : oval_result_criteria_node_eval(criteria);
+		if (criteria != NULL) {
+			dIndent(1);
+			definition->result = oval_result_criteria_node_eval(criteria);
+			dIndent(-1);
+		}
 	}
+
+	dI("Definition '%s' evaluated as %s.", id, oval_result_get_text(definition->result));
 	return definition->result;
 }
 
@@ -257,7 +264,7 @@ int oval_result_definition_parse_tag(xmlTextReaderPtr reader, struct oval_parser
 
 	int defvsn = oval_definition_get_version(definition->definition);
 	if (defvsn && resvsn != defvsn) {
-		dW("Definition versions don't match: definition id: %s, ovaldef vsn: %d, resdef vsn: %d.\n", definition_id, defvsn, resvsn);
+		dW("Definition versions don't match: definition id: %s, ovaldef vsn: %d, resdef vsn: %d.", definition_id, defvsn, resvsn);
 	}
 	oval_definition_set_version(definition->definition, resvsn);
 	// The following _set_instance() might be overabundant, since it should be already set
@@ -269,7 +276,7 @@ int oval_result_definition_parse_tag(xmlTextReaderPtr reader, struct oval_parser
 	if ((int)result != OVAL_ENUMERATION_INVALID) {
 		oval_result_definition_set_result(definition, result);
 	} else {
-		dW("Can't resolve result attribute, definition id: %s.\n", definition_id);
+		dW("Can't resolve result attribute, definition id: %s.", definition_id);
 		oval_result_definition_set_result(definition, OVAL_RESULT_UNKNOWN);
 	}
 

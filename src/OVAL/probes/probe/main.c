@@ -43,7 +43,8 @@
 #include "input_handler.h"
 #include "probe-api.h"
 #include "option.h"
-
+#include <oscap_debug.h>
+#include "debug_priv.h"
 static int fail(int err, const char *who, int line)
 {
 	fprintf(stderr, "FAIL: %d:%s: %d, %s\n", line, who, err, strerror(err));
@@ -133,8 +134,16 @@ static int probe_opthandler_offlinemode(int option, int op, va_list args)
 			 * If the probe doesn't support offline mode, then probe_main()
 			 * won't be called in offline modee and a collected object with
 			 * the following flag will be generated for all queries.
+			 *
+			 * We have hardcoded not_collected here as the best fit for majority
+			 * of offline use cases. The test result will get the unknown result
+			 * which is pretty descriptive of the state.
+			 *
+			 * Other option would be to return not applicable. That would, however,
+			 * make the test result not_applicable as well. Which in turn may hide
+			 * underlying problems.
 			 */
-			o_cobjflag = va_arg(args, int);
+			o_cobjflag = SYSCHAR_FLAG_NOT_COLLECTED;
 		}
 		OSCAP_GSYM(offline_mode_supported) = o_offline_mode;
 		OSCAP_GSYM(offline_mode_cobjflag) = o_cobjflag;
@@ -152,12 +161,33 @@ static int probe_opthandler_offlinemode(int option, int op, va_list args)
 	return 0;
 }
 
+// Dummy pthread routine
+static void * dummy_routine(void *dummy_param)
+{
+	return NULL;
+}
+
+static void preload_libraries_before_chroot()
+{
+	// Force to load dynamic libraries used by pthread_cancel
+	pthread_t t;
+	if (pthread_create(&t, NULL, dummy_routine, NULL))
+		fail(errno, "pthread_create(probe_preload)", __LINE__ - 1);
+	pthread_cancel(t);
+	pthread_join(t, NULL);
+}
+
 int main(int argc, char *argv[])
 {
 	pthread_attr_t th_attr;
 	sigset_t       sigmask;
 	probe_t        probe;
 	char *rootdir = NULL;
+
+	/* Turn on verbose mode */
+	char *verbosity_level = getenv("OSCAP_PROBE_VERBOSITY_LEVEL");
+	char *verbose_log_file = getenv("OSCAP_PROBE_VERBOSE_LOG_FILE");
+	oscap_set_verbose(verbosity_level, verbose_log_file, true);
 
 	if ((errno = pthread_barrier_init(&OSCAP_GSYM(th_barrier), NULL,
 	                                  1 + // signal thread
@@ -241,14 +271,28 @@ int main(int argc, char *argv[])
 
 	pthread_attr_destroy(&th_attr);
 
+	probe_offline_mode();
+
 	/*
 	 * Setup offline mode(s)
 	 */
-	if ((rootdir = getenv("OSCAP_PROBE_ROOT")) != NULL) {
-		if(strlen(rootdir) > 0) {
+	rootdir = getenv("OSCAP_PROBE_ROOT");
+	if ((rootdir != NULL) && (strlen(rootdir) > 0)) {
+
+		preload_libraries_before_chroot(); // todo - maybe useless for own mode
+		probe_offline_flags supported_mode = OSCAP_GSYM(offline_mode_supported);
+		bool own_mode = (supported_mode & PROBE_OFFLINE_OWN);
+
+		if (own_mode) {
+			dD("Own offline mode selected");
+			OSCAP_GSYM(offline_mode) |= PROBE_OFFLINE_OWN;
+
+		} else {
 			if (chdir(rootdir) != 0) {
 				fail(errno, "chdir", __LINE__ -1);
 			}
+
+			probe_preload();
 			if (chroot(rootdir) != 0) {
 				fail(errno, "chroot", __LINE__ - 1);
 			}
@@ -262,6 +306,7 @@ int main(int argc, char *argv[])
 			OSCAP_GSYM(offline_mode) |= PROBE_OFFLINE_CHROOT;
 		}
 	}
+
 	if (getenv("OSCAP_PROBE_RPMDB_PATH") != NULL) {
 		OSCAP_GSYM(offline_mode) |= PROBE_OFFLINE_RPMDB;
 	}

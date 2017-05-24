@@ -78,6 +78,16 @@ static const struct xccdf_version_info XCCDF_VERSION_MAP[] = {
 	{NULL, NULL, NULL}
 };
 
+const struct xccdf_version_info *xccdf_version_info_find(const char *version)
+{
+	const struct xccdf_version_info *mapptr;
+	for (mapptr = XCCDF_VERSION_MAP; mapptr->version != 0; ++mapptr) {
+		if (!strcmp(mapptr->version, version))
+			return mapptr;
+	}
+	return NULL;
+}
+
 static const struct xccdf_version_info *_namespace_get_xccdf_version_info(const char *namespace_uri)
 {
 	const struct xccdf_version_info *mapptr;
@@ -174,7 +184,7 @@ static const struct xccdf_element_spec XCCDF_ELEMENT_MAP[] = {
 	{XCCDFE_VALUE, XCCDF_XMLNS_PREFIX, "Value"},
 	{XCCDFE_PROFILE, XCCDF_XMLNS_PREFIX, "Profile"},
 	{XCCDFE_TESTRESULT, XCCDF_XMLNS_PREFIX, "TestResult"},
-	{XCCDFE_RESULT_BENCHMARK, XCCDF_XMLNS_PREFIX, "benchmark"}, ///< this is also XCCDFE_BENCHMARK_REF
+	{XCCDFE_RESULT_BENCHMARK, XCCDF_OR_TAILORING_EXTENSION_XMLNS, "benchmark"}, ///< this is also XCCDFE_BENCHMARK_REF
 	{XCCDFE_CHECK, XCCDF_XMLNS_PREFIX, "check"},
 	{XCCDFE_CHECK_IMPORT, XCCDF_XMLNS_PREFIX, "check-import"},
 	{XCCDFE_CHECK_EXPORT, XCCDF_XMLNS_PREFIX, "check-export"},
@@ -242,6 +252,16 @@ static const struct xccdf_element_spec XCCDF_ELEMENT_MAP[] = {
 	{0, NULL, NULL}
 };
 
+const char *xccdf_element_to_str(xccdf_element_t element)
+{
+	for (const struct xccdf_element_spec *mapptr = XCCDF_ELEMENT_MAP; mapptr->id != 0; ++mapptr) {
+		if (element == mapptr->id) {
+			return mapptr->name;
+		}
+	}
+	return NULL;
+}
+
 xccdf_element_t xccdf_element_get(xmlTextReaderPtr reader)
 {
 	if (xmlTextReaderNodeType(reader) != XML_READER_TYPE_ELEMENT)
@@ -304,7 +324,7 @@ static const struct xccdf_attribute_spec XCCDF_ATTRIBUTE_MAP[] = {
 	{XCCDFA_EXTENDS, XCCDF_XMLNS_PREFIX, "extends"},
 	{XCCDFA_FIXREF, XCCDF_XMLNS_PREFIX, "fixref"},
 	{XCCDFA_HIDDEN, XCCDF_XMLNS_PREFIX, "hidden"},
-	{XCCDFA_HREF, XCCDF_XMLNS_PREFIX, "href"},
+	{XCCDFA_HREF, XCCDF_OR_TAILORING_EXTENSION_XMLNS, "href"},
 	{XCCDFA_ID, XCCDF_XMLNS_PREFIX, "id"},
 	{XCCDFA_IDREF, XCCDF_XMLNS_PREFIX, "idref"},
 	{XCCDFA_IID, XCCDF_XMLNS_PREFIX, "Id"},
@@ -338,7 +358,7 @@ static const struct xccdf_attribute_spec XCCDF_ATTRIBUTE_MAP[] = {
 	{XCCDFA_SYSTEM, XCCDF_XMLNS_PREFIX, "system"},
 	{XCCDFA_TAG, XCCDF_XMLNS_PREFIX, "tag"},
 	{XCCDFA_TEST_SYSTEM, XCCDF_XMLNS_PREFIX, "test-system"},
-	{XCCDFA_TIME, XCCDF_XMLNS_PREFIX, "time"},
+	{XCCDFA_TIME, XCCDF_OR_TAILORING_EXTENSION_XMLNS, "time"},
 	{XCCDFA_TYPE, XCCDF_XMLNS_PREFIX, "type"},
 	{XCCDFA_UPDATE, XCCDF_XMLNS_PREFIX, "update"},
 	{XCCDFA_URI, XCCDF_XMLNS_PREFIX, "uri"},

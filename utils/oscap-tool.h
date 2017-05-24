@@ -115,6 +115,7 @@ struct oscap_action {
 	char *f_results_arf;
         char *f_report;
 	char *f_variables;
+	char *f_verbose_log;
 	/* others */
         char *profile;
         char *show;
@@ -143,12 +144,15 @@ struct oscap_action {
 	int remote_resources;
 	int progress;
 	int oval_results;
+	int without_sys_chars;
+	int thin_results;
 	int remediate;
 	char *sce_template;
 	int check_engine_results;
 	int export_variables;
         int list_dynamic;
 	char *probe_root;
+	char *verbosity_level;
 };
 
 int app_xslt(const char *infile, const char *xsltfile, const char *outfile, const char **params);
@@ -159,6 +163,8 @@ bool oscap_module_usage(struct oscap_module *module, FILE *out, const char *err,
 int oscap_module_call(struct oscap_action *action);
 
 void oscap_print_error(void);
+bool check_verbose_options(struct oscap_action *action);
+void download_reporting_callback(bool warning, const char *format, ...);
 
 extern struct oscap_module OSCAP_ROOT_MODULE;
 extern struct oscap_module OSCAP_DS_MODULE;

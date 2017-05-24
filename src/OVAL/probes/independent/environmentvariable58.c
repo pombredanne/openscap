@@ -63,7 +63,8 @@ extern char **environ;
 
 static int read_environment(SEXP_t *pid_ent, SEXP_t *name_ent, probe_ctx *ctx)
 {
-	int err = 0, pid, empty, fd;
+	int err = 1, pid, fd;
+	bool empty;
 	size_t env_name_size;
 	SEXP_t *env_name, *env_value, *item, *pid_sexp;
 	DIR *d;
@@ -74,7 +75,7 @@ static int read_environment(SEXP_t *pid_ent, SEXP_t *name_ent, probe_ctx *ctx)
 
 	d = opendir("/proc");
 	if (d == NULL) {
-		dE("Can't read /proc: errno=%d, %s.\n", errno, strerror (errno));
+		dE("Can't read /proc: errno=%d, %s.", errno, strerror (errno));
 		return PROBE_EACCESS;
 	}
 
@@ -101,7 +102,7 @@ static int read_environment(SEXP_t *pid_ent, SEXP_t *name_ent, probe_ctx *ctx)
 		sprintf(env_file, "/proc/%d/environ", pid);
 
 		if ((fd = open(env_file, O_RDONLY)) == -1) {
-			dE("Can't open \"%s\": errno=%d, %s.\n", env_file, errno, strerror (errno));
+			dE("Can't open \"%s\": errno=%d, %s.", env_file, errno, strerror (errno));
 			item = probe_item_create(
 					OVAL_INDEPENDENT_ENVIRONMENT_VARIABLE58, NULL,
 					"pid", OVAL_DATATYPE_INTEGER, (int64_t)pid,
@@ -115,10 +116,10 @@ static int read_environment(SEXP_t *pid_ent, SEXP_t *name_ent, probe_ctx *ctx)
 			continue;
 		}
 
-		empty = 1;
+		empty = true;
 
 		if ((buffer_used = read(fd, buffer, buffer_size - 1)) > 0) {
-			empty = 0;
+			empty = false;
 		}
 
 		while (! empty) {
@@ -135,7 +136,7 @@ static int read_environment(SEXP_t *pid_ent, SEXP_t *name_ent, probe_ctx *ctx)
 				}
 				s = read(fd, buffer + buffer_used, buffer_size - buffer_used);
 				if (s <= 0) {
-					empty = 1;
+					empty = true;
 					buffer[buffer_used++] = 0;
 				}
 				else {
@@ -180,6 +181,13 @@ static int read_environment(SEXP_t *pid_ent, SEXP_t *name_ent, probe_ctx *ctx)
 	}
 	closedir(d);
 	oscap_free(buffer);
+	if (err) {
+		SEXP_t *msg = probe_msg_creatf(OVAL_MESSAGE_LEVEL_ERROR,
+				"Can't find process with requested PID.");
+		probe_cobj_add_msg(probe_ctx_getresult(ctx), msg);
+		SEXP_free(msg);
+		err = 0;
+	}
 
 	return err;
 }

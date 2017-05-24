@@ -200,6 +200,8 @@ static int filehash58_cb (const char *p, const char *f, const char *h, probe_ctx
 
 void *probe_init (void)
 {
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
+
 	/*
 	 * Initialize crypto API
 	 */
@@ -213,10 +215,8 @@ void *probe_init (void)
 	case 0:
 		return ((void *)&__filehash58_probe_mutex);
 	default:
-		dI("Can't initialize mutex: errno=%u, %s.\n", errno, strerror (errno));
+		dI("Can't initialize mutex: errno=%u, %s.", errno, strerror (errno));
 	}
-
-	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
 
 	return (NULL);
 }
@@ -275,13 +275,13 @@ int probe_main(probe_ctx *ctx, void *mutex)
 	case 0:
 		break;
 	default:
-		dI("Can't lock mutex(%p): %u, %s.\n", &__filehash58_probe_mutex, errno, strerror (errno));
+		dI("Can't lock mutex(%p): %u, %s.", &__filehash58_probe_mutex, errno, strerror (errno));
 
 		err = PROBE_EFATAL;
 		goto cleanup;
 	}
 
-	if ((ofts = oval_fts_open(path, filename, filepath, behaviors)) != NULL) {
+	if ((ofts = oval_fts_open(path, filename, filepath, behaviors, probe_ctx_getresult(ctx))) != NULL) {
 		while ((ofts_ent = oval_fts_read(ofts)) != NULL) {
 			/* find hash types to compare with entity, think "not satisfy" */
 			const struct oscap_string_map *p = CRAPI_ALG_MAP;
@@ -311,7 +311,7 @@ cleanup:
 	case 0:
 		break;
 	default:
-		dI("Can't unlock mutex(%p): %u, %s.\n", &__filehash58_probe_mutex, errno, strerror (errno));
+		dI("Can't unlock mutex(%p): %u, %s.", &__filehash58_probe_mutex, errno, strerror (errno));
 
 		err = PROBE_EFATAL;
 	}

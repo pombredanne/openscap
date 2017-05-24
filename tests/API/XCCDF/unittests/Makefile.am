@@ -46,6 +46,8 @@ test_xccdf_overrides_SOURCES = test_xccdf_overrides.c
 
 EXTRA_DIST += \
 	all.sh \
+	oval \
+	oval_without_definitions.oval.xml \
 	test_default_selector.oval.xml \
 	test_default_selector.sh \
 	test_default_selector.xccdf.xml \
@@ -60,6 +62,13 @@ EXTRA_DIST += \
 	test_empty_variable.oval.xml \
 	test_empty_variable.sh \
 	test_empty_variable.xccdf.xml \
+	test_fix_arf.playbook1.yml \
+	test_fix_arf.playbook2.yml \
+	test_fix_arf.xccdf.xml \
+	test_fix_arf.sh \
+	test_fix_instance.oval.xml \
+	test_fix_instance.sh \
+	test_fix_instance.xccdf.xml \
 	test_fix_filtering.xccdf.xml \
 	test_fix_filtering.sh \
 	test_inherit_selector.oval.xml \
@@ -81,6 +90,8 @@ EXTRA_DIST += \
 	test_remediate_python_subs.xccdf.xml \
 	test_remediate_simple.sh \
 	test_remediate_simple.xccdf.xml \
+	test_remediate_unresolved.sh \
+	test_remediate_unresolved.xccdf.xml \
 	test_remediation_amp_escaping.sh \
 	test_remediation_amp_escaping.xccdf.xml \
 	test_remediation_bad_fix.sh \
@@ -89,6 +100,8 @@ EXTRA_DIST += \
 	test_remediation_cdata.xccdf.xml \
 	test_remediation_fix_without_system.sh \
 	test_remediation_fix_without_system.xccdf.xml \
+	test_remediation_invalid_characters.sh \
+	test_remediation_invalid_characters.xccdf.xml \
 	test_remediation_simple.oval.xml \
 	test_remediation_simple.sh \
 	test_remediation_simple.xccdf.xml \
@@ -151,11 +164,27 @@ EXTRA_DIST += \
 	test_xccdf_multiple_testresults.xccdf.xml \
 	test_xccdf_notchecked_has_check.sh \
 	test_xccdf_notchecked_has_check.xccdf.xml \
+	test_xccdf_oval_absolute_path.sh \
+	test_xccdf_oval_absolute_path.xccdf.xml \
+	test_xccdf_oval_relative_path.sh \
+	test_xccdf_oval_relative_path.xccdf.xml \
 	test_xccdf_overlaping_IDs.xccdf.xml \
 	test_xccdf_overrides.arf.xml \
 	test_xccdf_overrides.sh \
+	test_xccdf_refine_rule_refine.sh \
+	test_xccdf_refine_rule_refine.xccdf.xml \
 	test_xccdf_refine_rule.sh \
 	test_xccdf_refine_rule.xccdf.xml \
+	test_xccdf_refine_value_bad.sh \
+	test_xccdf_refine_value_bad.xccdf.xml \
+	test_xccdf_resolve.sh \
+	test_xccdf_resolve.xccdf.xml \
+	test_xccdf_results_arf_no_oval.sh \
+	test_xccdf_results_arf_no_oval.xccdf.xml \
+	test_xccdf_role_unchecked.sh \
+	test_xccdf_role_unchecked.xccdf.xml \
+	test_xccdf_role_unscored.sh \
+	test_xccdf_role_unscored.xccdf.xml \
 	test_xccdf_selectors_cluster1.sh \
 	test_xccdf_selectors_cluster1.xccdf.xml \
 	test_xccdf_selectors_cluster2.sh \
@@ -164,10 +193,11 @@ EXTRA_DIST += \
 	test_xccdf_selectors_cluster3.xccdf.xml \
 	test_xccdf_sub_title.sh \
 	test_xccdf_sub_title.xccdf.xml \
+	test_xccdf_test_system.sh \
+	test_xccdf_test_system.xccdf.xml \
+	test_xccdf_transformation.sh \
 	test_xccdf_xml_escaping_value.sh \
 	test_xccdf_xml_escaping_value.xccdf.xml \
-	oval \
-	oval_without_definitions.oval.xml \
 	unit_helper.c \
 	unit_helper.h
 # HELLO PAL, THIS LIST IS ALPHABETICALLY SORTED.

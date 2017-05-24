@@ -48,7 +48,7 @@ static int get_all_properties_by_unit_path(DBusConnection *conn, const char *uni
 		"GetAll"
 	);
 	if (msg == NULL) {
-		dI("Failed to create dbus_message via dbus_message_new_method_call!\n");
+		dI("Failed to create dbus_message via dbus_message_new_method_call!");
 		goto cleanup;
 	}
 
@@ -58,16 +58,16 @@ static int get_all_properties_by_unit_path(DBusConnection *conn, const char *uni
 
 	dbus_message_iter_init_append(msg, &args);
 	if (!dbus_message_iter_append_basic(&args, DBUS_TYPE_STRING, &interface)) {
-		dI("Failed to append interface '%s' string parameter to dbus message!\n", interface);
+		dI("Failed to append interface '%s' string parameter to dbus message!", interface);
 		goto cleanup;
 	}
 
 	if (!dbus_connection_send_with_reply(conn, msg, &pending, -1)) {
-		dI("Failed to send message via dbus!\n");
+		dI("Failed to send message via dbus!");
 		goto cleanup;
 	}
 	if (pending == NULL) {
-		dI("Invalid dbus pending call!\n");
+		dI("Invalid dbus pending call!");
 		goto cleanup;
 	}
 
@@ -77,18 +77,18 @@ static int get_all_properties_by_unit_path(DBusConnection *conn, const char *uni
 	dbus_pending_call_block(pending);
 	msg = dbus_pending_call_steal_reply(pending);
 	if (msg == NULL) {
-		dI("Failed to steal dbus pending call reply.\n");
+		dI("Failed to steal dbus pending call reply.");
 		goto cleanup;
 	}
 	dbus_pending_call_unref(pending); pending = NULL;
 
 	if (!dbus_message_iter_init(msg, &args)) {
-		dI("Failed to initialize iterator over received dbus message.\n");
+		dI("Failed to initialize iterator over received dbus message.");
 		goto cleanup;
 	}
 
 	if (dbus_message_iter_get_arg_type(&args) != DBUS_TYPE_ARRAY && dbus_message_iter_get_element_type(&args) != DBUS_TYPE_DICT_ENTRY) {
-		dI("Expected array of dict_entry argument in reply. Instead received: %s.\n", dbus_message_type_to_string(dbus_message_iter_get_arg_type(&args)));
+		dI("Expected array of dict_entry argument in reply. Instead received: %s.", dbus_message_type_to_string(dbus_message_iter_get_arg_type(&args)));
 		goto cleanup;
 	}
 
@@ -98,7 +98,7 @@ static int get_all_properties_by_unit_path(DBusConnection *conn, const char *uni
 		dbus_message_iter_recurse(&property_iter, &dict_entry);
 
 		if (dbus_message_iter_get_arg_type(&dict_entry) != DBUS_TYPE_STRING) {
-			dI("Expected string as key in dict_entry. Instead received: %s.\n", dbus_message_type_to_string(dbus_message_iter_get_arg_type(&dict_entry)));
+			dI("Expected string as key in dict_entry. Instead received: %s.", dbus_message_type_to_string(dbus_message_iter_get_arg_type(&dict_entry)));
 			goto cleanup;
 		}
 
@@ -113,7 +113,7 @@ static int get_all_properties_by_unit_path(DBusConnection *conn, const char *uni
 		}
 
 		if (dbus_message_iter_get_arg_type(&dict_entry) != DBUS_TYPE_VARIANT) {
-			dI("Expected variant as value in dict_entry. Instead received: %s.\n", dbus_message_type_to_string(dbus_message_iter_get_arg_type(&dict_entry)));
+			dI("Expected variant as value in dict_entry. Instead received: %s.", dbus_message_type_to_string(dbus_message_iter_get_arg_type(&dict_entry)));
 			oscap_free(property_name);
 			goto cleanup;
 		}
@@ -254,18 +254,15 @@ static int unit_callback(const char *unit, void *cbarg)
 int probe_main(probe_ctx *ctx, void *probe_arg)
 {
 	SEXP_t *unit_entity, *probe_in, *property_entity;
-	oval_version_t oval_version;
+	oval_schema_version_t oval_version;
 
 	probe_in = probe_ctx_getobject(ctx);
-	oval_version = probe_obj_get_schema_version(probe_in);
+	oval_version = probe_obj_get_platform_schema_version(probe_in);
 
-	if (oval_version_cmp(oval_version, OVAL_VERSION(5.11)) < 0) {
+	if (oval_schema_version_cmp(oval_version, OVAL_SCHEMA_VERSION(5.11)) < 0) {
 		// OVAL 5.10 and less
 		return PROBE_EOPNOTSUPP;
 	}
-
-	unit_entity = probe_obj_getent(probe_in, "unit", 1);
-	property_entity = probe_obj_getent(probe_in, "property", 1);
 
 	DBusError dbus_error;
 	DBusConnection *dbus_conn;
@@ -275,10 +272,15 @@ int probe_main(probe_ctx *ctx, void *probe_arg)
 
 	if (dbus_conn == NULL) {
 		dbus_error_free(&dbus_error);
-		SEXP_free(property_entity);
-		SEXP_free(unit_entity);
-		return PROBE_ESYSTEM;
+		SEXP_t *msg = probe_msg_creat(OVAL_MESSAGE_LEVEL_INFO, "DBus connection failed, could not identify systemd units.");
+		probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_ERROR);
+		probe_cobj_add_msg(probe_ctx_getresult(ctx), msg);
+		SEXP_free(msg);
+		return 0;
 	}
+
+	unit_entity = probe_obj_getent(probe_in, "unit", 1);
+	property_entity = probe_obj_getent(probe_in, "property", 1);
 
 	struct unit_callback_vars vars;
 

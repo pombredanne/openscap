@@ -124,6 +124,9 @@ int spb_pick (spb_t *spb, spb_size_t start, spb_size_t size, void *dst)
 
         b_idx = spb_bindex (spb, start);
 
+        if (size == 0)
+            return (0); /* No bytes to copy, return as success */
+
         if (b_idx < spb->btotal) {
                 size_t l_off;
                 size_t l_len;

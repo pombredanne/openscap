@@ -416,7 +416,7 @@ static int read_tcp(const char *proc, const char *type, llist *l, probe_ctx *ctx
 		}
 		more[0] = 0;
 		sscanf(buf, "%d: %64[0-9A-Fa-f]:%X %64[0-9A-Fa-f]:%X %X "
-			"%lX:%lX %X:%lX %lX %d %d %lu %512s\n",
+			"%lX:%lX %X:%lX %lX %d %d %lu %511s\n",
 			&d, local_addr, &local_port, rem_addr, &rem_port,
 			&state, &txq, &rxq, &timer_run, &time_len, &retr,
 			&uid, &timeout, &inode, more);
@@ -424,7 +424,7 @@ static int read_tcp(const char *proc, const char *type, llist *l, probe_ctx *ctx
 		char src[NI_MAXHOST], dest[NI_MAXHOST];
 		addr_convert(local_addr, src, NI_MAXHOST);
 		addr_convert(rem_addr, dest, NI_MAXHOST);
-		dI("Have tcp port: %s:%u\n", src, local_port);
+		dI("Have tcp port: %s:%u", src, local_port);
 		if (eval_data(type, src, local_port)) {
 			struct result_info r;
 			r.proto = type;
@@ -467,7 +467,7 @@ static int read_udp(const char *proc, const char *type, llist *l, probe_ctx *ctx
 		}
 		more[0] = 0;
 		sscanf(buf, "%d: %64[0-9A-Fa-f]:%X %64[0-9A-Fa-f]:%X %X "
-			"%lX:%lX %X:%lX %lX %d %d %lu %512s\n",
+			"%lX:%lX %X:%lX %lX %d %d %lu %511s\n",
 			&d, local_addr, &local_port, rem_addr, &rem_port,
 			&state, &txq, &rxq, &timer_run, &time_len, &retr,
 			&uid, &timeout, &inode, more);
@@ -475,7 +475,7 @@ static int read_udp(const char *proc, const char *type, llist *l, probe_ctx *ctx
 		char src[NI_MAXHOST], dest[NI_MAXHOST];
 		addr_convert(local_addr, src, NI_MAXHOST);
 		addr_convert(rem_addr, dest, NI_MAXHOST);
-		dI("Have udp port: %s:%u\n", src, local_port);
+		dI("Have udp port: %s:%u", src, local_port);
 		if (eval_data(type, src, local_port)) {
 			struct result_info r;
 			r.proto = type;
@@ -518,7 +518,7 @@ static int read_raw(const char *proc, const char *type, llist *l, probe_ctx *ctx
 		}
 		more[0] = 0;
 		sscanf(buf, "%d: %64[0-9A-Fa-f]:%X %64[0-9A-Fa-f]:%X %X "
-			"%lX:%lX %X:%lX %lX %d %d %lu %512s\n",
+			"%lX:%lX %X:%lX %lX %d %d %lu %511s\n",
 			&d, local_addr, &local_port, rem_addr, &rem_port,
 			&state, &txq, &rxq, &timer_run, &time_len, &retr,
 			&uid, &timeout, &inode, more);
@@ -526,7 +526,7 @@ static int read_raw(const char *proc, const char *type, llist *l, probe_ctx *ctx
 		char src[NI_MAXHOST], dest[NI_MAXHOST];
 		addr_convert(local_addr, src, NI_MAXHOST);
 		addr_convert(rem_addr, dest, NI_MAXHOST);
-		dI("Have raw port: %s:%u\n", src, local_port);
+		dI("Have raw port: %s:%u", src, local_port);
 		if (eval_data(type, src, local_port)) {
 			struct result_info r;
 			r.proto = type;

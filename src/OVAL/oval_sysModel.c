@@ -70,10 +70,9 @@ struct oval_syschar_model *oval_syschar_model_new(struct oval_definition_model *
 	if (newmodel == NULL)
 		return NULL;
 
-	newmodel->generator = oval_generator_new();
-        struct oval_generator *generator = oval_definition_model_get_generator(definition_model);
-        char * schema_version = oval_generator_get_schema_version(generator);
-        oval_generator_set_schema_version(newmodel->generator, schema_version);
+	struct oval_generator *generator = oval_definition_model_get_generator(definition_model);
+	newmodel->generator = oval_generator_clone(generator);
+	oval_generator_update_timestamp(newmodel->generator);
 
 	newmodel->sysinfo = NULL;
 	newmodel->definition_model = definition_model;
@@ -137,26 +136,15 @@ struct oval_syschar_model *oval_syschar_model_clone(struct oval_syschar_model *o
 
 void oval_syschar_model_free(struct oval_syschar_model *model)
 {
-	__attribute__nonnull__(model);
-
-	if (model->sysinfo)
+	if (model != NULL) {
 		oval_sysinfo_free(model->sysinfo);
-	if (model->syschar_map)
 		oval_smc_free(model->syschar_map, (oscap_destruct_func) oval_syschar_free);
-	if (model->sysitem_map)
-		oval_string_map_free(model->sysitem_map, (oscap_destruct_func) oval_sysitem_free);
-        if (model->schema)
-                oscap_free(model->schema);
-
-	model->sysinfo = NULL;
-	model->definition_model = NULL;
-	model->syschar_map = NULL;
-	model->sysitem_map = NULL;
-        model->schema = NULL;
-
-	oval_generator_free(model->generator);
-
-	oscap_free(model);
+		if (model->sysitem_map)
+			oval_string_map_free(model->sysitem_map, (oscap_destruct_func) oval_sysitem_free);
+		oscap_free(model->schema);
+		oval_generator_free(model->generator);
+		oscap_free(model);
+	}
 }
 
 void oval_syschar_model_reset(struct oval_syschar_model *model) 
@@ -264,7 +252,7 @@ int oval_syschar_model_import_source(struct oval_syschar_model *model, struct os
 		ret = oval_syschar_model_parse(context.reader, &context);
 	} else {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Missing \"oval_system_characteristics\" element");
-		dE("Unprocessed tag: <%s:%s>.\n", namespace, tagname);
+		dE("Unprocessed tag: <%s:%s>.", namespace, tagname);
 		ret = -1;
 	}
 
@@ -329,7 +317,7 @@ struct oval_sysitem *oval_syschar_model_get_new_sysitem(struct oval_syschar_mode
 }
 
 xmlNode *oval_syschar_model_to_dom(struct oval_syschar_model * syschar_model, xmlDocPtr doc, xmlNode * parent, 
-			           oval_syschar_resolver resolver, void *user_arg)
+			           oval_syschar_resolver resolver, void *user_arg, bool export_syschar)
 {
 
 	xmlNodePtr root_node = NULL;
@@ -346,12 +334,14 @@ xmlNode *oval_syschar_model_to_dom(struct oval_syschar_model * syschar_model, xm
 	xmlNs *ns_unix = xmlNewNs(root_node, OVAL_SYSCHAR_UNIX_NS, BAD_CAST "unix-sys");
 	xmlNs *ns_ind = xmlNewNs(root_node, OVAL_SYSCHAR_IND_NS, BAD_CAST "ind-sys");
 	xmlNs *ns_lin = xmlNewNs(root_node, OVAL_SYSCHAR_LIN_NS, BAD_CAST "lin-sys");
+	xmlNs *ns_win = xmlNewNs(root_node, OVAL_SYSCHAR_WIN_NS, BAD_CAST "win-sys");
 	xmlNs *ns_syschar = xmlNewNs(root_node, OVAL_SYSCHAR_NAMESPACE, NULL);
 
 	xmlSetNs(root_node, ns_common);
 	xmlSetNs(root_node, ns_unix);
 	xmlSetNs(root_node, ns_ind);
 	xmlSetNs(root_node, ns_lin);
+	xmlSetNs(root_node, ns_win);
 	xmlSetNs(root_node, ns_syschar);
 
         /* Always report the generator */
@@ -359,6 +349,10 @@ xmlNode *oval_syschar_model_to_dom(struct oval_syschar_model * syschar_model, xm
 
         /* Report sysinfo */
 	oval_sysinfo_to_dom(oval_syschar_model_get_sysinfo(syschar_model), doc, root_node);
+
+	if (!export_syschar) {
+		return root_node;
+	}
 
 	struct oval_smc *resolved_smc = NULL;
 	struct oval_syschar_iterator *syschars = oval_syschar_model_get_syschars(syschar_model);
@@ -424,7 +418,7 @@ int oval_syschar_model_export(struct oval_syschar_model *model, const char *file
 		return -1;
 	}
 
-	oval_syschar_model_to_dom(model, doc, NULL, NULL, NULL);
+	oval_syschar_model_to_dom(model, doc, NULL, NULL, NULL, true);
 	return oscap_xml_save_filename_free(file, doc);
 }
 

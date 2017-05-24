@@ -137,7 +137,7 @@ struct oval_result_criteria_node *oval_result_criteria_node_new(struct oval_resu
 		} break;
 	default:
 		va_end(ap);
-		dE("Unsupported criteria node type: %d.\n", type);
+		dE("Unsupported criteria node type: %d.", type);
 		return NULL;
 	}
 	node->sys = sys;
@@ -324,8 +324,9 @@ static struct oval_result_system *oval_result_criteria_get_system(struct oval_re
         return node->sys;
 }
 
-static oval_result_t _oval_result_negate(bool negate, oval_result_t result)
+oval_result_t oval_result_criteria_node_negate(struct oval_result_criteria_node *node, oval_result_t result)
 {
+	bool negate = node->negate;
 	return (negate && result == OVAL_RESULT_TRUE) ? OVAL_RESULT_FALSE :
 	    (negate && result == OVAL_RESULT_FALSE) ? OVAL_RESULT_TRUE : result;
 }
@@ -358,6 +359,8 @@ static oval_result_t _oval_result_criteria_node_result(struct oval_result_criter
 		} break;
 	case OVAL_NODETYPE_EXTENDDEF:{
 			struct oval_result_definition *extends = oval_result_criteria_node_get_extends(node);
+			const char *def_id = oval_result_definition_get_id(extends);
+			dI("Criteria are extended by definition '%s'.", def_id);
 			result = oval_result_definition_eval(extends);
 		} break;
 	default:
@@ -365,7 +368,7 @@ static oval_result_t _oval_result_criteria_node_result(struct oval_result_criter
 		break;
 	}
 
-	result = _oval_result_negate(node->negate, result);
+	result = oval_result_criteria_node_negate(node, result);
 
 	return result;
 }
@@ -562,12 +565,12 @@ int oval_result_criteria_node_parse(xmlTextReaderPtr reader,
 						     variable_instance);
 		oscap_free(definition_ref);
 	} else {
-		dW("unhandled criteria node: <%s>.\n",(char *)localName);
+		dW("unhandled criteria node: <%s>.",(char *)localName);
 		oval_parser_skip_tag(reader, context);
 	}
 
 	if (node==NULL || rc==-1) {
-		dE("Can't parse result criteria node.\n");
+		dE("Can't parse result criteria node.");
 		return 1;
 	}
 

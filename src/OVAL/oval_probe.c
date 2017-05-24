@@ -90,7 +90,8 @@ oval_probe_meta_t OSCAP_GSYM(__probe_meta)[] = {
         OVAL_PROBE_EXTERNAL(OVAL_UNIX_PROCESS58, "process58"),
         OVAL_PROBE_EXTERNAL(OVAL_UNIX_FILEEXTENDEDATTRIBUTE, "fileextendedattribute"),
         OVAL_PROBE_EXTERNAL(OVAL_UNIX_GCONF, "gconf"),
-        OVAL_PROBE_EXTERNAL(OVAL_UNIX_ROUTINGTABLE, "routingtable")
+        OVAL_PROBE_EXTERNAL(OVAL_UNIX_ROUTINGTABLE, "routingtable"),
+        OVAL_PROBE_EXTERNAL(OVAL_UNIX_SYMLINK, "symlink")
 };
 
 #define __PROBE_META_COUNT (sizeof OSCAP_GSYM(__probe_meta)/sizeof OSCAP_GSYM(__probe_meta)[0])
@@ -231,6 +232,7 @@ int oval_probe_query_object(oval_probe_session_t *psess, struct oval_object *obj
 	char *oid;
 	struct oval_syschar *sysc;
         oval_subtype_t type;
+	const char *type_name;
         oval_ph_t *ph;
 	struct oval_string_map *vm;
 	struct oval_syschar_model *model;
@@ -239,23 +241,23 @@ int oval_probe_query_object(oval_probe_session_t *psess, struct oval_object *obj
 	oid = oval_object_get_id(object);
 	model = psess->sys_model;
 
-	dI("Querying object id: \"%s\", flags: %u.\n", oid, flags);
+	type = oval_object_get_subtype(object);
+	type_name = oval_subtype_get_text(type);
+	dI("Querying %s object '%s', flags: %u.", type_name, oid, flags);
 
 	sysc = oval_syschar_model_get_syschar(model, oid);
 	if (sysc != NULL) {
 		int variable_instance_hint = oval_syschar_get_variable_instance_hint(sysc);
 		if (oval_syschar_get_variable_instance_hint(sysc) != oval_syschar_get_variable_instance(sysc)) {
-			dI("Creating another syschar for variable_instance=%d)\n", variable_instance_hint);
+			dI("Creating another syschar for variable_instance=%d)", variable_instance_hint);
 			sysc = oval_syschar_new(model, object);
 			oval_syschar_set_variable_instance(sysc, variable_instance_hint);
 			oval_syschar_set_variable_instance_hint(sysc, variable_instance_hint);
 		}
 		else {
-			oval_syschar_collection_flag_t sc_flg;
-
-			sc_flg = oval_syschar_get_flag(sysc);
-
-			dI("Syschar already exists, flag: %u, '%s'.\n", sc_flg, oval_syschar_collection_flag_get_text(sc_flg));
+			oval_syschar_collection_flag_t sc_flg = oval_syschar_get_flag(sysc);
+			const char *flag_text = oval_syschar_collection_flag_get_text(sc_flg);
+			dI("System characteristics for %s_object '%s' already exist, flag: %s.", type_name, oid, flag_text);
 
 			if (sc_flg != SYSCHAR_FLAG_UNKNOWN || (flags & OVAL_PDFLAG_NOREPLY)) {
 				if (out_syschar)
@@ -263,19 +265,20 @@ int oval_probe_query_object(oval_probe_session_t *psess, struct oval_object *obj
 				return 0;
 			}
 		}
-	} else
+	} else {
+		dI("Creating new syschar for %s_object '%s'.", type_name, oid);
 		sysc = oval_syschar_new(model, object);
+	}
 
 	if (out_syschar)
 		*out_syschar = sysc;
 
-	type = oval_object_get_subtype(object);
 	ph = oval_probe_handler_get(psess->ph, type);
 
         if (ph == NULL) {
                 char *msg = "OVAL object not supported.";
 
-		dW("%s\n", msg);
+		dW("%s", msg);
 		oval_syschar_add_new_message(sysc, msg, OVAL_MESSAGE_LEVEL_WARNING);
 		oval_syschar_set_flag(sysc, SYSCHAR_FLAG_NOT_COLLECTED);
 
@@ -301,6 +304,8 @@ int oval_probe_query_sysinfo(oval_probe_session_t *sess, struct oval_sysinfo **o
 	struct oval_sysinfo *sysinf;
         oval_ph_t *ph;
 	int ret;
+
+	dI("Querying system information.");
 
         ph = oval_probe_handler_get(sess->ph, OVAL_SUBTYPE_SYSINFO);
 
@@ -350,6 +355,88 @@ int oval_probe_query_definition(oval_probe_session_t *sess, const char *id) {
 	return ret;
 }
 
+static int oval_probe_query_var_ref(oval_probe_session_t *sess, struct oval_state *state)
+{
+	struct oval_state_content_iterator *contents = oval_state_get_contents(state);
+	while (oval_state_content_iterator_has_more(contents)) {
+		struct oval_state_content *content = oval_state_content_iterator_next(contents);
+		struct oval_entity * entity = oval_state_content_get_entity(content);
+		if (oval_entity_get_varref_type(entity) == OVAL_ENTITY_VARREF_ATTRIBUTE) {
+			oval_syschar_collection_flag_t flag;
+			struct oval_variable *var = oval_entity_get_variable(entity);
+			const char *state_id = oval_state_get_id(state);
+			oval_variable_type_t var_type = oval_variable_get_type(var);
+			const char *var_type_text = oval_variable_type_get_text(var_type);
+			const char *var_id = oval_variable_get_id(var);
+			dI("State '%s' references %s '%s'.", state_id,
+			   var_type_text, var_id);
+
+			int ret = oval_probe_query_variable(sess, var);
+			if (ret == -1) {
+				oval_state_content_iterator_free(contents);
+				return ret;
+			}
+
+			flag = oval_variable_get_collection_flag(var);
+			switch (flag) {
+			case SYSCHAR_FLAG_COMPLETE:
+			case SYSCHAR_FLAG_INCOMPLETE:
+				break;
+			default:
+				oval_state_content_iterator_free(contents);
+				return 0;
+			}
+		}
+	}
+	oval_state_content_iterator_free(contents);
+	return 1;
+}
+
+int oval_probe_query_test(oval_probe_session_t *sess, struct oval_test *test)
+{
+	struct oval_object *object;
+	struct oval_state_iterator *ste_itr;
+	int ret;
+	oval_subtype_t test_subtype, object_subtype;
+
+	object = oval_test_get_object(test);
+	if (object == NULL)
+		return 0;
+	test_subtype = oval_test_get_subtype(test);
+	object_subtype = oval_object_get_subtype(object);
+	if (test_subtype != object_subtype) {
+		oscap_seterr(OSCAP_EFAMILY_OVAL, "%s_test '%s' is not compatible with %s_object '%s'.",
+				oval_subtype_to_str(test_subtype), oval_test_get_id(test),
+				oval_subtype_to_str(object_subtype), oval_object_get_id(object));
+		return 0;
+	}
+
+	/* probe object */
+	ret = oval_probe_query_object(sess, object, 0, NULL);
+	if (ret == -1)
+		return ret;
+	/* probe objects referenced like this: test->state->variable->object */
+	ste_itr = oval_test_get_states(test);
+	while (oval_state_iterator_has_more(ste_itr)) {
+		struct oval_state *state = oval_state_iterator_next(ste_itr);
+		ret = oval_probe_query_var_ref(sess, state);
+		if (ret < 1) {
+			oval_state_iterator_free(ste_itr);
+			return ret;
+		}
+	}
+	oval_state_iterator_free(ste_itr);
+
+	return 0;
+}
+
+static int oval_probe_query_extend_definition(oval_probe_session_t *sess, struct oval_criteria_node *cnode)
+{
+	struct oval_definition *oval_def = oval_criteria_node_get_definition(cnode);
+	const char *def_id = oval_definition_get_id(oval_def);
+	return oval_probe_query_definition(sess, def_id);
+}
+
 /**
  * @returns 0 on success; -1 on error; 1 on warning
  */
@@ -360,57 +447,12 @@ static int oval_probe_query_criteria(oval_probe_session_t *sess, struct oval_cri
 	/* Criterion node is the final node that has a reference to a test */
 	case OVAL_NODETYPE_CRITERION:{
 		/* There should be a test .. */
-		struct oval_test *test;
-		struct oval_object *object;
-		struct oval_state_iterator *ste_itr;
-
-		test = oval_criteria_node_get_test(cnode);
-		if (test == NULL)
+		struct oval_test *test = oval_criteria_node_get_test(cnode);
+		if (test == NULL) {
 			return 0;
-		object = oval_test_get_object(test);
-		if (object == NULL)
-			return 0;
-		/* probe object */
-		ret = oval_probe_query_object(sess, object, 0, NULL);
-		if (ret == -1)
-			return ret;
-		/* probe objects referenced like this: test->state->variable->object */
-		ste_itr = oval_test_get_states(test);
-		while (oval_state_iterator_has_more(ste_itr)) {
-			struct oval_state *state = oval_state_iterator_next(ste_itr);
-			struct oval_state_content_iterator *contents = oval_state_get_contents(state);
-			while (oval_state_content_iterator_has_more(contents)) {
-				struct oval_state_content *content = oval_state_content_iterator_next(contents);
-				struct oval_entity * entity = oval_state_content_get_entity(content);
-				if (oval_entity_get_varref_type(entity) == OVAL_ENTITY_VARREF_ATTRIBUTE) {
-					oval_syschar_collection_flag_t flag;
-					struct oval_variable *var = oval_entity_get_variable(entity);
-
-					ret = oval_probe_query_variable(sess, var);
-					if (ret == -1) {
-						oval_state_content_iterator_free(contents);
-						oval_state_iterator_free(ste_itr);
-						return ret;
-					}
-
-					flag = oval_variable_get_collection_flag(var);
-					switch (flag) {
-					case SYSCHAR_FLAG_COMPLETE:
-					case SYSCHAR_FLAG_INCOMPLETE:
-						break;
-					default:
-						oval_state_content_iterator_free(contents);
-						oval_state_iterator_free(ste_itr);
-						return 0;
-					}
-				}
-			}
-			oval_state_content_iterator_free(contents);
 		}
-		oval_state_iterator_free(ste_itr);
-
-		return 0;
-
+		ret = oval_probe_query_test(sess, test);
+		return ret;
 		}
 		break;
                 /* Criteria node is type of set that contains more criterias. Criteria node
@@ -437,14 +479,8 @@ static int oval_probe_query_criteria(oval_probe_session_t *sess, struct oval_cri
                 /* Extended definition contains reference to definition, we need criteria of this
                  * definition to be evaluated completely */
         case OVAL_NODETYPE_EXTENDDEF:{
-                        struct oval_definition *oval_def = oval_criteria_node_get_definition(cnode);
-			struct oval_criteria_node *node =  oval_definition_get_criteria(oval_def);
-			if (node == NULL) {
-				oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not find extended definition: %s.",
-					oval_definition_get_id(oval_def));
-				return -1;
-			}
-                        return oval_probe_query_criteria(sess, node);
+		ret = oval_probe_query_extend_definition(sess, cnode);
+		return ret;
                 }
                 break;
         case OVAL_NODETYPE_UNKNOWN:
@@ -486,24 +522,29 @@ void oval_probe_meta_list(FILE *output, int flags)
 			strncat(probe_path, meta[i].pname, PATH_MAX - strlen(probe_dir) - 1);
 
 			if (flags & OVAL_PROBEMETA_LIST_DYNAMIC) {
-				dI("Checking access to \"%s\"\n", probe_path);
+				dI("Checking access to \"%s\"", probe_path);
 				if (access(probe_path, X_OK) != 0) {
-					dW("access: errno=%d, %s\n", errno, strerror(errno));
+					dW("access: errno=%d, %s", errno, strerror(errno));
 					continue;
 				}
 			}
+		}
+
+		if (flags & OVAL_PROBEMETA_LIST_OTYPE) {
+			fprintf(output, "%-14s", oval_family_get_text(oval_subtype_get_family(meta[i].otype)));
 		}
 
 		fprintf(output, "%-28s %-28s", meta[i].stype, meta[i].pname);
 
 		if (flags & OVAL_PROBEMETA_LIST_VERBOSE) {
 			if (meta[i].flags & OVAL_PROBEMETA_EXTERNAL) {
-				fprintf(output, " %-5u %s\n", meta[i].otype, probe_path);
+				fprintf(output, " %-5u %s", meta[i].otype, probe_path);
 			} else {
-				fprintf(output, " %-5u\n", meta[i].otype);
+				fprintf(output, " %-5u", meta[i].otype);
 			}
-		} else
-			fprintf(output, "\n");
+		}
+
+		fprintf(output, "\n");
 	}
 
 	return;
