@@ -64,7 +64,7 @@ typedef struct oval_result_test {
 struct oval_result_test *oval_result_test_new(struct oval_result_system *sys, char *tstid)
 {
 	oval_result_test_t *test = (oval_result_test_t *)
-	    oscap_alloc(sizeof(oval_result_test_t));
+	    malloc(sizeof(oval_result_test_t));
 	if (test == NULL)
 		return NULL;
 
@@ -139,7 +139,7 @@ void oval_result_test_free(struct oval_result_test *test)
 	test->items = NULL;
 	test->bindings = NULL;
 	test->instance = 1;
-	oscap_free(test);
+	free(test);
 }
 
 struct oval_result_system *oval_result_test_get_system(struct oval_result_test *rtest)
@@ -566,6 +566,12 @@ static oval_result_t eval_item(struct oval_syschar_model *syschar_model, struct 
 						oval_sysent_get_value(item_entity),
 						oval_sysitem_get_id(cur_sysitem), oval_state_get_id(state));
 			}
+			if (ent_val_res == OVAL_RESULT_ERROR) {
+				dI("Comparing entity '%s'='%s' of item '%s' to corresponding entity in state '%s' was not successful.",
+						oval_sysent_get_name(item_entity),
+						oval_sysent_get_value(item_entity),
+						oval_sysitem_get_id(cur_sysitem), oval_state_get_id(state));
+			}
 			if (((signed) ent_val_res) == -1) {
 				oval_sysent_iterator_free(item_entities_itr);
 				goto fail;
@@ -634,7 +640,7 @@ static oval_result_t eval_check_state(struct oval_test *test, void **args)
 	if (state_names) {
 		dI("In test '%s' %s of the collected items must satisfy these states: %s.",
 			oval_test_get_id(test), oval_check_get_description(ste_check), state_names);
-		oscap_free(state_names);
+		free(state_names);
 	}
 
 	ritems_itr = oval_result_test_get_items(TEST);
@@ -1185,7 +1191,7 @@ static int _oval_result_test_parse(xmlTextReaderPtr reader, struct oval_parser_c
 		oval_parser_skip_tag(reader, context);
 	}
 
-	oscap_free(localName);
+	free(localName);
 
 	return return_code;
 }
@@ -1242,7 +1248,7 @@ int oval_result_test_parse_tag(xmlTextReaderPtr reader, struct oval_parser_conte
 	oval_string_map_free(itemmap, NULL);
 	test->bindings_initialized = true;
 
-	oscap_free(test_id);
+	free(test_id);
 	return return_code;
 }
 

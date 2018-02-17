@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. $srcdir/../../test_common.sh
+. $builddir/tests/test_common.sh
 
 set -e -o pipefail
 
@@ -22,14 +22,15 @@ $OSCAP oval eval --results $result $srcdir/test_sysctl_probe_all.oval.xml > /dev
 
 # sysctl has duplicities in output
 # hide permission errors like: "sysctl: permission denied on key 'fs.protected_hardlinks'"
-sysctl -aN --deprecated 2> /dev/null | sort -u > "$sysctlNames"
+# kernel parameters might use "/" and "." separators interchangeably - normalizing
+sysctl -aN --deprecated 2> /dev/null | tr "/" "." | sort -u > "$sysctlNames"
 
 grep unix-sys:name "$result" | sed -E 's;.*>(.*)<.*;\1;g' | sort > "$ourNames"
 
 diff "$sysctlNames" "$ourNames"
 
 # remove oscap error message related to permissions from stderr
-sed -i -E "/^E: lt-probe_sysctl: Can't read sysctl value from /d" "$stderr"
+sed -i -E "/^E: probe_sysctl: Can't read sysctl value from /d" "$stderr"
 [ ! -s $stderr ]
 
 rm $stderr $result $ourNames $sysctlNames

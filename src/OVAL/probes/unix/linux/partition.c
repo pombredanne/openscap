@@ -31,7 +31,7 @@
 #include <config.h>
 #endif
 
-#if defined(PROC_CHECK) && defined(__linux__)
+#if defined(__linux__)
 #define _XOPEN_SOURCE /* for fdopen */
 #include <sys/vfs.h>
 #include <sys/types.h>
@@ -234,7 +234,7 @@ static int collect_item(probe_ctx *ctx, oval_schema_version_t over, struct mnten
 #endif /* HAVE_BLKID_GET_TAG_VALUE */
 
         probe_item_collect(ctx, item);
-        oscap_free(mnt_opts);
+        free(mnt_opts);
 
         return (0);
 }

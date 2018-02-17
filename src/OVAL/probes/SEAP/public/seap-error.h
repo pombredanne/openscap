@@ -25,6 +25,7 @@
 #define SEAP_ERROR_H
 
 #include <stdint.h>
+#include "oscap_export.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,9 +40,9 @@ struct SEAP_err {
 
 typedef struct SEAP_err SEAP_err_t;
 
-SEAP_err_t *SEAP_error_new(void);
-SEAP_err_t *SEAP_error_clone(SEAP_err_t *e);
-void SEAP_error_free(SEAP_err_t *e);
+OSCAP_API SEAP_err_t *SEAP_error_new(void);
+OSCAP_API SEAP_err_t *SEAP_error_clone(SEAP_err_t *e);
+OSCAP_API void SEAP_error_free(SEAP_err_t *e);
 
 #ifdef __cplusplus
 }

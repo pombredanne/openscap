@@ -12,7 +12,7 @@
 #      David Niemoller
 #      Ondrej Moris, <omoris@redhat.com>
 
-. ../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test Cases.
 
@@ -82,10 +82,12 @@ function test_probe_xinetd_duplicates {
 
 # Testing.
 
-test_init "test_probe_xinetd.log"
+test_init
 
-test_run "test_probe_xinetd_parser" test_probe_xinetd_parser
-test_run "xinetd parser regression test: string list" test_probe_xinetd_regression_stringlist
-test_run "test_probe_xinetd_duplicates" test_probe_xinetd_duplicates
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "test_probe_xinetd_parser" test_probe_xinetd_parser
+    test_run "xinetd parser regression test: string list" test_probe_xinetd_regression_stringlist
+    test_run "test_probe_xinetd_duplicates" test_probe_xinetd_duplicates
+fi
 
 test_exit

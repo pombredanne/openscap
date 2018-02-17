@@ -22,6 +22,8 @@
 #ifndef OSCAP_DOWNLOAD_CB_H_
 #define OSCAP_DOWNLOAD_CB_H_
 
+#include "oscap_export.h"
+
 /**
  * Type of the function used to report progress of download.
  * @param warning indicates whether the message is rather warning or notice

@@ -50,7 +50,7 @@ static int oval_enumeration_attr(xmlTextReaderPtr reader, char *attname, const s
 	if (attrstr == NULL)
 		return defval;
 	int ret = oscap_string_to_enum(map, attrstr);
-	oscap_free(attrstr);
+	free(attrstr);
 	return ret == OVAL_ENUMERATION_INVALID ? defval : ret;
 }
 
@@ -393,7 +393,7 @@ oval_family_t oval_family_parse(xmlTextReaderPtr reader)
 	char *family_text = strrchr(namespace, '#');
 	if (family_text == NULL) {
 		dW("No OVAL family for namespace: %s", namespace);
-		oscap_free(namespace);
+		free(namespace);
 		return OVAL_FAMILY_UNKNOWN;
 	}
 
@@ -404,7 +404,7 @@ oval_family_t oval_family_parse(xmlTextReaderPtr reader)
 		ret = OVAL_FAMILY_UNKNOWN;
 	}
 
-	oscap_free(namespace);
+	free(namespace);
 	return ret;
 }
 
@@ -420,9 +420,11 @@ xmlNs *oval_family_to_namespace(oval_family_t family, const char *schema_ns, xml
 		return NULL;
 	}
 	/* We need to allocate memory also for '#' and '\0'. */
-	char family_uri[strlen(schema_ns) + 1 + strlen(family_text) + 1];
+	char *family_uri = malloc(strlen(schema_ns) + 1 + strlen(family_text) + 1);
 	sprintf(family_uri,"%s#%s", schema_ns, family_text);
-	return xmlSearchNsByHref(doc, parent, BAD_CAST family_uri);
+	xmlNs *ns = xmlSearchNsByHref(doc, parent, BAD_CAST family_uri);
+	free(family_uri);
+	return ns;
 }
 
 static const struct oscap_string_map OVAL_SUBTYPE_AIX_MAP[] = {
@@ -687,7 +689,7 @@ oval_subtype_t oval_subtype_parse(xmlTextReaderPtr reader)
 	}
 
  cleanup:
-	oscap_free(tagname);
+	free(tagname);
 	return subtype;
 }
 

@@ -25,22 +25,27 @@
 #endif
 
 #include <math.h>
+#include <string.h>
+
+#ifdef _WIN32
+#include <io.h>
+#include <windows.h>
+#include <lmcons.h>
+#else
+#include <unistd.h>
+#endif
+
+#ifdef OSCAP_UNIX
 #include <sys/utsname.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#endif
 
 #if defined(__linux__)
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netdb.h>
 #include <sys/ioctl.h>
-#endif
-#include <arpa/inet.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#if defined(_WIN32)
-# include <windows.h>
-# include <lmcons.h>
 #endif
 
 #include "item.h"
@@ -51,10 +56,14 @@
 #include "common/debug_priv.h"
 #include "source/oscap_source_priv.h"
 
+#define XCCDF_NUMERIC_SIZE 32
+
+// References containing STIG Rule IDs can be found by their href attribute, it must match the following url
+static const char *DISA_STIG_VIEWER_HREF = "http://iase.disa.mil/stigs/Pages/stig-viewing-guidance.aspx";
+
 // constants
 static const xccdf_numeric XCCDF_SCORE_MAX_DAFAULT = 100.0f;
 static const char *XCCDF_INSTANCE_DEFAULT_CONTEXT = "undefined";
-const size_t XCCDF_NUMERIC_SIZE = 32;
 const char *XCCDF_NUMERIC_FORMAT = "%f";
 
 // prototypes
@@ -79,7 +88,7 @@ struct xccdf_result *xccdf_result_new(void)
 
 struct xccdf_result * xccdf_result_clone(const struct xccdf_result * result)
 {
-	struct xccdf_item *new_result = oscap_calloc(1, sizeof(struct xccdf_item) + sizeof(struct xccdf_result_item));
+	struct xccdf_item *new_result = calloc(1, sizeof(struct xccdf_item) + sizeof(struct xccdf_result_item));
 	struct xccdf_item *old = XITEM(result);
     xccdf_item_base_clone(&new_result->item, &(old->item));
 	new_result->type = old->type;
@@ -90,23 +99,23 @@ struct xccdf_result * xccdf_result_clone(const struct xccdf_result * result)
 static inline void xccdf_result_free_impl(struct xccdf_item *result)
 {
 	if (result != NULL) {
-		oscap_free(result->sub.result.start_time);
-		oscap_free(result->sub.result.end_time);
-		oscap_free(result->sub.result.test_system);
-		oscap_free(result->sub.result.benchmark_uri);
-		oscap_free(result->sub.result.profile);
+		free(result->sub.result.start_time);
+		free(result->sub.result.end_time);
+		free(result->sub.result.test_system);
+		free(result->sub.result.benchmark_uri);
+		free(result->sub.result.profile);
 
 		oscap_list_free(result->sub.result.identities, (oscap_destruct_func) xccdf_identity_free);
 		oscap_list_free(result->sub.result.target_facts, (oscap_destruct_func) xccdf_target_fact_free);
 		oscap_list_free(result->sub.result.target_id_refs, (oscap_destruct_func) xccdf_target_identifier_free);
-		oscap_list_free(result->sub.result.applicable_platforms, oscap_free);
-		oscap_list_free(result->sub.result.targets, oscap_free);
+		oscap_list_free(result->sub.result.applicable_platforms, free);
+		oscap_list_free(result->sub.result.targets, free);
 		oscap_list_free(result->sub.result.scores, (oscap_destruct_func) xccdf_score_free);
 		oscap_list_free(result->sub.result.remarks, (oscap_destruct_func) oscap_text_free);
-		oscap_list_free(result->sub.result.target_addresses, oscap_free);
+		oscap_list_free(result->sub.result.target_addresses, free);
 		oscap_list_free(result->sub.result.setvalues, (oscap_destruct_func) xccdf_setvalue_free);
 		oscap_list_free(result->sub.result.rule_results, (oscap_destruct_func) xccdf_rule_result_free);
-		oscap_list_free(result->sub.result.organizations, oscap_free);
+		oscap_list_free(result->sub.result.organizations, free);
 
 		xccdf_item_release(result);
 	}
@@ -159,7 +168,7 @@ static inline void _xccdf_result_fill_identity(struct xccdf_result *result)
 	// nor it grants she any additional privileges
 	xccdf_identity_set_authenticated(id, 0);
 	xccdf_identity_set_privileged(id, 0);
-#if defined(unix) || defined(__unix__) || defined(__unix)
+#ifdef OSCAP_UNIX
 	xccdf_identity_set_name(id, getlogin());
 #elif defined(_WIN32)
 	GetUserName((TCHAR *) w32_username, &w32_usernamesize); /* XXX: Check the return value? */
@@ -172,8 +181,8 @@ static inline void _xccdf_result_fill_identity(struct xccdf_result *result)
 
 static inline void _xccdf_result_clear_metadata(struct xccdf_item *result)
 {
-	oscap_list_free(result->sub.result.targets, oscap_free);
-	oscap_list_free(result->sub.result.target_addresses, oscap_free);
+	oscap_list_free(result->sub.result.targets, free);
+	oscap_list_free(result->sub.result.target_addresses, free);
 	oscap_list_free(result->sub.result.target_facts, (oscap_destruct_func) xccdf_target_fact_free);
 	oscap_list_free(result->sub.result.identities, (oscap_destruct_func) xccdf_identity_free);
 	oscap_create_lists(
@@ -190,14 +199,31 @@ void xccdf_result_fill_sysinfo(struct xccdf_result *result)
 	struct ifaddrs *ifaddr, *ifa;
 	int fd;
 #endif
+
+#ifdef OSCAP_UNIX
 	struct utsname sname;
 
 	if (uname(&sname) == -1)
 		return;
 
 	_xccdf_result_clear_metadata(XITEM(result));
+
+	/* override target name by environment variable */
+	const char *target_hostname = getenv("OSCAP_EVALUATION_TARGET");
+	if (target_hostname == NULL) {
+		target_hostname = sname.nodename;
+	}
+
 	/* store target name */
-	xccdf_result_add_target(result, sname.nodename);
+	xccdf_result_add_target(result, target_hostname);
+#elif defined(_WIN32)
+	TCHAR computer_name[MAX_COMPUTERNAME_LENGTH + 1];
+	DWORD computer_name_size = MAX_COMPUTERNAME_LENGTH + 1;
+	GetComputerName(computer_name, &computer_name_size);
+	/* store target name */
+	xccdf_result_add_target(result, computer_name);
+#endif
+
 	_xccdf_result_fill_scanner(result);
 	_xccdf_result_fill_identity(result);
 
@@ -265,7 +291,7 @@ void xccdf_result_fill_sysinfo(struct xccdf_result *result)
 
 struct xccdf_rule_result *xccdf_rule_result_new(void)
 {
-	struct xccdf_rule_result *rr = oscap_calloc(1, sizeof(struct xccdf_rule_result));
+	struct xccdf_rule_result *rr = calloc(1, sizeof(struct xccdf_rule_result));
 	oscap_create_lists(&rr->overrides, &rr->idents, &rr->messages,
 		&rr->instances, &rr->fixes, &rr->checks, NULL);
 	return rr;
@@ -274,9 +300,9 @@ struct xccdf_rule_result *xccdf_rule_result_new(void)
 void xccdf_rule_result_free(struct xccdf_rule_result *rr)
 {
 	if (rr != NULL) {
-		oscap_free(rr->idref);
-		oscap_free(rr->version);
-		oscap_free(rr->time);
+		free(rr->idref);
+		free(rr->version);
+		free(rr->time);
 
 		oscap_list_free(rr->overrides, (oscap_destruct_func) xccdf_override_free);
 		oscap_list_free(rr->idents, (oscap_destruct_func) xccdf_ident_free);
@@ -285,7 +311,7 @@ void xccdf_rule_result_free(struct xccdf_rule_result *rr)
 		oscap_list_free(rr->fixes, (oscap_destruct_func) xccdf_fix_free);
 		oscap_list_free(rr->checks, (oscap_destruct_func) xccdf_check_free);
 
-		oscap_free(rr);
+		free(rr);
 	}
 }
 
@@ -311,14 +337,14 @@ OSCAP_ITERATOR_REMOVE_F(xccdf_rule_result)
 
 struct xccdf_identity *xccdf_identity_new(void)
 {
-	return oscap_calloc(1, sizeof(struct xccdf_identity));
+	return calloc(1, sizeof(struct xccdf_identity));
 }
 
 void xccdf_identity_free(struct xccdf_identity *identity)
 {
 	if (identity != NULL) {
-		oscap_free(identity->name);
-		oscap_free(identity);
+		free(identity->name);
+		free(identity);
 	}
 }
 
@@ -330,7 +356,7 @@ OSCAP_ITERATOR_REMOVE_F(xccdf_identity)
 
 struct xccdf_score *xccdf_score_new(void)
 {
-	struct xccdf_score *score = oscap_calloc(1, sizeof(struct xccdf_score));
+	struct xccdf_score *score = calloc(1, sizeof(struct xccdf_score));
 	score->score = NAN;
 	score->maximum = XCCDF_SCORE_MAX_DAFAULT;
 	return score;
@@ -339,8 +365,8 @@ struct xccdf_score *xccdf_score_new(void)
 void xccdf_score_free(struct xccdf_score *score)
 {
 	if (score != NULL) {
-		oscap_free(score->system);
-		oscap_free(score);
+		free(score->system);
+		free(score);
 	}
 }
 
@@ -352,15 +378,15 @@ OSCAP_ITERATOR_REMOVE_F(xccdf_score)
 
 struct xccdf_override *xccdf_override_new(void)
 {
-	return oscap_calloc(1, sizeof(struct xccdf_override));
+	return calloc(1, sizeof(struct xccdf_override));
 }
 
 void xccdf_override_free(struct xccdf_override *oride)
 {
 	if (oride != NULL) {
-		oscap_free(oride->authority);
+		free(oride->authority);
 		oscap_text_free(oride->remark);
-		oscap_free(oride);
+		free(oride);
 	}
 }
 
@@ -372,14 +398,14 @@ OSCAP_ACCESSOR_TEXT(xccdf_override, remark)
 
 struct xccdf_message *xccdf_message_new(void)
 {
-    return oscap_calloc(1, sizeof(struct xccdf_message));
+    return calloc(1, sizeof(struct xccdf_message));
 }
 
 void xccdf_message_free(struct xccdf_message *msg)
 {
     if (msg != NULL) {
-        oscap_free(msg->content);
-        oscap_free(msg);
+        free(msg->content);
+        free(msg);
     }
 }
 
@@ -388,22 +414,22 @@ OSCAP_ACCESSOR_STRING(xccdf_message, content)
 
 struct xccdf_target_fact* xccdf_target_fact_new(void)
 {
-    return oscap_calloc(1, sizeof(struct xccdf_target_fact));
+    return calloc(1, sizeof(struct xccdf_target_fact));
 }
 
 void xccdf_target_fact_free(struct xccdf_target_fact *fact)
 {
     if (fact != NULL) {
-        oscap_free(fact->name);
-        oscap_free(fact->value);
-        oscap_free(fact);
+        free(fact->name);
+        free(fact->value);
+        free(fact);
     }
 }
 
 static inline bool xccdf_target_fact_set_value(struct xccdf_target_fact *fact, xccdf_value_type_t type, const char *str)
 {
     assert(fact != NULL);
-    oscap_free(fact->value);
+    free(fact->value);
     fact->value = oscap_strdup(str);
     fact->type  = type;
     return true;
@@ -434,7 +460,7 @@ OSCAP_ITERATOR_REMOVE_F(xccdf_target_fact)
 
 struct xccdf_target_identifier* xccdf_target_identifier_new(void)
 {
-    return oscap_calloc(1, sizeof(struct xccdf_target_identifier));
+    return calloc(1, sizeof(struct xccdf_target_identifier));
 }
 
 struct xccdf_target_identifier* xccdf_target_identifier_clone(const struct xccdf_target_identifier* ti)
@@ -460,21 +486,21 @@ void xccdf_target_identifier_free(struct xccdf_target_identifier *ti)
     		xmlFreeNode(ti->element);
     	}
 		else {
-        	oscap_free(ti->system);
-        	oscap_free(ti->href);
-        	oscap_free(ti->name);
+			free(ti->system);
+			free(ti->href);
+			free(ti->name);
         }
 
-    	oscap_free(ti);
+		free(ti);
     }
 }
 
 bool xccdf_target_identifier_set_xml_node(struct xccdf_target_identifier *ti, void* node)
 {
 	if (!ti->any_element) {
-		oscap_free(ti->system);
-		oscap_free(ti->href);
-		oscap_free(ti->name);
+		free(ti->system);
+		free(ti->href);
+		free(ti->name);
 	}
 	else if (ti->element)
 		xmlFreeNode(ti->element);
@@ -501,7 +527,7 @@ bool xccdf_target_identifier_set_system(struct xccdf_target_identifier *ti, cons
 	}
 
 	ti->any_element = false;
-	oscap_free(ti->system);
+	free(ti->system);
 	ti->system = oscap_strdup(newval);
 
 	return true;
@@ -523,7 +549,7 @@ bool xccdf_target_identifier_set_href(struct xccdf_target_identifier *ti, const 
 	}
 
 	ti->any_element = false;
-	oscap_free(ti->href);
+	free(ti->href);
 	ti->href = oscap_strdup(newval);
 
 	return true;
@@ -545,7 +571,7 @@ bool xccdf_target_identifier_set_name(struct xccdf_target_identifier *ti, const 
 	}
 
 	ti->any_element = false;
-	oscap_free(ti->name);
+	free(ti->name);
 	ti->name = oscap_strdup(newval);
 
 	return true;
@@ -564,7 +590,7 @@ OSCAP_ITERATOR_REMOVE_F(xccdf_target_identifier)
 
 struct xccdf_instance *xccdf_instance_new(void)
 {
-    struct xccdf_instance *inst = oscap_calloc(1, sizeof(struct xccdf_instance));
+    struct xccdf_instance *inst = calloc(1, sizeof(struct xccdf_instance));
     inst->context = oscap_strdup(XCCDF_INSTANCE_DEFAULT_CONTEXT);
     return inst;
 }
@@ -572,10 +598,10 @@ struct xccdf_instance *xccdf_instance_new(void)
 void xccdf_instance_free(struct xccdf_instance *inst)
 {
     if (inst != NULL) {
-        oscap_free(inst->context);
-        oscap_free(inst->parent_context);
-        oscap_free(inst->content);
-        oscap_free(inst);
+        free(inst->context);
+        free(inst->parent_context);
+        free(inst->content);
+        free(inst);
     }
 }
 
@@ -728,7 +754,19 @@ struct oscap_source *xccdf_result_export_source(struct xccdf_result *result, con
 		return NULL;
 	}
 
-	xccdf_result_to_dom(result, NULL, doc, NULL);
+	xccdf_result_to_dom(result, NULL, doc, NULL, false);
+	return oscap_source_new_from_xmlDoc(doc, filepath);
+}
+
+struct oscap_source *xccdf_result_stig_viewer_export_source(struct xccdf_result *result, const char *filepath)
+{
+	xmlDocPtr doc = xmlNewDoc(BAD_CAST "1.0");
+	if (doc == NULL) {
+		oscap_setxmlerr(xmlGetLastError());
+		return NULL;
+	}
+
+	xccdf_result_to_dom(result, NULL, doc, NULL, true);
 	return oscap_source_new_from_xmlDoc(doc, filepath);
 }
 
@@ -747,9 +785,10 @@ int xccdf_result_export(struct xccdf_result *result, const char *file)
 	return ret;
 }
 
-void xccdf_result_to_dom(struct xccdf_result *result, xmlNode *result_node, xmlDoc *doc, xmlNode *parent)
+void xccdf_result_to_dom(struct xccdf_result *result, xmlNode *result_node, xmlDoc *doc, xmlNode *parent, bool use_stig_rule_id)
 {
         xmlNs *ns_xccdf = NULL;
+	struct xccdf_benchmark *associated_benchmark = xccdf_result_get_benchmark(result);
 	const char *benchmark_ref_uri = xccdf_result_get_benchmark_uri(result);
 	const struct xccdf_version_info* version_info = xccdf_item_get_schema_version(XITEM(result));
 	if (parent) {
@@ -797,11 +836,8 @@ void xccdf_result_to_dom(struct xccdf_result *result, xmlNode *result_node, xmlD
 			xmlNewProp(benchmark_ref, BAD_CAST "href", BAD_CAST benchmark_ref_uri);
 
 			// @id is disallowed in XCCDF 1.1 and optional in XCCDF 1.2
-			if (xccdf_version_cmp(xccdf_item_get_schema_version(XITEM(result)), "1.2") >= 0) {
-				struct xccdf_benchmark *associated_benchmark = xccdf_result_get_benchmark(result);
-				if (associated_benchmark) {
-					xmlNewProp(benchmark_ref, BAD_CAST "id", BAD_CAST xccdf_benchmark_get_id(associated_benchmark));
-				}
+			if (xccdf_version_cmp(xccdf_item_get_schema_version(XITEM(result)), "1.2") >= 0 && associated_benchmark) {
+				xmlNewProp(benchmark_ref, BAD_CAST "id", BAD_CAST xccdf_benchmark_get_id(associated_benchmark));
 			}
 
 			xmlAddPrevSibling(title_node, benchmark_ref);
@@ -873,7 +909,7 @@ void xccdf_result_to_dom(struct xccdf_result *result, xmlNode *result_node, xmlD
 			// expanded IPv6 addresses.
 
 			xmlNewTextChild(result_node, ns_xccdf, BAD_CAST "target-address", BAD_CAST expanded_ipv6);
-			oscap_free(expanded_ipv6);
+			free(expanded_ipv6);
 		}
 		else {
 			xmlNewTextChild(result_node, ns_xccdf, BAD_CAST "target-address", BAD_CAST target_address);
@@ -925,7 +961,7 @@ void xccdf_result_to_dom(struct xccdf_result *result, xmlNode *result_node, xmlD
 	struct xccdf_rule_result_iterator *rule_results = xccdf_result_get_rule_results(result);
 	while (xccdf_rule_result_iterator_has_more(rule_results)) {
 		struct xccdf_rule_result *rule_result = xccdf_rule_result_iterator_next(rule_results);
-		xccdf_rule_result_to_dom(rule_result, doc, result_node, version_info);
+		xccdf_rule_result_to_dom(rule_result, doc, result_node, version_info, associated_benchmark, use_stig_rule_id);
 	}
 	xccdf_rule_result_iterator_free(rule_results);
 
@@ -936,7 +972,7 @@ void xccdf_result_to_dom(struct xccdf_result *result, xmlNode *result_node, xmlD
                 float value = xccdf_score_get_score(score);
                 char *value_str = oscap_sprintf("%f", value);
                 xmlNode *score_node = xmlNewTextChild(result_node, ns_xccdf, BAD_CAST "score", BAD_CAST value_str);
-                oscap_free(value_str);
+                free(value_str);
 
 		const char *sys = xccdf_score_get_system(score);
 		if (sys)
@@ -945,7 +981,7 @@ void xccdf_result_to_dom(struct xccdf_result *result, xmlNode *result_node, xmlD
 		float max = xccdf_score_get_maximum(score);
 		char *max_str = oscap_sprintf("%f", max);
 		xmlNewProp(score_node, BAD_CAST "maximum", BAD_CAST max_str);
-        oscap_free(max_str);
+        free(max_str);
 	}
 	xccdf_score_iterator_free(scores);
 }
@@ -1079,14 +1115,40 @@ xmlNode *xccdf_target_identifier_to_dom(const struct xccdf_target_identifier *ti
 	}
 }
 
-xmlNode *xccdf_rule_result_to_dom(struct xccdf_rule_result *result, xmlDoc *doc, xmlNode *parent, const struct xccdf_version_info* version_info)
+xmlNode *xccdf_rule_result_to_dom(struct xccdf_rule_result *result, xmlDoc *doc, xmlNode *parent, const struct xccdf_version_info* version_info, struct xccdf_benchmark *benchmark, bool use_stig_rule_id)
 {
+	const char *idref = xccdf_rule_result_get_idref(result);
+	if (use_stig_rule_id) {
+		// Don't output rules with no stig ids
+		if (!idref || !benchmark)
+			return NULL;
+
+		struct xccdf_item *item = xccdf_benchmark_get_member(benchmark, XCCDF_RULE, idref);
+		if (!item)
+			return NULL;
+
+		const char *stig_rule_id = NULL;		
+		struct oscap_reference_iterator *references = xccdf_item_get_references(XRULE(item));
+		while (oscap_reference_iterator_has_more(references)) {
+			struct oscap_reference *ref = oscap_reference_iterator_next(references);
+			if (strcmp(oscap_reference_get_href(ref), DISA_STIG_VIEWER_HREF) == 0) {
+				stig_rule_id = oscap_reference_get_title(ref);
+				break;
+			}
+		}
+		oscap_reference_iterator_free(references);
+
+		if (!stig_rule_id)
+			return NULL;
+
+		idref = stig_rule_id;
+	}
+
 	xmlNs *ns_xccdf = lookup_xccdf_ns(doc, parent, version_info);
 
 	xmlNode *result_node = xmlNewTextChild(parent, ns_xccdf, BAD_CAST "rule-result", NULL);
 
 	/* Handle attributes */
-	const char *idref = xccdf_rule_result_get_idref(result);
 	if (idref)
 		xmlNewProp(result_node, BAD_CAST "idref", BAD_CAST idref);
 
@@ -1110,7 +1172,7 @@ xmlNode *xccdf_rule_result_to_dom(struct xccdf_rule_result *result, xmlDoc *doc,
 	float weight = xccdf_rule_result_get_weight(result);
 	char *weight_str = oscap_sprintf("%f", weight);
 	xmlNewProp(result_node, BAD_CAST "weight", BAD_CAST weight_str);
-    oscap_free(weight_str);
+    free(weight_str);
 
 	/* Handle children */
 	xccdf_test_result_type_t test_res = xccdf_rule_result_get_result(result);

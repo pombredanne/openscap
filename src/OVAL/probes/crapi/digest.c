@@ -68,7 +68,7 @@ int crapi_mdigest_fd (int fd, int num, ... /* crapi_alg_t alg, void *dst, size_t
 {
         register int i;
         va_list ap;
-        struct digest_ctbl_t ctbl[num];
+        struct digest_ctbl_t *ctbl = malloc(num * sizeof(struct digest_ctbl_t));
 
         crapi_alg_t alg;
         void       *dst;
@@ -145,7 +145,6 @@ int crapi_mdigest_fd (int fd, int num, ... /* crapi_alg_t alg, void *dst, size_t
         va_end (ap);
 
         while ((ret = read (fd, fd_buf, sizeof fd_buf)) == sizeof fd_buf) {
-#pragma omp parallel for
                 for (i = 0; i < num; ++i) {
 			if (ctbl[i].ctx == NULL)
 				continue;
@@ -177,12 +176,13 @@ int crapi_mdigest_fd (int fd, int num, ... /* crapi_alg_t alg, void *dst, size_t
 			continue;
                 ctbl[i].fini (ctbl[i].ctx);
 	}
-
+        free(ctbl);
         return (0);
 fail:
         for (i = 0; i < num; ++i)
                 if (ctbl[i].ctx != NULL)
                         ctbl[i].free (ctbl[i].ctx);
 
+        free(ctbl);
         return (-1);
 }

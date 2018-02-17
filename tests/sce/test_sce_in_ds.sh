@@ -5,7 +5,7 @@
 # Author:
 #	Zbynek Moravec <zmoravec@redhat.com>
 
-. ../test_common.sh
+. $builddir/tests/test_common.sh
 
 set -e -o pipefail
 
@@ -24,7 +24,7 @@ function test_sce_in_ds {
 }
 
 # Testing.
-test_init "test_sce_in_ds.log"
+test_init
 
 test_run "SCE in DS" test_sce_in_ds test_sce_in_ds.xml
 

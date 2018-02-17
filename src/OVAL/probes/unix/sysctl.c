@@ -140,7 +140,7 @@ int probe_main(probe_ctx *ctx, void *probe_arg)
 
                 dI("MIB: %s", mib);
                 se_mib = SEXP_string_new(mib, strlen(mib));
-                oscap_free(mib);
+                free(mib);
 
                 if (probe_entobj_cmp(name_entity, se_mib) == OVAL_RESULT_TRUE) {
                         FILE   *fp;
@@ -172,7 +172,7 @@ int probe_main(probe_ctx *ctx, void *probe_arg)
 				 */
 				if (strncmp(ofts_ent->path, ipv6_conf_path, ipv6_conf_path_len) == 0 &&
 						strcmp(ofts_ent->file, "stable_secret") == 0) {
-					dI("Skippping file %s", mibpath);
+					dI("Skipping file %s", mibpath);
 					oval_ftsent_free(ofts_ent);
 					SEXP_free(se_mib);
 					fclose(fp);
@@ -185,6 +185,16 @@ int probe_main(probe_ctx *ctx, void *probe_arg)
                         }
 
                         fclose(fp);
+
+			/* Skip empty values as sysctl tool does.
+			 * See https://bugzilla.redhat.com/show_bug.cgi?id=1473207
+			 */
+			if (l == 0) {
+				dI("Skipping file '%s' because it has no value.", mibpath);
+				oval_ftsent_free(ofts_ent);
+				SEXP_free(se_mib);
+				continue;
+			}
 
                         /*
                          * sanitize the value

@@ -30,7 +30,12 @@
 
 #include <string.h>
 #include <fcntl.h>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
+#include <sys/stat.h>
 
 #include "public/oscap.h"
 #include "util.h"
@@ -71,11 +76,11 @@ void oscap_text_consumer(char *text, void *user)
 		platform = oscap_strdup(text);
 	else {
 		int size = strlen(platform) + strlen(text) + 1;
-		char *newtext = (char *) oscap_alloc(size * sizeof(char));
+		char *newtext = (char *) malloc(size * sizeof(char));
 		*newtext = 0;
 		strcat(newtext, platform);
 		strcat(newtext, text);
-		oscap_free(platform);
+		free(platform);
 		platform = newtext;
 	}
 	*(char **)user = platform;
@@ -98,7 +103,7 @@ int oscap_parser_text_value(xmlTextReaderPtr reader, oscap_xml_value_consumer co
 		if (nodetype == XML_READER_TYPE_CDATA || nodetype == XML_READER_TYPE_TEXT) {
 			char *value = (char *)xmlTextReaderValue(reader);
 			(*consumer) (value, user);
-			oscap_free(value);
+			free(value);
 			has_value = true;
 		}
 		if (xmlTextReaderRead(reader) != 1) {
@@ -196,7 +201,7 @@ xmlNode *oscap_xmlstr_to_dom(xmlNode *parent, const char *elname, const char *co
 	xmlNodeSetName(text_node, BAD_CAST elname);
 	xmlAddChild(parent, text_node);
 	xmlFreeDoc(doc);
-	oscap_free(str);
+	free(str);
 	return text_node;
 }
 
@@ -221,8 +226,12 @@ int oscap_xml_save_filename(const char *filename, xmlDocPtr doc)
 		xmlCode = xmlSaveFormatFileEnc(filename, doc, "UTF-8", 1);
 	}
 	else {
+#ifdef _WIN32
+		int fd = open(filename, O_CREAT|O_TRUNC|O_WRONLY, S_IREAD|S_IWRITE);
+#else
 		int fd = open(filename, O_CREAT|O_TRUNC|O_WRONLY,
 				S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH);
+#endif
 		if (fd < 0) {
 			oscap_seterr(OSCAP_EFAMILY_GLIBC, "%s '%s'", strerror(errno), filename);
 			return -1;

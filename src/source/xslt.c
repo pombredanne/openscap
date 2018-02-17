@@ -29,7 +29,11 @@
 #include <libxslt/xsltutils.h>
 #include <libexslt/exslt.h>
 #include <string.h>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "common/_error.h"
 #include "common/util.h"
@@ -107,9 +111,6 @@ static xmlDoc *apply_xslt_path_internal(struct oscap_source *source, const char 
 	size_t argc = 0;
 	while(params[argc]) argc += 2;
 
-	char *args[argc+1];
-	memset(args, 0, sizeof(char*) * (argc + 1));
-
 	// Should we change all XCCDF namespaces (versioned) to one?
 	// This is a workaround needed to make XSLTs work with multiple versions.
 	// (currently 1.1 and 1.2)
@@ -118,11 +119,11 @@ static xmlDoc *apply_xslt_path_internal(struct oscap_source *source, const char 
 	/* is it an absolute path? */
 	char *xsltpath;
 	if (strstr(xsltfile, "/") == xsltfile) {
-		xsltpath = strdup(xsltfile);
+		xsltpath = oscap_strdup(xsltfile);
 		if (access(xsltpath, R_OK)) {
 			oscap_seterr(OSCAP_EFAMILY_OSCAP, "XSLT file '%s' not found when trying to transform '%s'",
 				xsltfile, oscap_source_readable_origin(source));
-			oscap_free(xsltpath);
+			free(xsltpath);
 			return NULL;
 		}
 	}
@@ -131,7 +132,7 @@ static xmlDoc *apply_xslt_path_internal(struct oscap_source *source, const char 
 		if (access(xsltpath, R_OK)) {
 			oscap_seterr(OSCAP_EFAMILY_OSCAP, "XSLT file '%s' not found in path '%s' when trying to transform '%s'",
 				xsltfile, path_to_xslt, oscap_source_readable_origin(source));
-			oscap_free(xsltpath);
+			free(xsltpath);
 			return NULL;
 		}
 
@@ -144,7 +145,7 @@ static xmlDoc *apply_xslt_path_internal(struct oscap_source *source, const char 
 	*stylesheet = xsltParseStylesheetFile(BAD_CAST xsltpath);
 	if (*stylesheet == NULL) {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not parse XSLT file '%s'", xsltpath);
-		oscap_free(xsltpath);
+		free(xsltpath);
 		return NULL;
 	}
 
@@ -152,12 +153,14 @@ static xmlDoc *apply_xslt_path_internal(struct oscap_source *source, const char 
 		if (xccdf_ns_xslt_workaround(doc, xmlDocGetRootElement(doc)) != 0) {
 			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Had problems employing XCCDF XSLT namespace workaround for XML document '%s'",
 				oscap_source_readable_origin(source));
-			oscap_free(xsltpath);
+			free(xsltpath);
 			xsltFreeStylesheet(*stylesheet);
 			*stylesheet = NULL;
 			return NULL;
 		}
 	}
+
+	char **args = calloc(argc + 1, sizeof(char *));
 
 	for (size_t i = 0; i < argc; i += 2) {
 		args[i] = (char*) params[i];
@@ -166,17 +169,18 @@ static xmlDoc *apply_xslt_path_internal(struct oscap_source *source, const char 
 
 	xmlDoc *transformed = xsltApplyStylesheet(*stylesheet, doc, (const char **) args);
 	for (size_t i = 0; args[i]; i += 2) {
-		oscap_free(args[i+1]);
+		free(args[i+1]);
 	}
+	free(args);
 	if (transformed == NULL) {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not apply XSLT %s to XML file: %s", xsltpath,
 			oscap_source_readable_origin(source));
-		oscap_free(xsltpath);
+		free(xsltpath);
 		xsltFreeStylesheet(*stylesheet);
 		*stylesheet = NULL;
 		return NULL;
 	}
-	oscap_free(xsltpath);
+	free(xsltpath);
 	return transformed;
 
 }
@@ -206,7 +210,7 @@ char *oscap_source_apply_xslt_path_mem(struct oscap_source *source, const char *
 	if (xsltSaveResultToString(&result, &len, transformed, stylesheet) != 0) {
 		oscap_seterr(OSCAP_EFAMILY_XML, "Could not save transformend content to buffer, after applying XSLT %s",
 				xsltfile);
-		oscap_free(result);
+		free(result);
 		result = NULL;
 	}
 	return (char *)result;

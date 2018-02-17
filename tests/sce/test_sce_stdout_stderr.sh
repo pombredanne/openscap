@@ -5,7 +5,7 @@
 # Author:
 #   Marek Haicman <mhaicman@redhat.com>
 
-. ../test_common.sh
+. $builddir/tests/test_common.sh
 
 set -e -o pipefail
 
@@ -24,7 +24,7 @@ function test_sce_stdout_stderr {
 }
 
 # Testing.
-test_init "test_sce_stdout_stderr.log"
+test_init
 
 test_run "SCE stdout and stderr" test_sce_stdout_stderr test_sce_stdout_stderr.xccdf.xml
 

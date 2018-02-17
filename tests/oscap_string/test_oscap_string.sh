@@ -8,7 +8,7 @@
 # Authors:
 #      Jan Černý <jcerny@redhat.com>
 
-. ${srcdir}/../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test cases.
 
@@ -18,6 +18,10 @@ function test_oscap_string {
 
 # Testing.
 
-test_init "test_oscap_string.log"
-test_run "test_oscap_string" test_oscap_string
+test_init
+
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "test_oscap_string" test_oscap_string
+fi
+
 test_exit

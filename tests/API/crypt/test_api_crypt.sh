@@ -12,7 +12,7 @@
 #      David Niemoller
 #      Ondrej Moris, <omoris@redhat.com>
 
-. ../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test Cases.
 
@@ -82,9 +82,11 @@ function test_crapi_mdigest {
 
 # Testing.
 
-test_init "test_api_crypt.log"
+test_init
 
-test_run "test_crapi_digest" test_crapi_digest
-test_run "test_crapi_mdigest" test_crapi_mdigest
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "test_crapi_digest" test_crapi_digest
+    test_run "test_crapi_mdigest" test_crapi_mdigest
+fi
 
 test_exit

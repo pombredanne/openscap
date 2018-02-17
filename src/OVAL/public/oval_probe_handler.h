@@ -31,6 +31,7 @@
 #define OVAL_PROBE_HANDLER
 
 #include "oval_definitions.h"
+#include "oscap_export.h"
 
 typedef struct oval_phtbl oval_phtbl_t;
 typedef struct oval_ph    oval_ph_t;

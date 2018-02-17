@@ -5,7 +5,7 @@
 
 set -e -o pipefail
 
-. ../test_common.sh
+. $builddir/tests/test_common.sh
 
 function test_illicit_function_use {
 	codebase=$(find $top_srcdir/src/ -regex '.*\.[ch]x*')
@@ -36,8 +36,10 @@ function shell_script_syntax(){
 
 test_init "test_codebase.log"
 
-test_run "illicit use of functions" test_illicit_function_use 0
-test_run "Check syntax of distributed shell scripts" shell_script_syntax \
-	utils/oscap-ssh
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "illicit use of functions" test_illicit_function_use 0
+    test_run "Check syntax of distributed shell scripts" shell_script_syntax \
+	    utils/oscap-ssh
+fi
 
 test_exit

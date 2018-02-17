@@ -30,7 +30,6 @@
 #include "common/util.h"
 #include "ds_sds_session.h"
 
-OSCAP_HIDDEN_START;
 
 xmlNodePtr ds_sds_lookup_datastream_in_collection(xmlDocPtr doc, const char *datastream_id);
 
@@ -42,5 +41,7 @@ int ds_sds_dump_component_ref(const xmlNodePtr component_ref, struct ds_sds_sess
 
 int ds_sds_dump_component_ref_as(const xmlNodePtr component_ref, struct ds_sds_session *session, const char *sub_dir, const char *relative_filepath);
 
-OSCAP_HIDDEN_END;
+xmlDocPtr ds_sds_compose_xmlDoc_from_xccdf(const char *xccdf_file);
+xmlDocPtr ds_sds_compose_xmlDoc_from_xccdf_source(struct oscap_source *xccdf_source);
+
 #endif

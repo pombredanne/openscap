@@ -33,7 +33,11 @@
 #include <libxslt/xsltutils.h>
 #include <libexslt/exslt.h>
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#else
+#include <io.h>
+#endif
 #include <fcntl.h>
 
 #include "public/oscap.h"
@@ -114,7 +118,7 @@ void oscap_cleanup(void)
 	xmlCleanupParser();
 }
 
-const char *oscap_get_version(void) { return VERSION; }
+const char *oscap_get_version(void) { return OPENSCAP_VERSION; }
 
 int oscap_validate_document(const char *xmlfile, oscap_document_type_t doctype, const char *version, xml_reporter reporter, void *arg)
 {
@@ -186,6 +190,8 @@ const char *oscap_document_type_to_string(oscap_document_type_t type)
 		return "ARF Result Datastream";
 	case OSCAP_DOCUMENT_CVE_FEED:
 		return "CVE NVD Feed";
+	case OSCAP_DOCUMENT_CVRF_FEED:
+		return "CVRF Feed";
 	default:
 		return NULL;
 	}

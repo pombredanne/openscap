@@ -25,8 +25,6 @@
 #include <stdlib.h>
 #include "util.h"
 
-OSCAP_HIDDEN_START;
-
 /**
  * Create a new string.
  * @return pointer to a string on success, NULL on failure
@@ -81,6 +79,5 @@ bool oscap_string_empty(const struct oscap_string *s);
  */
 void oscap_string_clear(struct oscap_string *s);
 
-OSCAP_HIDDEN_END;
 
 #endif

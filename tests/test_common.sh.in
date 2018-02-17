@@ -15,16 +15,23 @@ PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 LC_ALL=C
 export LC_ALL
 
-enable_valgrind=@vgcheck@
-if [ $enable_valgrind = "yes" ] ; then
-  actualdir=@abs_top_srcdir@
-  export actualdir
-  [ -z "$builddir" ] || export OSCAP="@abs_top_srcdir@/tests/valgrind_test.sh"
+OSCAP_FULL_VALIDATION=1
+export OSCAP_FULL_VALIDATION
+
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    enable_valgrind="@ENABLE_VALGRIND@"
+    if [ $enable_valgrind != "OFF" ] ; then
+        actualdir=@CMAKE_BINARY_DIR@
+        export actualdir
+        [ -z "@CMAKE_BINARY_DIR@" ] || export OSCAP="@CMAKE_SOURCE_DIR@/tests/valgrind_test.sh"
+    else
+        [ -z "@CMAKE_BINARY_DIR@" ] || export OSCAP="bash @CMAKE_BINARY_DIR@/run @CMAKE_BINARY_DIR@/utils/oscap"
+    fi
 else
-  [ -z "$builddir" ] || export OSCAP=$(cd $builddir/utils/.libs; pwd)/oscap
+    export OSCAP=${CUSTOM_OSCAP}
 fi
 
-export XMLDIFF="@abs_top_srcdir@/tests/xmldiff.pl"
+export XMLDIFF="@CMAKE_SOURCE_DIR@/tests/xmldiff.pl"
 
 if ! XPATH_ORIG=`command -v xpath 2>&1`; then
   echo "I require xpath tool but it's not installed. Aborting." >&2
@@ -59,15 +66,9 @@ fi
 # Overall test result.
 result=0
 
-# Logging file (stderr is redirected here).
-log=test.log
-
 # Set-up testing environment.
 function test_init {
-    [ $# -eq 1 ] && log="$1"
-    exec 2>$log
-    echo ""
-    echo "----------------------------------------------------------------------"
+    :
 }
 
 # Execute test and report its results.
@@ -100,9 +101,6 @@ function test_run {
 
 # Clean-up testing environment.
 function test_exit {
-    echo "--------------------------------------------------"
-    echo -e "See `pwd | sed 's|.*/\(tests/.*\)|\1|'`/${log}.\n"
-
     if [ $# -eq 1 ]
     then
         ( exec 1>&2 ; eval "$@" )
@@ -126,7 +124,7 @@ function require {
 # Check if probe exists, use it as follows:
 # probecheck 'probe' || return 255
 function probecheck {
-    if [ ! -f ${OVAL_PROBE_DIR}/probe_${1} ]; then
+    if [ ! -f @CMAKE_BINARY_DIR@/src/OVAL/probes/probe_${1} ]; then
 	echo -e "Probe $1 does not exist!\n"
 	return 255; # Test is not applicable.
     fi

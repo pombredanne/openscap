@@ -29,28 +29,12 @@
 #include "public/oscap.h"
 #include "alloc.h"
 #include <stdarg.h>
+#include <string.h>
+#include "oscap_export.h"
 
 #ifndef __attribute__nonnull__
 #define __attribute__nonnull__(x) assert((x) != NULL)
 #endif
-
-/*
- * Start a list of declarations that should not be available from outside the
- * library.  Must be matched with OSCAP_HIDDEN_END.
- */
-#ifndef OSCAP_HIDDEN_START
-#define OSCAP_HIDDEN_START _Pragma("GCC visibility push(hidden)")
-#endif
-
-/*
- * Start a list of declarations that should not be available from outside the
- * library started by OSCAP_HIDDEN_END.
- */
-#ifndef OSCAP_HIDDEN_END
-#define OSCAP_HIDDEN_END _Pragma("GCC visibility pop")
-#endif
-
-OSCAP_HIDDEN_START
 
 /**
  * Function pointer to an object destructor.
@@ -172,7 +156,7 @@ typedef void (*oscap_consumer_func) (void *, void *);
 #define OSCAP_IGETTER_GEN(ITYPE,SNAME,MNAME) OSCAP_IGETTER(ITYPE,SNAME,MNAME) OSCAP_ITERATOR_GEN(ITYPE)
 
 /**
- * Generete a geter function from a hash table.
+ * Generate a getter function from a hash table.
  * Signature of the generated function will be as follows (substitute uppercase strings with actual params):
  * @code RTYPE SNAME_MNAME(const struct SNAME* item, const char* key); @endcode
  * @param RTYPE type of the hash table item
@@ -185,7 +169,7 @@ typedef void (*oscap_consumer_func) (void *, void *);
 	{ return oscap_htable_get(item->MEXP, key); }
 
 /**
- * Generete a geter function from a hash table.
+ * Generate a getter function from a hash table.
  * Signature of the generated function will be as follows (substitute uppercase strings with actual params):
  * @code RTYPE SNAME_MNAME(const struct SNAME* item, const char* key); @endcode
  * @param RTYPE type of the hash table item
@@ -195,7 +179,7 @@ typedef void (*oscap_consumer_func) (void *, void *);
 #define OSCAP_HGETTER(RTYPE,SNAME,MNAME) OSCAP_HGETTER_EXP(RTYPE,SNAME,MNAME,MNAME)
 
 /**
- * Generete a geter function from a hash table.
+ * Generate a getter function from a hash table.
  * Signature of the generated function will be as follows (substitute uppercase strings with actual params):
  * @code struct RTYPE* SNAME_MNAME(const struct SNAME* item, const char* key); @endcode
  * @param RTYPE type of the hash table item
@@ -207,7 +191,7 @@ typedef void (*oscap_consumer_func) (void *, void *);
 #define OSCAP_SETTER_HEADER(SNAME, MTYPE, MNAME) bool SNAME##_set_##MNAME(struct SNAME *obj, MTYPE newval)
 
 /**
- * Generete a setter function with a check.
+ * Generate a setter function with a check.
  * Signature of the generated function will be as follows (substitute uppercase strings with actual params):
  * @code bool SNAME_get_MNAME(struct SNAME *obj, MTYPE *item); @endcode
  * @param SNAME Name of the structure.
@@ -222,7 +206,7 @@ typedef void (*oscap_consumer_func) (void *, void *);
 	{ if (!(CHECK)) return false; DELETER(obj->MNAME); obj->MNAME = ASSIGNER(newval); return true; }
 
 /**
- * Generete a setter function without a check.
+ * Generate a setter function without a check.
  * @see OSCAP_SETTER_GENERIC_CHECK
  */
 #define OSCAP_SETTER_GENERIC(SNAME, MTYPE, MNAME, DELETER, ASSIGNER) \
@@ -230,7 +214,7 @@ typedef void (*oscap_consumer_func) (void *, void *);
 	{ DELETER(obj->MNAME); obj->MNAME = ASSIGNER(newval); return true; }
 
 /**
- * Generete a setter function without a check that does not delete the previous value.
+ * Generate a setter function without a check that does not delete the previous value.
  * @see OSCAP_SETTER_GENERIC_CHECK
  */
 #define OSCAP_SETTER_GENERIC_NODELETE(SNAME, MTYPE, MNAME, ASSIGNER) \
@@ -238,7 +222,7 @@ typedef void (*oscap_consumer_func) (void *, void *);
 	{ obj->MNAME = ASSIGNER(newval); return true; }
 
 /**
- * Generete a setter function using a simple assignment.
+ * Generate a setter function using a simple assignment.
  * @see OSCAP_SETTER_GENERIC_CHECK
  */
 #define OSCAP_SETTER_SIMPLE(SNAME, MTYPE, MNAME) \
@@ -307,69 +291,60 @@ typedef void (*oscap_consumer_func) (void *, void *);
  * the default value for strings not defined elsewhere.
  */
 struct oscap_string_map {
-	int value;		/* integer/enum value */
-	const char *string;	/* string representation of the value */
+	const int value;    /* integer/enum value */
+	const char *string; /* string representation of the value */
 };
-
-/**
- * Convert a string to an enumeration constant.
- * @param map An array of oscap_string_map structures that defines mapping between constants and strings.
- * @param str string to be converted
- * @memberof oscap_string_map
- */
-int oscap_string_to_enum(const struct oscap_string_map *map, const char *str);
-
-/**
- * Convert an enumeration constant to its corresponding string representation.
- * @param map An array of oscap_string_map structures that defines mapping between constants and strings.
- * @param val value to be converted
- * @memberof oscap_string_map
- */
-const char *oscap_enum_to_string(const struct oscap_string_map *map, int val);
 
 /**
  * Use strdup on string, if string is NULL, return NULL
  * @param str String we want to duplicate
  */
-char *oscap_strdup(const char *str);
+static inline char *oscap_strdup(const char *str) {
+	if (str == NULL)
+		return NULL;
 
-/**
- * Use strtol on string, if string is NULL, return NaN
- * @param str String we want to duplicate
- * @param endptr see man strtol
- * @param base see man strtol
- */
-float oscap_strtol(const char *str, char **endptr, int base);
+#ifdef _MSC_VER
+	return _strdup(str);
+#else
+	return strdup(str);
+#endif
+}
 
-/**
- * Split a string.
- * Split string using given delimiter.
- * Produces NULL-terminated array of strings.
- * Modifies its first argument!
- * @param str String we want to split
- * @param delim Delimiter of string parts
- */
-char **oscap_split(char *str, const char *delim);
+/// Just like strcmp except it's NULL-safe. Use the standard strcmp directly if possible.
+static inline int oscap_strcmp(const char *s1, const char *s2) {
+	if (s1 == NULL) s1 = "";
+	if (s2 == NULL) s2 = "";
+	return strcmp(s1, s2);
+}
 
+/// Check for string equality. Use the standard strcmp directly if possible.
+static inline bool oscap_streq(const char *s1, const char *s2) {
+	return oscap_strcmp(s1, s2) == 0;
+}
 
-/// Use strcmp on strings, NULL safe
-int oscap_strcmp(const char *s1, const char *s2);
-/// Check for string equality
-bool oscap_streq(const char *s1, const char *s2);
-bool oscap_str_startswith(const char *str, const char *with);
-bool oscap_str_endswith(const char *str, const char *with);
+/// Check whether str starts with "prefix"
+static inline bool oscap_str_startswith(const char *str, const char *prefix) {
+	return strncmp(str, prefix, strlen(prefix)) == 0;
+}
+
+/// Check whether str ends with "suffix"
+static inline bool oscap_str_endswith(const char *str, const char *suffix) {
+	const size_t str_len = strlen(str);
+	const size_t suffix_len = strlen(suffix);
+	if (suffix_len > str_len)
+		return false;
+	return strncmp(str + str_len - suffix_len, suffix, suffix_len) == 0;
+}
 /// Trim whitespace (modifies its argument!)
 char *oscap_trim(char *str);
 /// Print to a newly allocated string using a va_list.
 char *oscap_vsprintf(const char *fmt, va_list ap);
 
 // FIXME: This is there because of the SCE engine using this particular function
-OSCAP_HIDDEN_END;
 
 /// Print to a newly allocated string using varialbe arguments.
-char *oscap_sprintf(const char *fmt, ...);
+OSCAP_API char *oscap_sprintf(const char *fmt, ...);
 
-OSCAP_HIDDEN_START;
 
 /// In a list of key-value pairs (odd indicies are keys, even values), find a value for given key
 const char *oscap_strlist_find_value(char ** const kvalues, const char *key);
@@ -380,15 +355,6 @@ void oscap_strtoupper(char *str);
 
 // check pointer equality
 bool oscap_ptr_cmp(void *node1, void *node2);
-
-/**
- * find file with given name and mode in given paths
- * @param filename filename to be found
- * @param mode desired file mode (e.g. R_OK for readable files)
- * @param pathvar environment variable to check for path, can be NULL
- * @param path path where to search the file
- */
-char *oscap_find_file(const char *filename, int mode, const char *pathvar, const char *path);
 
 /**
  * A helper function to expand given shorthand IPv6
@@ -413,6 +379,89 @@ char *oscap_expand_ipv6(const char *input);
 #define protect_errno                                                   \
         for (int OSCAP_CONCAT(__e,__LINE__)=errno, OSCAP_CONCAT(__s,__LINE__)=1; OSCAP_CONCAT(__s,__LINE__)--; errno=OSCAP_CONCAT(__e,__LINE__))
 
-OSCAP_HIDDEN_END;
+
+/* The following functions aren't hidden, because they're used by some probes. */
+
+/**
+ * Convert a string to an enumeration constant.
+ * @param map An array of oscap_string_map structures that defines mapping between constants and strings.
+ * @param str string to be converted
+ * @memberof oscap_string_map
+ */
+OSCAP_API int oscap_string_to_enum(const struct oscap_string_map *map, const char *str);
+
+/**
+ * Convert an enumeration constant to its corresponding string representation.
+ * @param map An array of oscap_string_map structures that defines mapping between constants and strings.
+ * @param val value to be converted
+ * @memberof oscap_string_map
+ */
+OSCAP_API const char *oscap_enum_to_string(const struct oscap_string_map *map, int val);
+
+/**
+ * Split a string.
+ * Split string using given delimiter.
+ * Produces NULL-terminated array of strings.
+ * Modifies its first argument!
+ * @param str String we want to split
+ * @param delim Delimiter of string parts
+ */
+OSCAP_API char **oscap_split(char *str, const char *delim);
+
+/**
+ * Return the canonicalized absolute pathname.
+ * @param path path
+ * @param resolved_path pointer to a buffer
+ * @return resolved_path or NULL in case of error
+ */
+OSCAP_API char *oscap_realpath(const char *path, char *resolved_path);
+
+/**
+ * Return filename component of a path
+ * @param path path
+ * The function can modify the contents of path, so the caller should pass a copy of path.
+ * @return filename component of path
+ * The caller is responsible to free the returned buffer.
+ */
+OSCAP_API char *oscap_basename(char *path);
+
+/**
+ * Return directory component of a path
+ * @param path path
+ * The function can modify the contents of path, so the caller should pass a copy of path.
+ * @return dirname component of path
+ * The caller is responsible to free the returned buffer.
+ */
+OSCAP_API char *oscap_dirname(char *path);
+
+/**
+ * compare two strings ignoring case
+ * @param s1 first string
+ * @param s2 second string
+ * @return an integer less than, equal to, or greater than zero if s1 is,
+ * after ignoring case, found to be less than, to match, or be greater
+ * than s2,  respectively.
+ */
+OSCAP_API int oscap_strcasecmp(const char *s1, const char *s2);
+
+/**
+* compare two strings ignoring case
+* @param s1 first string
+* @param s2 second string
+* @param n compare no more than n bytes of s1 and s2
+* @return an integer less than, equal to, or greater than zero if s1 is,
+* after ignoring case, found to be less than, to match, or be greater
+* than s2,  respectively.
+*/
+OSCAP_API int oscap_strncasecmp(const char *s1, const char *s2, size_t n);
+
+/**
+ * Extract tokens from strings
+ * @param str string
+ * @param delim st of delimiters
+ * @param saveptr Used to store position information between calls to strtok_s
+ * @return token
+ */
+OSCAP_API char *oscap_strtok_r(char *str, const char *delim, char **saveptr);
 
 #endif				/* OSCAP_UTIL_H_ */

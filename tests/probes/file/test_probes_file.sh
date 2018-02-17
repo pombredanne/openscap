@@ -12,7 +12,7 @@
 #      David Niemoller
 #      Ondrej Moris, <omoris@redhat.com>
 
-. ../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test Cases.
 
@@ -122,7 +122,7 @@ function test_probes_file_invalid_utf8 {
 
 # Testing.
 
-test_init "test_probes_file.log"
+test_init
 
 test_run "test_probes_file with verbose mode" test_probes_file verbose
 test_run "test_probes_file" test_probes_file

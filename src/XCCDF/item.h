@@ -33,7 +33,6 @@
 #include "common/util.h"
 #include "common/text_priv.h"
 
-OSCAP_HIDDEN_START;
 
 struct xccdf_flags {
 	bool selected:1;
@@ -397,9 +396,9 @@ struct xccdf_target_identifier {
 
 	xmlNodePtr element;
 
-	const char* system;
-	const char* href;
-	const char* name;
+	char *system;
+	char *href;
+	char *name;
 };
 
 struct xccdf_instance {
@@ -443,8 +442,8 @@ bool xccdf_benchmark_register_item(struct xccdf_benchmark *benchmark, struct xcc
 bool xccdf_benchmark_unregister_item(struct xccdf_item *item);
 bool xccdf_benchmark_rename_item(struct xccdf_item *item, const char *newid);
 char *xccdf_benchmark_gen_id(struct xccdf_benchmark *benchmark, xccdf_type_t type, const char *prefix);
-struct xccdf_profile *xccdf_benchmark_get_profile_by_id(struct xccdf_benchmark *benchmark, const char *profile_id);
 struct xccdf_result *xccdf_benchmark_get_result_by_id(struct xccdf_benchmark *benchmark, const char *testresult_id);
+struct xccdf_result *xccdf_benchmark_get_result_by_id_suffix(struct xccdf_benchmark *benchmark, const char *testresult_suffix);
 bool xccdf_add_item(struct oscap_list *list, struct xccdf_item *parent, struct xccdf_item *item, const char *prefix);
 
 struct xccdf_tailoring *xccdf_tailoring_parse(xmlTextReaderPtr reader, struct xccdf_item* benchmark);
@@ -523,6 +522,5 @@ void xccdf_texts_to_dom(struct oscap_text_iterator *texts, xmlNode *parent, cons
 
 #include "unused.h"
 
-OSCAP_HIDDEN_END;
 
 #endif

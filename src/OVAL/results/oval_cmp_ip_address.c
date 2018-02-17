@@ -35,7 +35,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
+#include <sys/socket.h>
+#endif
 
 #include "oval_definitions.h"
 #include "oval_types.h"
@@ -220,7 +226,7 @@ static inline int ipv4addr_parse(const char *oval_ipv4_string, uint32_t *netmask
 	else
 		result = 0;
 
-	oscap_free(s);
+	free(s);
 	return result;
 }
 
@@ -248,7 +254,7 @@ static inline int ipv6addr_parse(const char *oval_ipv6_string, uint32_t *len_out
 	else
 		result = 0;
 
-	oscap_free(s);
+	free(s);
 	return result;
 }
 

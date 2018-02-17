@@ -116,7 +116,7 @@ oval_agent_session_t * oval_agent_new_session(struct oval_definition_model *mode
 	if (ret != 0) {
 		oval_probe_session_destroy(ag_sess->psess);
 		oval_syschar_model_free(ag_sess->sys_model);
-		oscap_free(ag_sess);
+		free(ag_sess);
 		return NULL;
 	}
 #else
@@ -149,7 +149,7 @@ struct oval_definition_model* oval_agent_get_definition_model(oval_agent_session
 void oval_agent_set_product_name(oval_agent_session_t *ag_sess, char * product_name)
 {
 	struct oval_generator *generator;
-	ag_sess->product_name = strdup(product_name);
+	ag_sess->product_name = oscap_strdup(product_name);
 
 	generator = oval_syschar_model_get_generator(ag_sess->sys_models[0]);
 	oval_generator_set_product_name(generator, product_name);
@@ -326,14 +326,13 @@ const char * oval_agent_get_filename(oval_agent_session_t * ag_sess) {
 
 void oval_agent_destroy_session(oval_agent_session_t * ag_sess) {
 	if (ag_sess != NULL) {
-		oscap_free(ag_sess->product_name);
+		free(ag_sess->product_name);
 #if defined(OVAL_PROBES_ENABLED)
 		oval_probe_session_destroy(ag_sess->psess);
 		oval_results_model_free(ag_sess->res_model);
 #endif
-		oval_syschar_model_free(ag_sess->sys_model);
-	        oscap_free(ag_sess->filename);
-		oscap_free(ag_sess);
+	        free(ag_sess->filename);
+		free(ag_sess);
 	}
 }
 
@@ -453,8 +452,10 @@ static void _oval_agent_resolve_variables_conflict(struct oval_agent_session *se
 				// set of tests. These tests might have same @id but differ in @variable_instance
 				// attribute. Further, some of these tests will differ in tested_variable element.
 				struct oval_result_system *r_system = _oval_agent_get_first_result_system(session);
-				if (r_system == NULL)
+				if (r_system == NULL) {
+					oval_value_iterator_free(value_it);
 					continue;
+				}
 
 				struct oval_string_iterator *def_it =
 					oval_definition_model_get_definitions_dependent_on_variable(def_model, variable);
@@ -540,7 +541,7 @@ int oval_agent_resolve_variables(struct oval_agent_session * session, struct xcc
 			dI("Adding external variable %s.", name);
 		} else {
 			/* Skip this variable (we assume it has same values otherwise conflict was detected) */
-			dW("Skipping external variable %s.", name);
+			dI("Skipping external variable %s.", name);
 		}
         } else {
                 dW("Variable %s does not exist, skipping.", name);

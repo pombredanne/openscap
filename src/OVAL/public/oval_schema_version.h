@@ -23,6 +23,8 @@
 #ifndef OVAL_SCHEMA_VERSION_H
 #define OVAL_SCHEMA_VERSION_H
 
+#include "oscap_export.h"
+
 enum oval_schema_version_components {
 	OVAL_SCHEMA_VERSION_CORE_MAJOR = 0,
 	OVAL_SCHEMA_VERSION_CORE_MINOR,
@@ -45,14 +47,17 @@ typedef struct {
  * @param ver_str OVAL version as string
  * @return internal representation of OVAL schema version
  */
-oval_schema_version_t oval_schema_version_from_cstr(const char *ver_str);
+OSCAP_API oval_schema_version_t oval_schema_version_from_cstr(const char *ver_str);
 
 /**
  * Converts OVAL schema version from an internal representation to a string.
  * @param version OVAL schema version
- * @return string
+ * @return string that needs to be free
+ *
+ * This function should have been declared to return non-const char*.
+ * You need to free the result despite it being declared as const char*.
  */
-const char *oval_schema_version_to_cstr(oval_schema_version_t version);
+OSCAP_API const char *oval_schema_version_to_cstr(oval_schema_version_t version);
 
 /**
  * Compare two versions in the internal representation
@@ -61,6 +66,6 @@ const char *oval_schema_version_to_cstr(oval_schema_version_t version);
  *  <0 ... if 'v1' is older than 'v2'
  *  >0 ... if 'v1' is newer than 'v2'
  */
-int oval_schema_version_cmp(oval_schema_version_t v1, oval_schema_version_t v2);
+OSCAP_API int oval_schema_version_cmp(oval_schema_version_t v1, oval_schema_version_t v2);
 
 #endif

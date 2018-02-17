@@ -182,15 +182,16 @@ static int oval_varref_attr_to_sexp(void *sess, struct oval_entity *entity, stru
 		/* fall through */
 	case SYSCHAR_FLAG_DOES_NOT_EXIST:
 		snprintf(msg, sizeof(msg), "Referenced variable has no values (%s).", oval_variable_get_id(var));
+		dI("%s", msg);
 		ret = 1;
 		break;
 	default:
 		snprintf(msg, sizeof(msg), "There was a problem processing referenced variable (%s).", oval_variable_get_id(var));
+		dW("%s", msg);
 		ret = 1;
 	}
 
 	if (ret) {
-		dW("%s", msg);
 		oval_syschar_add_new_message(syschar, msg, OVAL_MESSAGE_LEVEL_WARNING);
 		oval_syschar_set_flag(syschar, SYSCHAR_FLAG_DOES_NOT_EXIST);
 		return ret;
@@ -243,7 +244,7 @@ static int oval_varref_elm_to_sexp(void *sess, struct oval_variable *var, oval_d
 	if (flag == SYSCHAR_FLAG_DOES_NOT_EXIST) {
 		char msg[100];
 		snprintf(msg, sizeof(msg), "Referenced variable has no values (%s).", oval_variable_get_id(var));
-		dW("%s", msg);
+		dI("%s", msg);
 		if (syschar != NULL)  {
 			oval_syschar_add_new_message(syschar, msg, OVAL_MESSAGE_LEVEL_WARNING);
 			oval_syschar_set_flag(syschar, SYSCHAR_FLAG_DOES_NOT_EXIST);
@@ -418,7 +419,6 @@ int oval_object_to_sexp(void *sess, const char *typestr, struct oval_syschar *sy
 	struct oval_object_content *content;
 	struct oval_entity *entity;
 
-	const char *obj_over;
 	char obj_name[128];
 	const char *obj_id;
 
@@ -433,12 +433,13 @@ int oval_object_to_sexp(void *sess, const char *typestr, struct oval_syschar *sy
 		return -1;
 	}
 
-	obj_over = oval_schema_version_to_cstr(oval_object_get_platform_schema_version(object));
+	// even though it returns const char* it has to be freed :-(
+	char *obj_over = (char*)oval_schema_version_to_cstr(oval_object_get_platform_schema_version(object));
 	obj_id   = oval_object_get_id(object);
 	obj_attr = probe_attr_creat("id", SEXP_string_new_r(&sm0, obj_id, strlen(obj_id)),
 	                            "oval_version", SEXP_string_new_r(&sm1, obj_over, strlen(obj_over)),
 	                            NULL);
-	oscap_free(obj_over);
+	free(obj_over);
 
 	obj_sexp = probe_obj_new(obj_name, obj_attr);
 
@@ -637,6 +638,7 @@ static SEXP_t *oval_record_field_STATE_to_sexp(struct oval_record_field *rf)
 		SEXP_free(r0);
 	}
 
+	oval_entity_free(rf_ent);
 	return rf_sexp;
 }
 
@@ -785,7 +787,7 @@ static struct oval_message *oval_sexp_to_msg(const SEXP_t *msg)
 	str = SEXP_string_cstr(r0);
 	SEXP_free(r0);
 	oval_message_set_text(message, str);
-	oscap_free(str);
+	free(str);
 
 	return message;
 }
@@ -906,7 +908,7 @@ static struct oval_sysent *oval_sexp_to_sysent(struct oval_syschar_model *model,
 
 		oval_sysent_set_value(ent, valp);
 		if (valp != val)
-			oscap_free(valp);
+			free(valp);
                 SEXP_free(sval);
 	}
 
@@ -928,14 +930,14 @@ static struct oval_sysitem *oval_sexp_to_sysitem(struct oval_syschar_model *mode
 	sysitem = oval_syschar_model_get_sysitem(model, id);
 
 	if (sysitem) {
-                oscap_free(id);
+                free(id);
 		return sysitem;
         }
 
 	name = probe_ent_getname(sexp);
 
 	if (name == NULL) {
-                oscap_free(id);
+                free(id);
 		return NULL;
         } else {
 		char *endptr = strrchr(name, '_');
@@ -970,8 +972,8 @@ static struct oval_sysitem *oval_sexp_to_sysitem(struct oval_syschar_model *mode
 	}
 
  cleanup:
-        oscap_free(id);
-	oscap_free(name);
+        free(id);
+	free(name);
 	return sysitem;
 }
 

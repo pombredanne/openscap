@@ -35,6 +35,13 @@
 #include "_error.h"
 #include "oscap.h"
 
+#ifdef _WIN32
+#include <stdlib.h>
+#else
+#include <libgen.h>
+#include <strings.h>
+#endif
+
 
 int oscap_string_to_enum(const struct oscap_string_map *map, const char *str)
 {
@@ -54,30 +61,6 @@ const char *oscap_enum_to_string(const struct oscap_string_map *map, int val)
 	return map->string;
 }
 
-char *oscap_strdup(const char *str)
-{
-
-	char *m;
-
-	if (str == NULL)
-		return NULL;
-
-	m = strdup(str);
-
-	if (m == NULL)
-		oscap_seterr(OSCAP_EFAMILY_GLIBC, strerror(errno));
-
-	return m;
-}
-
-float oscap_strtol(const char *str, char **endptr, int base){
-    if (str == NULL) {
-        return NAN;
-    } else
-        return strtol(str, endptr, base);
-}
-
-
 static const size_t CPE_SPLIT_INIT_ALLOC = 8;
 
 char **oscap_split(char *str, const char *delim)
@@ -87,7 +70,7 @@ char **oscap_split(char *str, const char *delim)
 
 	char **stringp = &str;
 	int alloc = CPE_SPLIT_INIT_ALLOC;
-	char **fields = oscap_alloc(alloc * sizeof(char *));
+	char **fields = malloc(alloc * sizeof(char *));
 	if (!fields)
 		return NULL;
 
@@ -96,9 +79,9 @@ char **oscap_split(char *str, const char *delim)
 		if (i + 2 > alloc) {
 			void *old = fields;
 			alloc *= 2;
-			fields = oscap_realloc(fields, alloc * sizeof(char *));
+			fields = realloc(fields, alloc * sizeof(char *));
 			if (fields == NULL) {
-				oscap_free(old);
+				free(old);
 				return NULL;
 			}
 		}
@@ -107,33 +90,6 @@ char **oscap_split(char *str, const char *delim)
 	fields[i] = NULL;
 
 	return fields;
-}
-
-
-int oscap_strcmp(const char *s1, const char *s2)
-{
-	if (s1 == NULL) s1 = "";
-	if (s2 == NULL) s2 = "";
-	return strcmp(s1, s2);
-}
-
-bool oscap_streq(const char *s1, const char *s2)
-{
-	return (oscap_strcmp(s1, s2) == 0);
-}
-
-bool oscap_str_startswith(const char *str, const char *with)
-{
-	return !strncmp(str, with, strlen(with));
-}
-
-bool oscap_str_endswith(const char *str, const char *with)
-{
-	size_t str_len = strlen(str);
-	size_t with_len = strlen(with);
-	if (with_len > str_len)
-		return false;
-	return strncmp(str + str_len - with_len, with, with_len) == 0;
 }
 
 char *oscap_trim(char *str)
@@ -181,7 +137,7 @@ char *oscap_vsprintf(const char *fmt, va_list ap)
     int length = vsnprintf(foo, 1, fmt, ap);
     if (length < 0) goto cleanup;
 
-    ret = oscap_alloc(sizeof(char) * (length + 1));
+    ret = malloc(sizeof(char) * (length + 1));
     vsprintf(ret, fmt, args);
     assert(ret[length] == '\0');
 
@@ -238,7 +194,7 @@ char *oscap_expand_ipv6(const char *input)
 	}
 
 	// IPv6 is at most eight 4-tuples of [0-9a-f] with 7 separators, plus \0
-	char* ret = oscap_alloc(8 * 4 * sizeof(char) + 7 + 1);
+	char* ret = malloc(8 * 4 * sizeof(char) + 7 + 1);
 	char* output_it = ret;
 
 	input_it = input;
@@ -279,4 +235,68 @@ char *oscap_expand_ipv6(const char *input)
 	*output_it = '\0';
 
 	return ret;
+}
+
+char *oscap_realpath(const char *path, char *resolved_path)
+{
+#ifdef _WIN32
+	return _fullpath(resolved_path, path, PATH_MAX);
+#else
+	return realpath(path, resolved_path);
+#endif
+}
+
+char *oscap_basename(char *path)
+{
+#ifdef _WIN32
+	char fname[_MAX_FNAME];
+	char ext[_MAX_EXT];
+	_splitpath_s(path, NULL, 0, NULL, 0, fname, _MAX_FNAME, ext, _MAX_EXT);
+	size_t base_len = strlen(fname) + strlen(ext) + 1;
+	char *base = malloc(base_len);
+	strncpy(base, fname, base_len);
+	strncat(base, ext, base_len - strlen(base) - 1);
+	return base;
+#else
+	char *base = basename(path);
+	return oscap_strdup(base);
+#endif
+}
+
+char *oscap_dirname(char *path)
+{
+#ifdef _WIN32
+	char dirpath[_MAX_DIR];
+	_splitpath_s(path, NULL, 0, dirpath, _MAX_DIR, NULL, 0, NULL, 0);
+#else
+	char *dirpath = dirname(path);
+#endif
+	return oscap_strdup(dirpath);
+}
+
+int oscap_strcasecmp(const char *s1, const char *s2)
+{
+#ifdef _WIN32
+	return _stricmp(s1, s2);
+#else
+	return strcasecmp(s1, s2);
+#endif
+}
+
+int oscap_strncasecmp(const char *s1, const char *s2, size_t n)
+{
+#ifdef _WIN32
+	return _strnicmp(s1, s2, n);
+#else
+	return strncasecmp(s1, s2, n);
+#endif
+}
+
+char *oscap_strtok_r(char *str, const char *delim, char **saveptr)
+{
+#ifdef _WIN32
+	return strtok_s(str, delim, saveptr);
+#else
+	return strtok_r(str, delim, saveptr);
+#endif
 }

@@ -13,7 +13,7 @@
 #      Ondrej Moris, <omoris@redhat.com>
 #      Petr Lautrbach <plautrba@redhat.com>
 
-. ../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test Cases.
 
@@ -46,7 +46,7 @@ function test_probes_selinuxboolean {
 
 # Testing.
 
-test_init "test_probes_selinuxboolean.log"
+test_init
 
 test_run "test_probes_selinuxboolean" test_probes_selinuxboolean \
     test_probes_selinuxboolean

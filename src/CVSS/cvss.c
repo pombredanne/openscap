@@ -48,6 +48,23 @@
 #define NS_VULN_URI BAD_CAST "http://scap.nist.gov/schema/vulnerability/0.4"
 #define NS_CVSS_URI BAD_CAST "http://scap.nist.gov/schema/cvss-v2/0.2"
 
+/*
+ * Some versions of AIX define NAN like this in math.h:
+ * static  const unsigned int _SQNAN = 0x7fc00000;
+ * #define NAN       (*((float *)(&_SQNAN)))
+ *
+ * However, this makes NAN unusable as an initializer in expressions such as:
+ * static const float F = NAN;
+ *
+ * raising a "Initializer must be a valid constant expression" compiler error.
+ */
+#if defined(_AIX)
+#define NAN_INIT (0.0f/0.0f)
+
+#else  /* Platforms with non broken NAN */
+#define NAN_INIT NAN
+#endif
+
 const char *cvss_model_supported(void) { return CVSS_SUPPORTED; }
 
 
@@ -63,7 +80,7 @@ static struct cvss_metrics **cvss_impact_metricsptr(struct cvss_impact* impact, 
     }
 }
 
-struct cvss_impact *cvss_impact_new(void) { return oscap_calloc(1, sizeof(struct cvss_metrics)); }
+struct cvss_impact *cvss_impact_new(void) { return calloc(1, sizeof(struct cvss_impact)); }
 
 struct cvss_keytab_entry {
     enum cvss_key key;     // cvss vector component
@@ -117,32 +134,32 @@ static const struct cvss_valtab_entry CVSS_VALTAB[] = {
 
     // Base metrics:
 
-    { CVSS_KEY_access_vector, CVSS_AV_NOT_SET,          "Not Set",          "AV:-", NULL,                 NAN },
+    { CVSS_KEY_access_vector, CVSS_AV_NOT_SET,          "Not Set",          "AV:-", NULL,                 NAN_INIT },
     { CVSS_KEY_access_vector, CVSS_AV_LOCAL,            "Local",            "AV:L", "LOCAL",            0.395 },
     { CVSS_KEY_access_vector, CVSS_AV_ADJACENT_NETWORK, "Adjacent Network", "AV:A", "ADJACENT_NETWORK", 0.646 },
     { CVSS_KEY_access_vector, CVSS_AV_NETWORK,          "Network",          "AV:N", "NETWORK",          1.000 },
 
-    { CVSS_KEY_access_complexity, CVSS_AC_NOT_SET, "Not Set", "AC:-", NULL,       NAN },
+    { CVSS_KEY_access_complexity, CVSS_AC_NOT_SET, "Not Set", "AC:-", NULL,       NAN_INIT },
     { CVSS_KEY_access_complexity, CVSS_AC_HIGH,    "High",    "AC:H", "HIGH",   0.350 },
     { CVSS_KEY_access_complexity, CVSS_AC_MEDIUM,  "Medium",  "AC:M", "MEDIUM", 0.610 },
     { CVSS_KEY_access_complexity, CVSS_AC_LOW,     "Low",     "AC:L", "LOW",    0.710 },
 
-    { CVSS_KEY_authentication, CVSS_AU_NOT_SET,  "Not Set",            "AU:-", NULL,                   NAN },
+    { CVSS_KEY_authentication, CVSS_AU_NOT_SET,  "Not Set",            "AU:-", NULL,                   NAN_INIT },
     { CVSS_KEY_authentication, CVSS_AU_MULTIPLE, "Multiple Instances", "AU:M", "MULTIPLE_INSTANCES", 0.450 },
     { CVSS_KEY_authentication, CVSS_AU_SINGLE,   "Single Instance",    "AU:S", "SINGLE_INSTANCE",    0.560 },
     { CVSS_KEY_authentication, CVSS_AU_NONE,     "None",               "AU:N", "NONE",               0.704 },
 
-    { CVSS_KEY_confidentiality_impact, CVSS_IMP_NOT_SET,  "Not Set",  "C:-", NULL,         NAN },
+    { CVSS_KEY_confidentiality_impact, CVSS_IMP_NOT_SET,  "Not Set",  "C:-", NULL,         NAN_INIT },
     { CVSS_KEY_confidentiality_impact, CVSS_IMP_NONE,     "None",     "C:N", "NONE",     0.000 },
     { CVSS_KEY_confidentiality_impact, CVSS_IMP_PARTIAL,  "Partial",  "C:P", "PARTIAL",  0.275 },
     { CVSS_KEY_confidentiality_impact, CVSS_IMP_COMPLETE, "Complete", "C:C", "COMPLETE", 0.660 },
 
-    { CVSS_KEY_integrity_impact, CVSS_IMP_NOT_SET,  "Not Set",  "I:-", NULL,         NAN },
+    { CVSS_KEY_integrity_impact, CVSS_IMP_NOT_SET,  "Not Set",  "I:-", NULL,         NAN_INIT },
     { CVSS_KEY_integrity_impact, CVSS_IMP_NONE,     "None",     "I:N", "NONE",     0.000 },
     { CVSS_KEY_integrity_impact, CVSS_IMP_PARTIAL,  "Partial",  "I:P", "PARTIAL",  0.275 },
     { CVSS_KEY_integrity_impact, CVSS_IMP_COMPLETE, "Complete", "I:C", "COMPLETE", 0.660 },
 
-    { CVSS_KEY_availability_impact, CVSS_IMP_NOT_SET,  "Not Set",  "A:-", NULL,         NAN },
+    { CVSS_KEY_availability_impact, CVSS_IMP_NOT_SET,  "Not Set",  "A:-", NULL,         NAN_INIT },
     { CVSS_KEY_availability_impact, CVSS_IMP_NONE,     "None",     "A:N", "NONE",     0.000 },
     { CVSS_KEY_availability_impact, CVSS_IMP_PARTIAL,  "Partial",  "A:P", "PARTIAL",  0.275 },
     { CVSS_KEY_availability_impact, CVSS_IMP_COMPLETE, "Complete", "A:C", "COMPLETE", 0.660 },
@@ -197,7 +214,7 @@ static const struct cvss_valtab_entry CVSS_VALTAB[] = {
     { CVSS_KEY_availability_requirement, CVSS_REQ_HIGH,        "High",        "AR:H",  "HIGH",        1.510 },
 
     // End-of-list
-    { CVSS_KEY_NONE, 0, "Invalid value", "!", NULL, NAN }
+    { CVSS_KEY_NONE, 0, "Invalid value", "!", NULL, NAN_INIT }
 };
 
 // valtab lookup: either by key&value or by vector string or by key+XMLvalue (pass exactly one of key+val or vec_str or key+xmlval)
@@ -242,8 +259,8 @@ struct cvss_impact *cvss_impact_new_from_vector(const char *cvss_vector)
     }
 
 cleanup:
-    oscap_free(vector_dup);
-    oscap_free(components);
+    free(vector_dup);
+    free(components);
     return impact;
 
 syntax_error:
@@ -332,7 +349,7 @@ char *cvss_impact_to_vector(const struct cvss_impact* impact)
     assert(impact != NULL);
 
     // eight characters per component, 14 components
-    char *result = oscap_calloc(1, sizeof(char) * 8 * 14);
+    char *result = calloc(1, sizeof(char) * 8 * 14);
     char *out = result;
 
     out = cvss_metrics_to_vector(impact->base_metrics, out);
@@ -365,7 +382,7 @@ void cvss_impact_free(struct cvss_impact* impact)
         cvss_metrics_free(cvss_impact_get_base_metrics(impact));
         cvss_metrics_free(cvss_impact_get_temporal_metrics(impact));
         cvss_metrics_free(cvss_impact_get_environmental_metrics(impact));
-        oscap_free(impact);
+        free(impact);
     }
 }
 
@@ -484,7 +501,7 @@ void cvss_impact_describe(const struct cvss_impact *impact, FILE *f)
     char *vec = cvss_impact_to_vector(impact);
     if (vec) {
         fprintf(f, "CVSS vector: %s\n\n", vec);
-        oscap_free(vec);
+        free(vec);
     }
 
     if (impact->base_metrics) {
@@ -520,7 +537,7 @@ struct cvss_metrics *cvss_metrics_new(enum cvss_category category)
 {
     assert(category != CVSS_NONE);
 
-    struct cvss_metrics *metrics = oscap_calloc(1, sizeof(struct cvss_metrics));
+    struct cvss_metrics *metrics = calloc(1, sizeof(struct cvss_metrics));
     metrics->category = category;
     metrics->score = NAN;
     return metrics;
@@ -592,7 +609,7 @@ bool cvss_metrics_export(const struct cvss_metrics *m, xmlTextWriterPtr writer)
     if (!isnan(m->score)) {
         char *score_str = oscap_sprintf("%.1f", m->score);
         xmlTextWriterWriteElementNS(writer, NULL, BAD_CAST "score", NULL, BAD_CAST score_str);
-        oscap_free(score_str);
+        free(score_str);
     }
 
     for (size_t i = 0; i < cvss_metrics_component_num(m); ++i) {
@@ -614,10 +631,10 @@ bool cvss_metrics_export(const struct cvss_metrics *m, xmlTextWriterPtr writer)
 void cvss_metrics_free(struct cvss_metrics* metrics)
 {
     if (metrics) {
-        oscap_free(metrics->source);
-        oscap_free(metrics->upgraded_from_version);
-        oscap_free(metrics->generated_on_datetime);
-        oscap_free(metrics);
+        free(metrics->source);
+        free(metrics->upgraded_from_version);
+        free(metrics->generated_on_datetime);
+        free(metrics);
     }
 }
 

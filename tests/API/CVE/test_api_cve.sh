@@ -9,7 +9,7 @@
 #      Maros Barabas <mbarabas@redhat.com>
 #      Ondrej Moris <omoris@redhat.com>
 
-. ../../test_common.sh
+. $builddir/tests/test_common.sh
 
 function test_api_cve_cvss {
      ./test_api_cve --test-cvss $srcdir/nvdcve-2.0-recent.xml
@@ -31,8 +31,12 @@ function test_api_cve_export {
     return $ret_val
 }
 
-test_init "test_api_cve.log"
-test_run "test_api_cve_cvss" test_api_cve_cvss
-test_run "test_api_cve_export" test_api_cve_export
+test_init
+
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "test_api_cve_cvss" test_api_cve_cvss
+    test_run "test_api_cve_export" test_api_cve_export
+fi
+
 test_exit
 

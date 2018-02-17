@@ -12,7 +12,7 @@
 #      David Niemoller
 #      Ondrej Moris, <omoris@redhat.com>
 
-. ../../test_common.sh
+. $builddir/tests/test_common.sh
 
 . ${srcdir}/runlevel_helper.sh
 
@@ -129,7 +129,7 @@ function test_probes_runlevel_C {
 
 # Testing.
 
-test_init "test_probes_runlevel.log"
+test_init
 
 test_run "test_probes_runlevel_A" test_probes_runlevel_A
 test_run "test_probes_runlevel_B" test_probes_runlevel_B

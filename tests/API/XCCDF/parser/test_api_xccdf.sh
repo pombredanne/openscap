@@ -10,7 +10,7 @@
 
 set -e -o pipefail
 
-. ../../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test cases.
 
@@ -41,18 +41,20 @@ function test_api_xccdf_validate {
 	local INPUT=$1
 	local VER=$2
 
-	./test_api_xccdf --validate $VER $srcdir/$INPUT
+	bash $builddir/run ./test_api_xccdf --validate $VER $srcdir/$INPUT
 	return $([ $? -eq 0 ])
 }
 
 # Testing.
 
-test_init "test_api_xccdf.log"
+test_init
 
-test_run "export xccdf 1.1" test_api_xccdf_export xccdf11.xml
-test_run "validate xccdf 1.1" test_api_xccdf_validate xccdf11.xml "1.1"
-test_run "export xccdf 1.2" test_api_xccdf_export xccdf12.xml
-test_run "validate xccdf 1.2" test_api_xccdf_validate xccdf12.xml "1.2"
-test_run "export xccdf results 1.1" test_api_xccdf_export xccdf11-results.xml
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "export xccdf 1.1" test_api_xccdf_export xccdf11.xml
+    test_run "validate xccdf 1.1" test_api_xccdf_validate xccdf11.xml "1.1"
+    test_run "export xccdf 1.2" test_api_xccdf_export xccdf12.xml
+    test_run "validate xccdf 1.2" test_api_xccdf_validate xccdf12.xml "1.2"
+    test_run "export xccdf results 1.1" test_api_xccdf_export xccdf11-results.xml
+fi
 
 test_exit

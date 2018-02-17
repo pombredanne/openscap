@@ -28,7 +28,6 @@
 #include "common/util.h"
 #include "public/xccdf_policy.h"
 
-OSCAP_HIDDEN_START;
 
 
 /**
@@ -60,6 +59,8 @@ struct xccdf_policy {
 	struct xccdf_policy_model   * model;    ///< XCCDF Policy model
 	struct xccdf_profile        * profile;  ///< Profile structure (from benchmark)
 	/** A list of all selects. Either from profile or later added through API. */
+	const char *rule;			///< Single-rule feature: if not NULL, only this one rule will be selected.
+	int rule_found;				///< Single-rule feature: flag for rule - if rule is found it is set to 1 otherwise 0.
 	struct oscap_list           * selects;
 	struct oscap_list           * values;   ///< Bound values of profile
 	struct oscap_list           * results;  ///< List of XCCDF results
@@ -134,6 +135,5 @@ int xccdf_policy_report_cb(struct xccdf_policy *policy, const char *sysname, voi
  */
 struct xccdf_benchmark *xccdf_policy_get_benchmark(const struct xccdf_policy *policy);
 
-OSCAP_HIDDEN_END;
 
 #endif

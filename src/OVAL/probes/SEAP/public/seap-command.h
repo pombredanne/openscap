@@ -28,6 +28,7 @@
 #include <stdarg.h>
 #include <sexp-types.h>
 #include <seap-types.h>
+#include "oscap_export.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,8 +47,8 @@ typedef uint8_t  SEAP_cmdtype_t;
 #define SEAP_CMDREG_USEARG 0x00000002
 #define SEAP_CMDREG_THREAD 0x00000004
 
-int SEAP_cmd_register   (SEAP_CTX_t *ctx, SEAP_cmdcode_t code, uint32_t flags, SEAP_cmdfn_t func, ...);
-int SEAP_cmd_unregister (SEAP_CTX_t *ctx, SEAP_cmdcode_t code);
+OSCAP_API int SEAP_cmd_register   (SEAP_CTX_t *ctx, SEAP_cmdcode_t code, uint32_t flags, SEAP_cmdfn_t func, ...);
+OSCAP_API int SEAP_cmd_unregister (SEAP_CTX_t *ctx, SEAP_cmdcode_t code);
 
 #define SEAP_EXEC_LOCAL  0x01
 #define SEAP_EXEC_LONLY  0x02

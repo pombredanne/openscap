@@ -29,9 +29,8 @@
 #include "common/util.h"
 #include <libxml/tree.h>
 
-OSCAP_HIDDEN_START;
 
-#ifdef HAVE_BZ2
+#ifdef BZIP2_FOUND
 
 /**
  * Parse *.xml.bz2 file to XML DOM
@@ -48,7 +47,7 @@ xmlDoc *bz2_fd_read_doc(int fd);
  */
 xmlDoc *bz2_mem_read_doc(const char *buffer, size_t size);
 
-#endif // HAVE_BZ2
+#endif // BZIP2_FOUND
 
 /**
  * Recognize whether the file can be parsed by this
@@ -67,6 +66,5 @@ bool bz2_fd_is_bzip(int fd);
  */
 bool bz2_memory_is_bzip(const char* memory, const size_t size);
 
-OSCAP_HIDDEN_END;
 
 #endif // OSCAP_SOURCE_BZIP2_H

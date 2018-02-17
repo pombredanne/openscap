@@ -8,7 +8,7 @@
 # Authors:
 #      Ondrej Moris <omoris@redhat.com>
 
-. ../../../test_common.sh
+. $builddir/tests/test_common.sh
 
 CPE_URIS=(`grep "cpe:" $srcdir/dict.xml | \
     sed 's/^.*cpe:/cpe:/g' | sed 's/".*$//g' | tr '\n' ' '`)
@@ -125,11 +125,13 @@ function test_api_cpe_uri_match {
 
 # Testing.
 
-test_init "test_api_cpe_uri.log"
+test_init
 
-test_run "test_api_cpe_uri_smoke"  test_api_cpe_uri_smoke
-test_run "test_api_cpe_uri_parse"  test_api_cpe_uri_parse
-test_run "test_api_cpe_uri_create" test_api_cpe_uri_create
-test_run "test_api_cpe_uri_match"  test_api_cpe_uri_match
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "test_api_cpe_uri_smoke"  test_api_cpe_uri_smoke
+    test_run "test_api_cpe_uri_parse"  test_api_cpe_uri_parse
+    test_run "test_api_cpe_uri_create" test_api_cpe_uri_create
+    test_run "test_api_cpe_uri_match"  test_api_cpe_uri_match
+fi
 
 test_exit

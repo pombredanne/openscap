@@ -22,12 +22,10 @@
 
 #include "common/util.h"
 
-OSCAP_HIDDEN_START;
 
 struct probe_chroot {
-	const char* scan_path;
+	char* scan_path;
 	int root_fd;
-
 };
 
 /**
@@ -66,6 +64,5 @@ const char *probe_chroot_get_path(const struct probe_chroot *ch);
  */
 void probe_chroot_free(struct probe_chroot *ch);
 
-OSCAP_HIDDEN_END;
 
 #endif

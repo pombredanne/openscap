@@ -145,7 +145,7 @@ struct oval_state *oval_state_new(struct oval_definition_model *model, const cha
 	__attribute__nonnull__(model);
 	oval_state_t *state;
 
-	state = (oval_state_t *) oscap_alloc(sizeof(oval_state_t));
+	state = (oval_state_t *) malloc(sizeof(oval_state_t));
 	if (state == NULL)
 		return NULL;
 
@@ -154,7 +154,7 @@ struct oval_state *oval_state_new(struct oval_definition_model *model, const cha
 	state->operator = OVAL_OPERATOR_UNKNOWN;
 	state->subtype = OVAL_SUBTYPE_UNKNOWN;
 	state->comment = NULL;
-	state->id = strdup(id);
+	state->id = oscap_strdup(id);
 	state->notes = oval_collection_new();
 	state->contents = oval_collection_new();
 	state->model = model;
@@ -219,15 +219,14 @@ void oval_state_set_subtype(struct oval_state *state, oval_subtype_t subtype)
 void oval_state_add_note(struct oval_state *state, char *notes)
 {
 	__attribute__nonnull__(state);
-	oval_collection_add(state->notes, (void *)strdup(notes));
+	oval_collection_add(state->notes, (void *)oscap_strdup(notes));
 }
 
 void oval_state_set_comment(struct oval_state *state, char *comm)
 {
 	__attribute__nonnull__(state);
-	if (state->comment != NULL)
-		free(state->comment);
-	state->comment = comm == NULL ? NULL : strdup(comm);
+	free(state->comment);
+	state->comment = oscap_strdup(comm);
 }
 
 void oval_state_set_deprecated(struct oval_state *state, bool deprecated)
@@ -335,7 +334,7 @@ xmlNode *oval_state_to_dom(struct oval_state *state, xmlDoc * doc, xmlNode * par
 	/* get state name */
 	oval_subtype_t subtype = oval_state_get_subtype(state);
 	const char *subtype_text = oval_subtype_get_text(subtype);
-	char state_name[strlen(subtype_text) + 7];
+	char *state_name = malloc(strlen(subtype_text) + 7);
 	sprintf(state_name, "%s_state", subtype_text);
 
 	oval_family_t family = oval_state_get_family(state);
@@ -343,6 +342,7 @@ xmlNode *oval_state_to_dom(struct oval_state *state, xmlDoc * doc, xmlNode * par
 	/* search namespace & create child */ 
 	xmlNs *ns_family = oval_family_to_namespace(family, (const char *) OVAL_DEFINITIONS_NAMESPACE, doc, parent);
 	xmlNode *state_node = xmlNewTextChild(parent, ns_family, BAD_CAST state_name, NULL);
+	free(state_name);
 
 	char *id = oval_state_get_id(state);
 	xmlNewProp(state_node, BAD_CAST "id", BAD_CAST id);

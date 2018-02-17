@@ -8,7 +8,7 @@
 # Authors:
 #      Jan Černý <jcerny@redhat.com>
 
-. ../../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test cases.
 
@@ -18,6 +18,10 @@ function test_glob_to_regex {
 
 # Testing.
 
-test_init "test_glob_to_regex.log"
-test_run "test_glob_to_regex" test_glob_to_regex
+test_init
+
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "test_glob_to_regex" test_glob_to_regex
+fi
+
 test_exit

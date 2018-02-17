@@ -25,8 +25,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef HAVE_GETOPT_H
 #include <getopt.h>
-#include <libgen.h>
+#endif
 
 /* openscap common */
 #include <oscap.h>
@@ -37,9 +38,11 @@
 #include <oval_probe.h>
 #include <cvss_score.h>
 #include <xccdf_benchmark.h>
+#include <xccdf_session.h>
 #include <cpe_dict.h>
 #include <cpe_name.h>
 #include <cve_nvd.h>
+#include <cvrf.h>
 
 #define OSCAP_PRODUCTNAME "cpe:/a:open-scap:oscap"
 #define OSCAP_ERR_MSG "OpenSCAP Error:"
@@ -98,6 +101,13 @@ struct cve_action {
         char * cve;
 };
 
+struct cvrf_action {
+	int index;
+	char *f_cvrf;
+	char *f_results;
+	char *f_output;
+};
+
 struct oscap_action {
         struct oscap_module *module;
 	/* files */
@@ -112,12 +122,14 @@ struct oscap_action {
 	char *f_syschar;
 	char *f_directives;
         char *f_results;
+	char *f_results_stig;
 	char *f_results_arf;
         char *f_report;
 	char *f_variables;
 	char *f_verbose_log;
 	/* others */
         char *profile;
+	const char *rule;
         char *show;
         char *format;
         const char *tmpl;
@@ -134,10 +146,13 @@ struct oscap_action {
 	struct ds_action* ds_action;
 	struct cpe_action * cpe_action;
 	struct cve_action * cve_action;
+	struct cvrf_action * cvrf_action;
 	char *file;
 
 	int verbosity;
-        int doctype;
+	int show_profiles_only;
+	int provide_machine_readable_output;
+	int doctype;
 	int force;
 	int validate;
 	int schematron;
@@ -153,6 +168,7 @@ struct oscap_action {
         int list_dynamic;
 	char *probe_root;
 	char *verbosity_level;
+	char *fix_type;
 };
 
 int app_xslt(const char *infile, const char *xsltfile, const char *outfile, const char **params);
@@ -166,12 +182,18 @@ void oscap_print_error(void);
 bool check_verbose_options(struct oscap_action *action);
 void download_reporting_callback(bool warning, const char *format, ...);
 
+
+int xccdf_set_profile_or_report_bad_id(struct xccdf_session *session, const char *profile_id, const char *source_file);
+int evaluate_suffix_match_result_with_custom_reports(int suffix_match_result, const char *profile_suffix, const char *source_file, void (* report_missing)(const char *, const char *), void (* report_multiple)(const char *, const char *));
+int evaluate_suffix_match_result(int suffix_match_result, const char *profile_suffix, const char *source_file);
+
 extern struct oscap_module OSCAP_ROOT_MODULE;
 extern struct oscap_module OSCAP_DS_MODULE;
 extern struct oscap_module OSCAP_XCCDF_MODULE;
 extern struct oscap_module OSCAP_CVSS_MODULE;
 extern struct oscap_module OSCAP_OVAL_MODULE;
 extern struct oscap_module OSCAP_CVE_MODULE;
+extern struct oscap_module OSCAP_CVRF_MODULE;
 extern struct oscap_module OSCAP_CPE_MODULE;
 extern struct oscap_module OSCAP_INFO_MODULE;
 

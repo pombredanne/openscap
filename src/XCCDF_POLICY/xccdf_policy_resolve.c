@@ -54,7 +54,7 @@ static void _merge_refine_rules(struct xccdf_refine_rule_internal* dst, const st
 
 	const char* new_selector = xccdf_refine_rule_get_selector(src);
 	if (new_selector != NULL) {
-		oscap_free(dst->selector);
+		free(dst->selector);
 		dst->selector = oscap_strdup( new_selector );
 	}
 
@@ -76,7 +76,7 @@ static void _merge_refine_rules(struct xccdf_refine_rule_internal* dst, const st
  */
 static inline struct xccdf_refine_rule_internal* _xccdf_refine_rule_internal_new_from_refine_rule(const struct xccdf_refine_rule* rr)
 {
-	struct xccdf_refine_rule_internal* new_rr = oscap_calloc(1, sizeof(struct xccdf_refine_rule_internal));
+	struct xccdf_refine_rule_internal* new_rr = calloc(1, sizeof(struct xccdf_refine_rule_internal));
 	if (new_rr != NULL) {
 		new_rr->selector = oscap_strdup(xccdf_refine_rule_get_selector(rr));
 		new_rr->weight = rr->weight;
@@ -110,21 +110,18 @@ bool xccdf_weight_defined(xccdf_numeric weight){
 
 float xccdf_get_final_weight(const struct xccdf_rule* rule, const struct xccdf_refine_rule_internal* r_rule)
 {
-	if (r_rule != NULL){
-		if (xccdf_weight_defined(r_rule->weight) ) {
-			return r_rule->weight;
-		}
+	if (r_rule != NULL && xccdf_weight_defined(r_rule->weight)){
+		return r_rule->weight;
 	}
 	return xccdf_rule_get_weight(rule);
 }
 
 xccdf_level_t xccdf_get_final_severity(const struct xccdf_rule* rule, const struct xccdf_refine_rule_internal* r_rule)
 {
-	if (r_rule == NULL){
-		return xccdf_rule_get_severity(rule);
-	} else {
+	if (r_rule != NULL && r_rule->severity != XCCDF_LEVEL_NOT_DEFINED){
 		return r_rule->severity;
 	}
+	return xccdf_rule_get_severity(rule);
 }
 
 /**
@@ -146,8 +143,8 @@ static void _add_refine_rule(struct oscap_htable* refine_rules_internal, const s
 
 void xccdf_refine_rule_internal_free(struct xccdf_refine_rule_internal* item)
 {
-	oscap_free(item->selector);
-	oscap_free(item);
+	free(item->selector);
+	free(item);
 }
 
 static inline void _xccdf_policy_add_xccdf_refine_rule_internal(struct xccdf_policy* policy, struct xccdf_benchmark* benchmark, const struct xccdf_refine_rule* refine_rule)

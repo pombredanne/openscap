@@ -11,7 +11,7 @@
 
 
 
-. ../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test cases.
 
@@ -33,9 +33,11 @@ function test_api_cvss_vector {
 
 # Testing.
 
-test_init "test_api_cvss.log"
+test_init
 
-test_run "test_api_cvss_vector" test_api_cvss_vector
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "test_api_cvss_vector" test_api_cvss_vector
+fi
 
 test_exit 
 

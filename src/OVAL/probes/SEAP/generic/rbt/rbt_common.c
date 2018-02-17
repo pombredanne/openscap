@@ -87,18 +87,25 @@ void rbt_free(rbt_t *rbt, void (*callback)(void *))
                         if (n != NULL)
                                 rbt_walk_push(n);
                         else {
-                        __in:
+                        found_in:
                                 if (callback != NULL)
                                         callback((void *)&(rbt_walk_top()->_node));
 
                                 n = rbt_node_ptr(rbt_walk_top()->_chld[RBT_NODE_SR]);
+#ifndef _WIN32
                                 free(rbt_walk_top());
+#else
+				// using free for memory allocated through _aligned_malloc is illegal
+				// rbt_str.c -> rbt_str_node_alloc
+				// https://msdn.microsoft.com/en-us/library/8z34s9c6.aspx
+				_aligned_free(rbt_walk_top());
+#endif
 
                                 if (n != NULL)
                                         rbt_walk_top() = n;
                                 else {
                                         if (--depth > 0)
-                                                goto __in;
+                                                goto found_in;
                                         else
                                                 break;
                                 }
@@ -137,18 +144,25 @@ void rbt_free2(rbt_t *rbt, void (*callback)(void *, void *), void *user)
                         if (n != NULL)
                                 rbt_walk_push(n);
                         else {
-                        __in:
+                        found_in:
                                 if (callback != NULL)
                                         callback((void *)&(rbt_walk_top()->_node), user);
 
                                 n = rbt_node_ptr(rbt_walk_top()->_chld[RBT_NODE_SR]);
+#ifndef _WIN32
                                 free(rbt_walk_top());
+#else
+				// using free for memory allocated through _aligned_malloc is illegal
+				// rbt_str.c -> rbt_str_node_alloc
+				// https://msdn.microsoft.com/en-us/library/8z34s9c6.aspx
+				_aligned_free(rbt_walk_top());
+#endif
 
                                 if (n != NULL)
                                         rbt_walk_top() = n;
                                 else {
                                         if (--depth > 0)
-                                                goto __in;
+                                                goto found_in;
                                         else
                                                 break;
                                 }
@@ -381,7 +395,7 @@ int rbt_walk_inorder(rbt_t *rbt, int (*callback)(void *), rbt_walk_t flags)
                 if (n != NULL)
                         rbt_walk_push(n);
                 else {
-                __in:
+                found_in:
                         r = callback((void *)((uintptr_t)(rbt_walk_top()) + delta));
 
                         if (r != 0)
@@ -393,7 +407,7 @@ int rbt_walk_inorder(rbt_t *rbt, int (*callback)(void *), rbt_walk_t flags)
                                 rbt_walk_top() = n;
                         else {
                                 if (--depth > 0)
-                                        goto __in;
+                                        goto found_in;
                                 else
                                         break;
                         }
@@ -432,7 +446,7 @@ int rbt_walk_inorder2(rbt_t *rbt, int (*callback)(void *, void *), void *user, r
                 if (n != NULL)
                         rbt_walk_push(n);
                 else {
-                __in:
+                found_in:
                         r = callback((void *)((uintptr_t)(rbt_walk_top()) + delta), user);
 
                         if (r != 0)
@@ -444,7 +458,7 @@ int rbt_walk_inorder2(rbt_t *rbt, int (*callback)(void *, void *), void *user, r
                                 rbt_walk_top() = n;
                         else {
                                 if (--depth > 0)
-                                        goto __in;
+                                        goto found_in;
                                 else
                                         break;
                         }

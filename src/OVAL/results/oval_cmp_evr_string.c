@@ -39,7 +39,9 @@
 #ifdef HAVE_RPMVERCMP
 #include <rpm/rpmlib.h>
 #else
-#if !defined(__FreeBSD__)
+#ifdef _WIN32
+#include <malloc.h>
+#elif !defined(__FreeBSD__)
 #include <alloca.h>
 #endif
 static int rpmvercmp(const char *a, const char *b);
@@ -97,8 +99,8 @@ static inline int rpmevrcmp(const char *a, const char *b)
 			result = compare_values(a_release, b_release);
 	}
 
-	oscap_free(a_copy);
-	oscap_free(b_copy);
+	free(a_copy);
+	free(b_copy);
 	return result;
 }
 
@@ -173,7 +175,7 @@ static int rpmvercmp(const char *a, const char *b)
 	if (!strcmp(a, b))
 		return 0;
 
-	/* TODO: make new oscap_alloca */
+	/* TODO: make new malloca */
 	str1 = alloca(strlen(a) + 1);
 	str2 = alloca(strlen(b) + 1);
 

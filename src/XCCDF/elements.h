@@ -32,7 +32,6 @@
 
 #include <libxml/xmlreader.h>
 
-OSCAP_HIDDEN_START;
 
 /**
  * Detects version from given xmlTextReader
@@ -217,6 +216,7 @@ void xccdf_print_textlist(struct oscap_text_iterator *txt, int depth, int max, c
 
 xmlNs *lookup_xccdf_ns(xmlDoc *doc, xmlNode *parent, const struct xccdf_version_info *version_info);
 
-OSCAP_HIDDEN_END;
+const struct xccdf_version_info *xccdf_version_info_find(const char *version);
+
 
 #endif

@@ -36,7 +36,6 @@
 #include "util.h"
 #include "public/oscap_debug.h"
 
-OSCAP_HIDDEN_START;
 
 #define OSCAP_DEBUGOBJ_SEXP 1
 
@@ -46,19 +45,6 @@ OSCAP_HIDDEN_START;
 
 
 # define __dlprintf_wrapper(l, ...) __oscap_dlprintf (l, __FILE__, __PRETTY_FUNCTION__, __LINE__, 0, __VA_ARGS__)
-
-/**
- * Version of the oscap_dprintf function with support for debug level.
- * Uses logic similar to the debug() macro described above.
- * @param level debug level
- * @param file  name of the source file
- * @param fn    name of the function
- * @param line  current line
- * @param delta_indent changes indentation
- * @param fmt   printf-line format string
- * @param ...   __oscap_dlprintf parameters
- */
-void __oscap_dlprintf(int level, const char *file, const char *fn, size_t line, int delta_indent, const char *fmt, ...);
 
 /**
  * Convenience macro for calling __oscap_dlprintf. Only the fmt & it's arguments
@@ -79,6 +65,5 @@ void __oscap_debuglog_object (const char *file, const char *fn, size_t line, int
 
 #define dIndent(indent_change) __oscap_dlprintf(DBG_I, __FILE__, __PRETTY_FUNCTION__, __LINE__, indent_change, NULL)
 
-OSCAP_HIDDEN_END;
 
 #endif

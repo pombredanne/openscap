@@ -47,6 +47,8 @@
 #include <sys/mntent.h>
 #include <libzonecfg.h>
 #include <sys/avl.h>
+#elif defined(_AIX)
+#include "fts_sun.h"
 #else
 #include <fts.h>
 #endif
@@ -74,7 +76,7 @@ static void OVAL_FTS_free(OVAL_FTS *ofts)
 	if (ofts->ofts_recurse_path_fts != NULL)
 		fts_close(ofts->ofts_recurse_path_fts);
 
-	oscap_free(ofts);
+	free(ofts);
 	return;
 }
 
@@ -102,7 +104,7 @@ static OVAL_FTSENT *OVAL_FTSENT_new(OVAL_FTS *ofts, FTSENT *fts_ent)
 	ofts_ent->fts_info = fts_ent->fts_info;
 	if (ofts->ofts_sfilename || ofts->ofts_sfilepath) {
 		ofts_ent->path_len = pathlen_from_ftse(fts_ent->fts_pathlen, fts_ent->fts_namelen);
-		ofts_ent->path = oscap_alloc(ofts_ent->path_len + 1);
+		ofts_ent->path = malloc(ofts_ent->path_len + 1);
 		strncpy(ofts_ent->path, fts_ent->fts_path, ofts_ent->path_len);
 		ofts_ent->path[ofts_ent->path_len] = '\0';
 
@@ -124,15 +126,18 @@ static OVAL_FTSENT *OVAL_FTSENT_new(OVAL_FTS *ofts, FTSENT *fts_ent)
 
 static void OVAL_FTSENT_free(OVAL_FTSENT *ofts_ent)
 {
-	oscap_free(ofts_ent->path);
-	oscap_free(ofts_ent->file);
-	oscap_free(ofts_ent);
+	free(ofts_ent->path);
+	free(ofts_ent->file);
+	free(ofts_ent);
 	return;
 }
 
 #if defined(__SVR4) && defined(__sun)
 #ifndef MNTTYPE_SMB
 #define MNTTYPE_SMB	"smb"
+#endif
+#ifndef MNTTYPE_SMBFS
+#define MNTTYPE_SMBFS	"smbfs"
 #endif
 #ifndef MNTTYPE_PROC
 #define MNTTYPE_PROC	"proc"
@@ -214,7 +219,7 @@ int load_zones_path_list()
 				    name);
 				continue;
 			}
-			if (realpath(rpath, temp->zpath) != NULL)
+			if (oscap_realpath(rpath, temp->zpath) != NULL)
 				avl_add(&avl_tree_list, temp);
 		}
 	}
@@ -233,7 +238,7 @@ static void free_zones_path_list()
 	avl_destroy(&avl_tree_list);
 }
 
-static bool valid_local_zone(char *path)
+static bool valid_local_zone(const char *path)
 {
 	zone_path_t temp;
 	avl_index_t where;
@@ -1272,7 +1277,7 @@ static FTSENT *oval_fts_read_recurse_path(OVAL_FTS *ofts)
 		}
 
 		if (out_fts_ent == NULL) {
-			oscap_free(ofts->ofts_recurse_path_pthcpy);
+			free(ofts->ofts_recurse_path_pthcpy);
 			ofts->ofts_recurse_path_pthcpy = NULL;
 		}
 
@@ -1329,7 +1334,7 @@ void oval_ftsent_free(OVAL_FTSENT *ofts_ent)
 int oval_fts_close(OVAL_FTS *ofts)
 {
 	if (ofts->ofts_recurse_path_pthcpy != NULL)
-		oscap_free(ofts->ofts_recurse_path_pthcpy);
+		free(ofts->ofts_recurse_path_pthcpy);
 
 	if (ofts->ofts_path_regex)
 		pcre_free(ofts->ofts_path_regex);

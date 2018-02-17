@@ -12,7 +12,7 @@
 #      David Niemoller
 #      Ondrej Moris, <omoris@redhat.com>
 
-. ../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test Cases.
 
@@ -45,7 +45,7 @@ function test_probes_rpminfo {
 
 # Testing.
 
-test_init "test_probes_rpminfo.log"
+test_init
 
 test_run "test_probes_rpminfo" test_probes_rpminfo
 

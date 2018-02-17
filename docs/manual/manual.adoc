@@ -72,7 +72,7 @@ Third section provides cover advanced topic like validation, signing and
 transformation of SCAP content, generating reports and guides and also some
 information about CPE applicability.
 
-Last section contains information about debuging and compiling oscap on Linux
+Last section contains information about debugging and compiling oscap on Linux
 and Windows which can be useful for developers.
 
 == Basic oscap Usage
@@ -463,6 +463,16 @@ Where *scap-xccdf.xml* is the XCCDF document, *Desktop* is the selected
 profile from the XCCDF document, *xccdf-results.xml* is a file storing
 the scan results, and *cpe-dictionary.xml* is the CPE dictionary.
 
+* You can additionaly add ```--rule``` option to the above command to evaluate
+a specific rule:
+
+----
+$ oscap xccdf eval --profile Desktop --rule ensure_gpgcheck_globally_activated  --results xccdf-results.xml --cpe cpe-dictionary.xml scap-xccdf.xml
+----
+
+Where *ensure_gpgcheck_globally_activated* is the only rule from the *Desktop*
+profile which will be evaluated.
+
 ==== Source DataStream
 Commonly, all required input files are bundled together in Source DataStream.
 Scanning using Source DataStream is also handled by ```oscap xccdf eval``` command,
@@ -512,10 +522,35 @@ command-line argument. You can use `--results-arf` to generate a Result DataStre
 $ oscap xccdf eval --benchmark-id benchmark_id --results-arf arf-results.xml scap-ds.xml
 --------------------------------------------------------------------------------------
 
+==== Result STIG Viewer
+
+If you want to import the XCCDF scan results to DISA STIG Viewer but your Rule IDs don't
+match the DISA's ones, you can use the `--stig-viewer` command-line argument along with
+a special reference in your Rules to generate XCCDF result files that can be imported by
+DISA STIG Viewer.
+
+--------------------------------------------------------------------------------------
+$ oscap xccdf eval --profile stig-rhel7-disa --stig-viewer results-stig.xml ssg-rhel7-ds.xml
+--------------------------------------------------------------------------------------
+
+Each rule in the input XCCDF must contain a reference to its STIG Rule ID, and its 
+href attribute must be exactly "http://iase.disa.mil/stigs/Pages/stig-viewing-guidance.aspx".
+
+For example:
+----
+<Rule id="rpm_verify_permissions">
+  ...
+  <reference href="http://iase.disa.mil/stigs/Pages/stig-viewing-guidance.aspx">SV-86473r2_rule</reference>
+  ...
+</Rule>
+----
+
+For more information on DISA STIG Viewer click link:http://iase.disa.mil/stigs/Pages/stig-viewing-guidance.aspx[here].
+
 === Remediate System
 OpenSCAP allows to automatically remediate systems that have been found in a
 non-compliant state. For system remediation, an XCCDF file with instructions is
-required. The _scap-security-guide_ package constains certain remediation
+required. The _scap-security-guide_ package contains certain remediation
 instructions.
 
 System remediation consists of the following steps:
@@ -527,7 +562,7 @@ System remediation consists of the following steps:
  environment, and executes the fix script.
  . Any output of the fix script is captured by ```oscap``` and stored within the
  *rule-result* element. The return value of the fix script is stored as well.
- . Whenever ```oscap``` executes a fix script, it immediatelly evaluates the OVAL
+ . Whenever ```oscap``` executes a fix script, it immediately evaluates the OVAL
  definition again (to verify that the fix script has been applied correctly).
  During this second run, if the OVAL evaluation returns success, the result of
  the rule is *fixed*, otherwise it is an *error*.
@@ -1701,35 +1736,16 @@ the {oscap_git}[source code] then follow these instructions:
 
  $ git clone https://github.com/OpenSCAP/openscap.git
 
-2) Run the follwoing script.
+NOTE: The *cmake* tools are required to be installed on your system.
 
- $ ./autogen.sh
+2) Run the following commands to build the library.
 
-NOTE: The *autoconf*, *automake*, and *libtool* tools are required to be
-installed on your system. If you use a release taball, you can skip this step.
-
-3) Run the following commands to build the library.
-
- $ ./configure
+ $ cd build/
+ $ cmake ../
  $ make
 
-Build dependencies may vary in dependency on enabled f element in its body. This
-element references a CPE name or CPE2 platform (defined using
-cpe2:platform-specification) that could be defined in a CPE dictionary file or a
-CPE language file; or it can also be embedded directly in the XCCDF document.
-
-An XCCDF rule can contain multiple *<xccdf:platform>* elements. It is deemed
-applicable if at least one of the listed platforms is applicable. If an XCCDF
-rule contains no *<xccdf:platform>* elements it is considered always applicable.
-
-If the CPE name or CPE2 platform is defined in an external file, use the
- ```--cpe```
-option; oscap auto-detects format of the file. The following command is an
-example of the XCCDF content evaluation using CPE name from an external file:
-
-eatures (by the configure command). By default, you need the following packages
-installed on your system:
-
+Build dependencies may vary in dependency on enabled features (by the configure command).
+By default, you need the following packages installed on your system:
 
 * swig
 * libxml2-devel
@@ -1743,7 +1759,7 @@ installed on your system:
 * libtool
 * perl-XML-XPath
 
-. Run library self-checks by executing the following command: # make check
+. Run library self-checks by executing the following command: # make test
 
 . Run the installation procedure by executing the following command: # make install
 
@@ -1794,7 +1810,7 @@ Debug mode is useful for programmers. You need to build OpenSCAP from source cod
 with a custom configuration to enable the debug mode. Use this command:
 
 ------------------------------------
-$ ./configure --enable-debug && make
+$ cmake -DCMAKE_BUILD_TYPE=Debug .. && make
 ------------------------------------
 
 Debug mode provides:
@@ -1812,7 +1828,7 @@ achieve that without need to install libopenscap, is to use shell
 script called *run* in the OpenSCAP directory.
 
 -------------------------------------------------
-$ ./run utils/.libs/oscap xccdf eval ... whatever
+$ ./run utils/oscap xccdf eval ... whatever
 -------------------------------------------------
 
 The *run* script is generated at configure time and it sets:
@@ -1826,7 +1842,7 @@ to generate html documents from xml)
 
 ==== Example
 
- $ ./run gdb --args utils/.libs/oscap xccdf eval --profile hard --results xccdf-results.xml --oval-results my-favourite-xccdf-checklist.xml
+ $ ./run gdb --args utils/oscap xccdf eval --profile hard --results xccdf-results.xml --oval-results my-favourite-xccdf-checklist.xml
 
 
 The ```--oval-results``` option force ```oscap``` tool to generate OVAL Result file
@@ -1845,7 +1861,7 @@ sources.
 
 Then you can run gdb with probe binary:
 --------------------------------------------------------
-$ ./run gdb src/OVAL/probes/.libs/probe_rpmverifypackage
+$ ./run gdb src/OVAL/probes/probe_rpmverifypackage
 --------------------------------------------------------
 
 An input for the probe can be found in the log file created by
@@ -1955,11 +1971,10 @@ If we want to generate new statistics, we should remove the old ones.
  $ lcov --directory ./ --zerocounters ; find ./ -name "*.gcno" | xargs rm
  $ rm -rf ./coverage
 
-=== Building OpenSCAP for Windows (cross-compilation)
-Building OpenSCAP for Windows without a POSIX emulation layer is currently not
-possible. However, we are close to a native port of OpenSCAP for Windows. If you
-want to help us solve the remaining problems. Instructions for cross-compiling
-OpenSCAP for Windows:
+=== Building OpenSCAP for Windows on a Linux box (cross-compilation)
+Currently it is possible to build OpenSCAP for Windows only without probes.
+The resulting binary is not able to perform scanning.
+Instructions for cross-compiling OpenSCAP for Windows:
 
 1) Install the cross-compiler & dependencies
 
@@ -1969,7 +1984,7 @@ NOTE: mingw32-pthreads needs to be version 5.0 or greater.
  # yum install mingw32-gcc mingw32-binutils mingw32-libxml2 \
  mingw32-libgcrypt mingw32-pthreads mingw32-libxslt \
  mingw32-curl mingw32-pcre \
- automake autoconf libtool
+ mingw32-filesystem mingw32-bzip2
 -------------------------------------------------------------
 
 2) Checkout the master branch of the OpenSCAP repository
@@ -1982,25 +1997,74 @@ NOTE: mingw32-pthreads needs to be version 5.0 or greater.
 3) Prepare the build
 
 ----------------------------------------------------------------------------------
- $ ./autogen.sh
- $ mingw32-configure --disable-probes --disable-python --disable-util-oscap-docker
+ $ mkdir build-win32
+ $ cd build-win32
+ $ mingw32-cmake -D ENABLE_PYTHON2=FALSE -D ENABLE_PROBES=FALSE -D ENABLE_OSCAP_UTIL_DOCKER=FALSE ../
 ----------------------------------------------------------------------------------
 
 4) Build!
 
 ------------------------------
- $ make -k 2> build-errors.log
+ $ make
 ------------------------------
 
-5) Inspect build-errors.log for problems
+Resulting ```oscap.exe``` can be found in the ```utils/``` directory.
 
------------------------------------------------
- $ grep -E '(error:|implicit)' build-errors.log
------------------------------------------------
+=== Building OpenSCAP on Windows using Visual Studio
 
------------------------------------------------------------------------------
-oval_resModel.c:70:28: error: conflicting types for 'oval_results_model_new_with_probe_session'
------------------------------------------------------------------------------
+Currently it is possible to build OpenSCAP for Windows only without probes.
+The resulting binary is not able to perform scanning.
+
+Prerequisites:
+
+* https://www.visualstudio.com/[Visual Studio]
+* https://git-scm.com/[Git]
+* https://cmake.org/[CMake]
+
+1) Get dependencies
+
+We will use https://github.com/Microsoft/vcpkg[Vcpkg] to download libraries
+that are required to build OpenSCAP.
+
+Click on Start -> Windows System -> Command Prompt.
+
+----
+mkdir c:\devel
+cd c:\devel
+git clone https://github.com/Microsoft/vcpkg.git
+cd vcpkg
+.\bootstrap-vcpkg.bat
+.\vcpkg install curl libxml2 libxslt bzip2 pcre
+.\vcpkg integrate install
+----
+
+2) Get OpenSCAP
+
+----
+cd c:\devel
+git clone -b master https://github.com/OpenSCAP/openscap.git
+----
+
+3) Generate Visual Studio Solution
+
+----
+cd openscap
+cd build
+cmake -D ENABLE_PYTHON2=FALSE -D ENABLE_PROBES=FALSE -D ENABLE_OSCAP_UTIL_DOCKER=FALSE -D CMAKE_TOOLCHAIN_FILE=c:/devel/vcpkg/scripts/buildsystems/vcpkg.cmake ..
+----
+
+4) Open in Visual Studio
+
+1. Launch Visual Studio
+2. Click on File -> Open -> Project/Solution...
+3. Locate c:\devel\openscap\build\openscap.sln
+
+5) Build
+
+1. Select build type (Debug, Release, ...) in the drop-down menu in the top panel.
+2. Click on Build -> Build Solution.
+
+Built binaries and their dependencies are now located in ```C:\devel\openscap\build\<BUILD_TYPE>\```, eg. ```C:\devel\openscap\build\Debug\```
 
 If you would like to send us a patch fixing any Windows
 compiling issues, please consult the page about

@@ -25,7 +25,6 @@
 #endif
 
 #include <string.h>
-#include <strings.h>
 #include <time.h>
 #include <ctype.h>
 #include <math.h>
@@ -77,6 +76,16 @@ static const struct xccdf_version_info XCCDF_VERSION_MAP[] = {
 	{"1.1", "http://open-scap.org/page/Xccdf-1.1-tailoring", "2.0"},
 	{NULL, NULL, NULL}
 };
+
+const struct xccdf_version_info *xccdf_version_info_find(const char *version)
+{
+	const struct xccdf_version_info *mapptr;
+	for (mapptr = XCCDF_VERSION_MAP; mapptr->version != 0; ++mapptr) {
+		if (!strcmp(mapptr->version, version))
+			return mapptr;
+	}
+	return NULL;
+}
 
 static const struct xccdf_version_info *_namespace_get_xccdf_version_info(const char *namespace_uri)
 {
@@ -390,9 +399,7 @@ const char *xccdf_attribute_get(xmlTextReaderPtr reader, xccdf_attribute_t attr)
 char *xccdf_attribute_copy(xmlTextReaderPtr reader, xccdf_attribute_t attr)
 {
 	const char *ret = xccdf_attribute_get(reader, attr);
-	if (ret)
-		return strdup(ret);
-	return NULL;
+	return oscap_strdup(ret);
 }
 
 

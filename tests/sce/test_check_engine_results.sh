@@ -7,7 +7,7 @@
 # Author:
 #	Jan Černý <jcerny@redhat.com>
 
-. ../test_common.sh
+. $builddir/tests/test_common.sh
 
 set -e -o pipefail
 
@@ -28,7 +28,7 @@ function test_check_engine_results {
 }
 
 # Testing.
-test_init "test_check_engine_results.log"
+test_init
 
 test_run "check_engine_results" test_check_engine_results test_check_engine_results.xccdf.xml
 

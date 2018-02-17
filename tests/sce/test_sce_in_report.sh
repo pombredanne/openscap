@@ -3,7 +3,7 @@
 # Author:
 #	Jan Černý <jcerny@redhat.com>
 
-. ../test_common.sh
+. $builddir/tests/test_common.sh
 
 set -e -o pipefail
 
@@ -23,6 +23,6 @@ function test_sce_in_report {
 
 }
 
-test_init "test_sce_in_ds.log"
+test_init
 test_run "sce results in HTML report" test_sce_in_report test_sce_in_report.xml
 test_exit

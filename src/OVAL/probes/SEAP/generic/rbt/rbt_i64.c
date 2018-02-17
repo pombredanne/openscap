@@ -51,7 +51,16 @@ static struct rbt_node *rbt_i64_node_alloc(void)
 static void rbt_i64_node_free(struct rbt_node *n)
 {
         if (n != NULL)
+	{
+#ifndef _WIN32
                 free(rbt_node_ptr(n));
+#else
+		// using free for memory allocated through _aligned_malloc is illegal
+		// rbt_i64.c -> rbt_i64_node_alloc
+		// https://msdn.microsoft.com/en-us/library/8z34s9c6.aspx
+		_aligned_free(rbt_node_ptr(n));
+#endif
+	}
 }
 
 rbt_t *rbt_i64_new (void)
@@ -85,7 +94,7 @@ void rbt_i64_free_cb (rbt_t *rbt, void (*callback)(rbt_i64_node_t *))
 int rbt_i64_add(rbt_t *rbt, int64_t key, void *data, void **coll)
 {
         struct rbt_node fake;
-        register struct rbt_node *h[4];
+        struct rbt_node *h[4];
         register uint8_t dvec;
         register int64_t n_key, u_key;
 
@@ -422,8 +431,10 @@ int rbt_i64_walk_levelorder(rbt_t *rbt, int (*callback)(rbt_i64_node_t *), rbt_w
 
 int rbt_i64_walk(rbt_t *rbt, rbt_walk_t type, int (*callback)(rbt_i64_node_t *))
 {
-        assume_d (rbt      != NULL, -1, errno = EINVAL;);
-        assume_d (callback != NULL, -1, errno = EINVAL;);
+	if (rbt == NULL || callback == NULL) {
+		errno = EINVAL;
+		return -1;
+	}
 
         switch (type & RBT_WALK_TYPEMASK) {
         case RBT_WALK_PREORDER:   return rbt_i64_walk_preorder(rbt, callback, type);

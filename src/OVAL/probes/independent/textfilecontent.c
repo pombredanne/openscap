@@ -108,7 +108,7 @@ static int get_substrings(char *str, pcre *re, int want_substrs, char ***substri
 		rc = ovector_len / 3;
 	}
 
-	substrs = oscap_alloc(rc * sizeof (char *));
+	substrs = malloc(rc * sizeof (char *));
 	for (i = 0; i < rc; ++i) {
 		int len;
 		char *buf;
@@ -116,7 +116,7 @@ static int get_substrings(char *str, pcre *re, int want_substrs, char ***substri
 		if (ovector[2 * i] == -1)
 			continue;
 		len = ovector[2 * i + 1] - ovector[2 * i];
-		buf = oscap_alloc(len + 1);
+		buf = malloc(len + 1);
 		memcpy(buf, str + ovector[2 * i], len);
 		buf[len] = '\0';
 		substrs[ret] = buf;
@@ -205,7 +205,7 @@ static int process_file(const char *path, const char *filename, void *arg)
 
 	path_len = strlen(path);
 	filename_len = strlen(filename);
-	whole_path = oscap_alloc(path_len + filename_len + 2);
+	whole_path = malloc(path_len + filename_len + 2);
 	memcpy(whole_path, path, path_len);
 	if (whole_path[path_len - 1] != FILE_SEPARATOR) {
 		whole_path[path_len] = FILE_SEPARATOR;
@@ -268,9 +268,13 @@ static int process_file(const char *path, const char *filename, void *arg)
 	return ret;
 }
 
+void probe_offline_mode ()
+{
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_OWN);
+}
+
 void *probe_init(void)
 {
-	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
 	return NULL;
 }
 
@@ -278,6 +282,8 @@ int probe_main(probe_ctx *ctx, void *arg)
 {
 	SEXP_t *path_ent, *filename_ent, *line_ent, *behaviors_ent, *filepath_ent, *probe_in;
 	char *pattern;
+	char path_with_root[PATH_MAX + 1];
+	unsigned int root_len = 0;
 
 	OVAL_FTS    *ofts;
 	OVAL_FTSENT *ofts_ent;
@@ -324,12 +330,22 @@ int probe_main(probe_ctx *ctx, void *arg)
 	pfd.filename_ent = filename_ent;
 	pfd.ctx = ctx;
 
+	path_with_root[PATH_MAX] = '\0';
+	if (OSCAP_GSYM(offline_mode) & PROBE_OFFLINE_OWN) {
+		strncpy(path_with_root, getenv("OSCAP_PROBE_ROOT"), PATH_MAX);
+		root_len = strlen(path_with_root);
+
+		if (path_with_root[root_len - 1] == FILE_SEPARATOR)
+			--root_len;
+	}		
+
 	if ((ofts = oval_fts_open(path_ent, filename_ent, filepath_ent, behaviors_ent, probe_ctx_getresult(ctx))) != NULL) {
 		while ((ofts_ent = oval_fts_read(ofts)) != NULL) {
 			if (ofts_ent->fts_info == FTS_F
 			    || ofts_ent->fts_info == FTS_SL) {
+				strncpy(path_with_root + root_len, ofts_ent->path, PATH_MAX - root_len);
 				// todo: handle return code
-				process_file(ofts_ent->path, ofts_ent->file, &pfd);
+				process_file(path_with_root, ofts_ent->file, &pfd);
 			}
 			oval_ftsent_free(ofts_ent);
 		}
@@ -341,7 +357,7 @@ int probe_main(probe_ctx *ctx, void *arg)
 	SEXP_free(filename_ent);
 	SEXP_free(behaviors_ent);
 	SEXP_free(filepath_ent);
-	oscap_free(pattern);
+	free(pattern);
 
 	return 0;
 }

@@ -3,7 +3,7 @@
 # Copyright 2011 Red Hat Inc., Durham, North Carolina.
 # All Rights Reserved.
 
-. ../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test Cases.
 
@@ -44,6 +44,6 @@ function test_probes_fileextendedattribute {
 }
 
 # Testing.
-test_init "test_probes_fileattribute.log"
+test_init
 test_run "test_probes_fileattribute" test_probes_fileextendedattribute
 test_exit

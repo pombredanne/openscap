@@ -8,7 +8,7 @@
 # Authors:
 #      Jan Černý <jcerny@redhat.com>
 
-. ../../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test cases.
 
@@ -41,6 +41,10 @@ function test_comparing_schema_versions {
 
 # Testing.
 
-test_init "test_schema_version.log"
-test_run "test_comparing_schema_versions" test_comparing_schema_versions
+test_init
+
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "test_comparing_schema_versions" test_comparing_schema_versions
+fi
+
 test_exit

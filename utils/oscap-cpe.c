@@ -28,7 +28,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef HAVE_GETOPT_H
 #include <getopt.h>
+#endif
 
 /* CPE */
 #include <cpe_name.h>
@@ -38,7 +40,9 @@
 
 #include "oscap-tool.h"
 
-static struct oscap_module* CPE_SUBMODULES[];
+#define CPE_SUBMODULES_NUM 5 /* See actual CPE_SUBMODULES array
+				initialization below. */
+static struct oscap_module* CPE_SUBMODULES[CPE_SUBMODULES_NUM];
 bool getopt_cpe(int argc, char **argv, struct oscap_action *action);
 int app_cpe_check(const struct oscap_action *action);
 int app_cpe_match(const struct oscap_action *action);
@@ -91,7 +95,7 @@ static struct oscap_module CPE_VALIDATE = {
     .func = app_cpe_validate
 };
 
-static struct oscap_module* CPE_SUBMODULES[] = {
+static struct oscap_module* CPE_SUBMODULES[CPE_SUBMODULES_NUM] = {
     &CPE_MATCH_MODULE,
     &CPE_CHECK_MODULE,
     &CPE_VALIDATE,

@@ -193,7 +193,7 @@ static int rpmverify_collect(probe_ctx *ctx,
 		    filepath_sexp = SEXP_string_newf("%s", res.file);
 		    if (probe_entobj_cmp(filepath_ent, filepath_sexp) != OVAL_RESULT_TRUE) {
 		      SEXP_free(filepath_sexp);
-		      oscap_free(res.file);
+		      free(res.file);
 		      continue;
 		    }
 		    SEXP_free(filepath_sexp);
@@ -224,10 +224,14 @@ void probe_preload ()
 	rpmLibsPreload();
 }
 
+void probe_offline_mode ()
+{
+	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_OWN);
+}
+
 void *probe_init (void)
 {
-	probe_setoption(PROBEOPT_OFFLINE_MODE_SUPPORTED, PROBE_OFFLINE_CHROOT);
-#ifdef HAVE_RPM46
+#ifdef RPM46_FOUND
 	rpmlogSetCallback(rpmErrorCb, NULL);
 #endif
         if (rpmReadConfigFiles ((const char *)NULL, (const char *)NULL) != 0) {
@@ -239,6 +243,11 @@ void *probe_init (void)
 
         pthread_mutex_init(&(g_rpm.mutex), NULL);
 
+	if (OSCAP_GSYM(offline_mode) & PROBE_OFFLINE_OWN) {
+		const char* root = getenv("OSCAP_PROBE_ROOT");
+		rpmtsSetRootDir(g_rpm.rpmts, root);
+	}
+
         return ((void *)&g_rpm);
 }
 
@@ -246,12 +255,17 @@ void probe_fini (void *ptr)
 {
         struct rpm_probe_global *r = (struct rpm_probe_global *)ptr;
 
-        rpmtsFree(r->rpmts);
 	rpmFreeCrypto();
-        rpmFreeRpmrc();
-        rpmFreeMacros(NULL);
-        rpmlogClose();
-        pthread_mutex_destroy (&(r->mutex));
+	rpmFreeRpmrc();
+	rpmFreeMacros(NULL);
+	rpmlogClose();
+
+	// If probe_init() failed r->rpmts and r->mutex were not initialized
+	if (r == NULL)
+		return;
+
+	rpmtsFree(r->rpmts);
+	pthread_mutex_destroy (&(r->mutex));
 
         return;
 }
@@ -321,10 +335,8 @@ int probe_main (probe_ctx *ctx, void *arg)
         uint64_t collect_flags = 0;
         unsigned int i;
 
+	// If probe_init() failed it's because there was no rpm config files
 	if (arg == NULL) {
-		return PROBE_EINIT;
-	}
-	if (g_rpm.rpmts == NULL) {
 		probe_cobj_set_flag(probe_ctx_getresult(ctx), SYSCHAR_FLAG_NOT_APPLICABLE);
 		return 0;
 	}

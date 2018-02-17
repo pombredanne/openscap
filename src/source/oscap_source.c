@@ -26,7 +26,11 @@
 
 #include <string.h>
 #include <fcntl.h>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 #include <libxml/parser.h>
 #include <libxml/xmlreader.h>
 #include <libxml/xmlerror.h>
@@ -78,7 +82,7 @@ struct oscap_source *oscap_source_new_from_file(const char *filepath)
 	/* TODO: At the end of the day, this shall be the only place in
 	 * the library  where a path to filename is set from the outside.
 	 */
-	struct oscap_source *source = (struct oscap_source *) oscap_calloc(1, sizeof(struct oscap_source));
+	struct oscap_source *source = (struct oscap_source *) calloc(1, sizeof(struct oscap_source));
 	source->origin.filepath = oscap_strdup(filepath);
 	source->origin.type = OSCAP_SRC_FROM_USER_XML_FILE;
 	return source;
@@ -86,7 +90,7 @@ struct oscap_source *oscap_source_new_from_file(const char *filepath)
 
 struct oscap_source *oscap_source_clone(struct oscap_source *old)
 {
-	struct oscap_source *new = (struct oscap_source *) oscap_calloc(1, sizeof(struct oscap_source));
+	struct oscap_source *new = (struct oscap_source *) calloc(1, sizeof(struct oscap_source));
 	new->scap_type = old->scap_type;
 	new->origin.type = old->origin.type;
 	new->origin.version = oscap_strdup(old->origin.version);
@@ -105,7 +109,7 @@ struct oscap_source *oscap_source_clone(struct oscap_source *old)
  */
 static struct oscap_source* _create_oscap_source(size_t size, const char* filepath)
 {
-	struct oscap_source *source = (struct oscap_source *) oscap_calloc(1, sizeof(struct oscap_source));
+	struct oscap_source *source = (struct oscap_source *) calloc(1, sizeof(struct oscap_source));
 	source->origin.memory_size = size;
 	source->origin.type = OSCAP_SRC_FROM_USER_MEMORY;
 	source->origin.filepath = oscap_strdup(filepath ? filepath : "NONEXISTENT");
@@ -115,7 +119,7 @@ static struct oscap_source* _create_oscap_source(size_t size, const char* filepa
 struct oscap_source *oscap_source_new_from_memory(const char *buffer, size_t size, const char *filepath)
 {
 	struct oscap_source *source = _create_oscap_source(size, filepath);
-	source->origin.memory = oscap_calloc(1, size);
+	source->origin.memory = calloc(1, size);
 	memcpy(source->origin.memory, buffer, size);
 	return source;
 }
@@ -129,7 +133,7 @@ struct oscap_source *oscap_source_new_take_memory(char *buffer, size_t size, con
 
 struct oscap_source *oscap_source_new_from_xmlDoc(xmlDoc *doc, const char *filepath)
 {
-	struct oscap_source *source = (struct oscap_source *) oscap_calloc(1, sizeof(struct oscap_source));
+	struct oscap_source *source = (struct oscap_source *) calloc(1, sizeof(struct oscap_source));
 	source->origin.type = OSCAP_SRC_FROM_XML_DOM;
 	source->origin.filepath = oscap_strdup(filepath ? filepath : "NONEXISTENT");
 	source->xml.doc = doc;
@@ -139,13 +143,13 @@ struct oscap_source *oscap_source_new_from_xmlDoc(xmlDoc *doc, const char *filep
 void oscap_source_free(struct oscap_source *source)
 {
 	if (source != NULL) {
-		oscap_free(source->origin.filepath);
-		oscap_free(source->origin.memory);
+		free(source->origin.filepath);
+		free(source->origin.memory);
 		if (source->xml.doc != NULL) {
 			xmlFreeDoc(source->xml.doc);
 		}
-		oscap_free(source->origin.version);
-		oscap_free(source);
+		free(source->origin.version);
+		free(source);
 	}
 }
 
@@ -203,7 +207,7 @@ static void xmlErrorCb(struct oscap_string *buffer, const char * format, ...)
 
 	char* error_msg = oscap_vsprintf(format, ap);
 	oscap_string_append_string(buffer, error_msg);
-	oscap_free(error_msg);
+	free(error_msg);
 
 	va_end(ap);
 }
@@ -256,7 +260,7 @@ xmlDoc *oscap_source_get_xmlDoc(struct oscap_source *source)
 	if (source->xml.doc == NULL) {
 		if (source->origin.memory != NULL) {
 			if (bz2_memory_is_bzip(source->origin.memory, source->origin.memory_size)) {
-#ifdef HAVE_BZ2
+#ifdef BZIP2_FOUND
 				source->xml.doc = bz2_mem_read_doc(source->origin.memory, source->origin.memory_size);
 #else
 				oscap_seterr(OSCAP_EFAMILY_OSCAP, "Unable to unpack bz2 from buffer memory '%s'. Please compile OpenSCAP with bz2 support.", oscap_source_readable_origin(source));
@@ -284,7 +288,7 @@ xmlDoc *oscap_source_get_xmlDoc(struct oscap_source *source)
 				oscap_seterr(OSCAP_EFAMILY_GLIBC, "Unable to open file: '%s'", oscap_source_readable_origin(source));
 			} else {
 				if (bz2_fd_is_bzip(fd)) {
-#ifdef HAVE_BZ2
+#ifdef BZIP2_FOUND
 					source->xml.doc = bz2_fd_read_doc(fd);
 #else
 					source->xml.doc = NULL;
@@ -360,10 +364,10 @@ const char *oscap_source_get_schema_version(struct oscap_source *source)
 		}
 		switch (oscap_source_get_scap_type(source)) {
 			case OSCAP_DOCUMENT_SDS:
-				source->origin.version = strdup("1.2");
+				source->origin.version = oscap_strdup("1.2");
 				break;
 			case OSCAP_DOCUMENT_ARF:
-				source->origin.version = strdup("1.1");
+				source->origin.version = oscap_strdup("1.1");
 				break;
 			case OSCAP_DOCUMENT_OVAL_DEFINITIONS:
 			case OSCAP_DOCUMENT_OVAL_VARIABLES:
@@ -384,10 +388,13 @@ const char *oscap_source_get_schema_version(struct oscap_source *source)
 				source->origin.version = cpe_lang_model_detect_version_priv(reader);
 				break;
 			case OSCAP_DOCUMENT_CVE_FEED:
-				source->origin.version = strdup("2.0");
+				source->origin.version = oscap_strdup("2.0");
+				break;
+			case OSCAP_DOCUMENT_CVRF_FEED:
+				source->origin.version = oscap_strdup("1.1");
 				break;
 			case OSCAP_DOCUMENT_SCE_RESULT:
-				source->origin.version = strdup("1.0");
+				source->origin.version = oscap_strdup("1.0");
 				break;
 			default:
 				oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not determine origin.version for document %s: Unknown type: %s",

@@ -17,6 +17,18 @@
             <title xml:lang="en-us">Red Hat Enterprise Linux 7</title>
             <check system="http://oval.mitre.org/XMLSchema/oval-definitions-5" href="openscap-cpe-oval.xml">oval:org.open-scap.cpe.rhel:def:7</check>
       </cpe-item>
+      <cpe-item name="cpe:/o:oracle:linux:5">
+            <title xml:lang="en-us">Oracle Linux 5</title>
+            <check system="http://oval.mitre.org/XMLSchema/oval-definitions-5" href="openscap-cpe-oval.xml">oval:org.open-scap.cpe.ol:def:5</check>
+      </cpe-item>
+      <cpe-item name="cpe:/o:oracle:linux:6">
+            <title xml:lang="en-us">Oracle Linux 6</title>
+            <check system="http://oval.mitre.org/XMLSchema/oval-definitions-5" href="openscap-cpe-oval.xml">oval:org.open-scap.cpe.ol:def:6</check>
+      </cpe-item>
+      <cpe-item name="cpe:/o:oracle:linux:7">
+            <title xml:lang="en-us">Oracle Linux 7</title>
+            <check system="http://oval.mitre.org/XMLSchema/oval-definitions-5" href="openscap-cpe-oval.xml">oval:org.open-scap.cpe.ol:def:7</check>
+      </cpe-item>
       <cpe-item name="cpe:/o:centos:centos:5">
             <title xml:lang="en-us">Community Enterprise Operating System 5</title>
             <check system="http://oval.mitre.org/XMLSchema/oval-definitions-5" href="openscap-cpe-oval.xml">oval:org.open-scap.cpe.rhel:def:1005</check>
@@ -88,6 +100,10 @@
       <cpe-item name="cpe:/o:fedoraproject:fedora:27">
             <title xml:lang="en-us">Fedora 27</title>
             <check system="http://oval.mitre.org/XMLSchema/oval-definitions-5" href="openscap-cpe-oval.xml">oval:org.open-scap.cpe.fedora:def:27</check>
+      </cpe-item>
+      <cpe-item name="cpe:/o:fedoraproject:fedora:28">
+            <title xml:lang="en-us">Fedora 28</title>
+            <check system="http://oval.mitre.org/XMLSchema/oval-definitions-5" href="openscap-cpe-oval.xml">oval:org.open-scap.cpe.fedora:def:28</check>
       </cpe-item>
       <cpe-item name="cpe:/o:suse:sle">
             <title xml:lang="en-us">SUSE Linux Enterprise all versions</title>

@@ -74,11 +74,11 @@
  #include "process58-devname.h"
 #endif
 
-#ifdef HAVE_SELINUX_SELINUX_H
+#ifdef SELINUX_FOUND
 #include <selinux/selinux.h>
 #include <selinux/context.h>
 #endif
-#ifdef HAVE_SYS_CAPABILITY_H
+#ifdef CAP_FOUND
 #include <ctype.h>
 #include <sys/types.h>
 
@@ -95,7 +95,7 @@ extern char const *_cap_names[];
 
 #include "util.h"
 #include "process58-capability.h"
-#endif /* HAVE_SYS_CAPABILITY_H */
+#endif /* CAP_FOUND */
 
 #include "seap.h"
 #include "probe-api.h"
@@ -104,6 +104,8 @@ extern char const *_cap_names[];
 #include "common/debug_priv.h"
 #include <ctype.h>
 #include "common/oscap_buffer.h"
+
+#define CHUNK_SIZE 1024
 
 /* Convenience structure for the results being reported */
 struct result_info {
@@ -236,30 +238,42 @@ static char *convert_time(unsigned long long t, char *tbuf, int tb_size)
 	return tbuf;
 }
 
+#ifdef SELINUX_FOUND
 static char *get_selinux_label(int pid) {
-#ifdef HAVE_SELINUX_SELINUX_H
 	char *selinux_label;
 	security_context_t pid_context;
 	context_t context;
 
-	if (getpidcon(pid, &pid_context) == -1) {
-		/* error getting pid selinux context */
-		dW("Can't get selinux context for process %d", pid);
+	if (is_selinux_enabled() == 1) {
+		if (getpidcon(pid, &pid_context) == -1) {
+			/* error getting pid selinux context */
+			dW("Can't get selinux context for process %d", pid);
+			return NULL;
+		}
+		context = context_new(pid_context);
+		if (context == NULL) {
+			// There must be 3 or 4 colon-separated components and no
+			// whitespace in any component other than the MLS
+			// component.
+			freecon(pid_context);
+			return NULL;
+		}
+		selinux_label = strdup(context_type_get(context));
+		context_free(context);
+		freecon(pid_context);
+		return selinux_label;
+	} else {
 		return NULL;
 	}
-	context = context_new(pid_context);
-	selinux_label = strdup(context_type_get(context));
-	context_free(context);
-	freecon(pid_context);
-	return selinux_label;
-
-#else
-	return NULL;
-#endif /* HAVE_SELINUX_SELINUX_H */
 }
+#else
+static char *get_selinux_label(int pid) {
+	return NULL;
+}
+#endif /* SELINUX_FOUND */
 
 static char **get_posix_capability(int pid, int max_cap_id) {
-#ifdef HAVE_SYS_CAPABILITY_H
+#ifdef CAP_FOUND
 	cap_t pid_caps;
 	char *cap_name, **ret = NULL;
 	unsigned cap_value, ret_index = 0;
@@ -375,10 +389,9 @@ static inline bool get_process_cmdline(const char* filepath, struct oscap_buffer
 
 
 	for(;;) {
-		static const int chunk_size = 1024;
-		char chunk[chunk_size];
+		char chunk[CHUNK_SIZE];
 		// Read data, store to buffer
-		ssize_t read_size = read(fd, chunk, chunk_size );
+		ssize_t read_size = read(fd, chunk, CHUNK_SIZE);
 		if (read_size < 0) {
 			close(fd);
 			return false;
@@ -386,7 +399,7 @@ static inline bool get_process_cmdline(const char* filepath, struct oscap_buffer
 		oscap_buffer_append_binary_data(buffer, chunk, read_size);
 
 		// If reach end of file, then end the loop
-		if (chunk_size != read_size) {
+		if (CHUNK_SIZE != read_size) {
 			break;
 		}
 	}

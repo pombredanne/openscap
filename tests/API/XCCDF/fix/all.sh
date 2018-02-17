@@ -5,17 +5,20 @@
 
 set -e -o pipefail
 
-. ../../../test_common.sh
+. $builddir/tests/test_common.sh
 
 function test_generate_fix {
     local INPUT=$srcdir/$1
     local TESTRESULT_ID=$2
     local EXPECTED_FIX=$3
 
-    local GENERATED_FIX=$($OSCAP xccdf generate fix --result-id "$TESTRESULT_ID" "$INPUT" | grep -v -E "^([\t ]*|#.+)$")
+    # grep to strip out whitespace and comments
+    # `tail -n +2` to skip the first line with progress reporting
+    local GENERATED_FIX=$($OSCAP xccdf generate fix --result-id "$TESTRESULT_ID" "$INPUT" | grep -v -E "^([\t ]*|[\t ]*#.*)$" | tail -n +2)
     if [ "$?" != "0" ]; then
         return 1
     fi
+    echo "$GENERATED_FIX"
 
     if [ "$GENERATED_FIX" == "$EXPECTED_FIX" ]; then
         return 0

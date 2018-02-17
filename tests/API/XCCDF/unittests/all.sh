@@ -2,21 +2,25 @@
 
 set -e -o pipefail
 
-. ../../../test_common.sh
+. $builddir/tests/test_common.sh
 
 test_init test_api_xccdf_unittests.log
+
+touch not_executable
+
 #
 # API C Tests
 #
-test_run "xccdf:complex-check -- NAND is working properly" ./test_xccdf_shall_pass $srcdir/test_xccdf_complex_check_nand.xccdf.xml
-test_run "xccdf:complex-check -- single negation" ./test_xccdf_shall_pass $srcdir/test_xccdf_complex_check_single_negate.xccdf.xml
-test_run "Certain id's of xccdf_items may overlap" ./test_xccdf_shall_pass $srcdir/test_xccdf_overlaping_IDs.xccdf.xml
-test_run "Test Abstract data types." ./test_oscap_common
-test_run "xccdf_rule_result_override" $srcdir/test_xccdf_overrides.sh
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "xccdf:complex-check -- NAND is working properly" ./test_xccdf_shall_pass $srcdir/test_xccdf_complex_check_nand.xccdf.xml
+    test_run "xccdf:complex-check -- single negation" ./test_xccdf_shall_pass $srcdir/test_xccdf_complex_check_single_negate.xccdf.xml
+    test_run "Certain id's of xccdf_items may overlap" ./test_xccdf_shall_pass $srcdir/test_xccdf_overlaping_IDs.xccdf.xml
+    test_run "Test Abstract data types." ./test_oscap_common
+    test_run "xccdf_rule_result_override" $srcdir/test_xccdf_overrides.sh
 
-test_run "Assert for environment" [ ! -x $srcdir/not_executable ]
-test_run "Assert for environment better" $OSCAP oval eval --id oval:moc.elpmaxe.www:def:1 $srcdir/test_xccdf_check_content_ref_without_name_attr.oval.xml
-
+    test_run "Assert for environment" [ ! -x $srcdir/not_executable ]
+    test_run "Assert for environment better" $OSCAP oval eval --id oval:moc.elpmaxe.www:def:1 $srcdir/test_xccdf_check_content_ref_without_name_attr.oval.xml
+fi
 #
 # General XCCDF Tests. (Mostly, oscap xccdf eval)
 #
@@ -60,14 +64,18 @@ test_run "test xccdf resolve" $srcdir/test_xccdf_resolve.sh
 test_run "Exported arf results from xccdf without reference to oval" $srcdir/test_xccdf_results_arf_no_oval.sh
 test_run "XCCDF Substitute within Title" $srcdir/test_xccdf_sub_title.sh
 test_run "TestResult element should contain test-system attribute" $srcdir/test_xccdf_test_system.sh
+test_run "Profile suffix matching" $srcdir/test_profile_selection_by_suffix.sh
 
 test_run "libxml errors handled correctly" $srcdir/test_unfinished.sh
 test_run "XCCDF 1.1 to 1.2 transformation" $srcdir/test_xccdf_transformation.sh
+test_run "Test single-rule evaluation" $srcdir/test_single_rule.sh
+test_run "Test STIG viewer output for single-rule evaluation" $srcdir/test_single_rule_stigw.sh
 
 #
 # Tests for 'oscap xccdf eval --remediate' and substitution
 #
 test_run "XCCDF Remediation Simple Test" $srcdir/test_remediation_simple.sh
+test_run "XCCDF Remediation Contains Metadata Test" $srcdir/test_remediation_metadata.sh
 test_run "XCCDF Remediation Bad Fix Fails to Remedy" $srcdir/test_remediation_bad_fix.sh
 test_run "XCCDF Remediation Substitute Simple plain-text" $srcdir/test_remediation_subs_plain_text.sh
 test_run "XCCDF Remediation Substitute Empty plain-text" $srcdir/test_remediation_subs_plain_text_empty.sh
@@ -102,6 +110,11 @@ test_run "generate report: avoid warnings from libxml" $srcdir/test_report_witho
 test_run "generate fix: just as the anaconda does" $srcdir/test_report_anaconda_fixes.sh
 test_run "generate fix: just as the anaconda does + DataStream" $srcdir/test_report_anaconda_fixes_ds.sh
 test_run "generate fix: ensure filtering drop fixes" $srcdir/test_fix_filtering.sh
+test_run "generate fix: generate header for bash script" $srcdir/test_fix_script_header.sh
 test_run "generate fix: from result DataStream" $srcdir/test_fix_arf.sh
+test_run "generate fix: result id selection by suffix" $srcdir/test_fix_resultid_by_suffix.sh
+test_run "generate fix: from result DataStream" $srcdir/test_fix_arf.sh
+
+rm not_executable
 
 test_exit

@@ -8,7 +8,7 @@
 # Authors:
 #      Ondrej Moris <omoris@redhat.com>
 
-. ../../../test_common.sh
+. $builddir/tests/test_common.sh
 
 # Test cases.
 
@@ -115,21 +115,23 @@ function test_api_cpe_dict_import_official_v23(){
 
 # Testing.
 
-test_init "test_api_cpe_dict.log"
+test_init
 
-test_run "test_api_cpe_dict_smoke" test_api_cpe_dict_smoke    
-test_run "test_api_cpe_dict_remove_cpe" test_api_cpe_dict_remove_cpe
-test_run "test_api_cpe_dict_import_damaged_xml" \
-    test_api_cpe_dict_import_damaged_xml
-test_run "test_api_cpe_dict_match_non_existing_cpe" \
-    test_api_cpe_dict_match_non_existing_cpe   
-test_run "test_api_cpe_dict_match_existing_cpe" \
-    test_api_cpe_dict_match_existing_cpe
-test_run "test_api_cpe_dict_export_xml"  test_api_cpe_dict_export_xml
-#test_run "test_api_cpe_dict_import_cp1250_xml" \
-#    test_api_cpe_dict_import_cp1250_xml   
-test_run "test_api_cpe_dict_import_utf8_xml" test_api_cpe_dict_import_utf8_xml
-test_run "test_api_cpe_dict_import_official_v22" test_api_cpe_dict_import_official_v22
-test_run "test_api_cpe_dict_import_official_v23" test_api_cpe_dict_import_official_v23
+if [ -z ${CUSTOM_OSCAP+x} ] ; then
+    test_run "test_api_cpe_dict_smoke" test_api_cpe_dict_smoke
+    test_run "test_api_cpe_dict_remove_cpe" test_api_cpe_dict_remove_cpe
+    test_run "test_api_cpe_dict_import_damaged_xml" \
+        test_api_cpe_dict_import_damaged_xml
+    test_run "test_api_cpe_dict_match_non_existing_cpe" \
+        test_api_cpe_dict_match_non_existing_cpe   
+    test_run "test_api_cpe_dict_match_existing_cpe" \
+        test_api_cpe_dict_match_existing_cpe
+    test_run "test_api_cpe_dict_export_xml"  test_api_cpe_dict_export_xml
+    #test_run "test_api_cpe_dict_import_cp1250_xml" \
+    #    test_api_cpe_dict_import_cp1250_xml   
+    test_run "test_api_cpe_dict_import_utf8_xml" test_api_cpe_dict_import_utf8_xml
+    test_run "test_api_cpe_dict_import_official_v22" test_api_cpe_dict_import_official_v22
+    test_run "test_api_cpe_dict_import_official_v23" test_api_cpe_dict_import_official_v23
+fi
 
 test_exit

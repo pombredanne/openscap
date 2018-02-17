@@ -25,8 +25,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef HAVE_GETOPT_H
 #include <getopt.h>
+#endif
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
@@ -37,11 +43,15 @@
 #include <oscap_source.h>
 #include <ds_rds_session.h>
 #include <ds_sds_session.h>
+#include <xccdf_session.h>
 
 #include "oscap-tool.h"
 #include <oscap_debug.h>
+#include "util.h"
 
-static struct oscap_module* DS_SUBMODULES[];
+#define DS_SUBMODULES_NUM 8 /* See actual DS_SUBMODULES array
+				initialization below. */
+static struct oscap_module* DS_SUBMODULES[DS_SUBMODULES_NUM];
 bool getopt_ds(int argc, char **argv, struct oscap_action *action);
 int app_ds_sds_split(const struct oscap_action *action);
 int app_ds_sds_compose(const struct oscap_action *action);
@@ -144,7 +154,7 @@ static struct oscap_module DS_RDS_VALIDATE_MODULE = {
 	.func = app_ds_rds_validate
 };
 
-static struct oscap_module* DS_SUBMODULES[] = {
+static struct oscap_module* DS_SUBMODULES[DS_SUBMODULES_NUM] = {
 	&DS_SDS_SPLIT_MODULE,
 	&DS_SDS_COMPOSE_MODULE,
 	&DS_SDS_ADD_MODULE,
@@ -352,11 +362,15 @@ int app_ds_sds_compose(const struct oscap_action *action) {
 		snprintf(target_abs_path, PATH_MAX, "%s/%s", previous_cwd, action->ds_action->target);
 
 	char* temp_cwd = strdup(action->ds_action->file);
-	chdir(dirname(temp_cwd));
+	char *temp_cwd_dirname = oscap_dirname(temp_cwd);
+	chdir(temp_cwd_dirname);
+	free(temp_cwd_dirname);
 	free(temp_cwd);
 
 	char* source_xccdf = strdup(action->ds_action->file);
-	ds_sds_compose_from_xccdf(basename(source_xccdf), target_abs_path);
+	char *base_name = oscap_basename(source_xccdf);
+	ds_sds_compose_from_xccdf(base_name, target_abs_path);
+	free(base_name);
 	free(source_xccdf);
 
 	chdir(previous_cwd);
