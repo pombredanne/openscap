@@ -26,7 +26,6 @@
 
 #include "common/debug_priv.h"
 #include "common/oscap_acquire.h"
-#include "common/alloc.h"
 #include "common/elements.h"
 #include "common/_error.h"
 #include "common/list.h"
@@ -42,6 +41,7 @@
 #include "source/public/oscap_source.h"
 #include "source/xslt_priv.h"
 #include <libxml/tree.h>
+#include "oscap_helpers.h"
 
 struct ds_sds_session {
 	struct oscap_source *source;            ///< Source DataStream raw representation

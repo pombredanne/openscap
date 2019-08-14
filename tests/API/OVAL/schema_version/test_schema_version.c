@@ -20,21 +20,22 @@
  *      "Jan Černý" <jcerny@redhat.com>
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include "OVAL/public/oval_schema_version.h"
 
 static const char *cmp_to_cstr(int cmp)
 {
-	const char *result;
 	if (cmp == 0) {
-		result = "is same as";
+		return "is same as";
 	} else if (cmp < 0) {
-		result = "is older than";
-	} else if (cmp > 0) {
-		result = "is newer than";
+		return "is older than";
 	}
-	return result;
+        return "is newer than";
 }
 
 int main(int argc, char **argv)

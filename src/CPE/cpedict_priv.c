@@ -90,18 +90,11 @@ OSCAP_GETTER(struct cpe_name *, cpe_item, name)
 OSCAP_SETTER_GENERIC(cpe_item, const struct cpe_name *, name, cpe_name_free, )
 OSCAP_GETTER(struct cpe_name *, cpe_item, deprecated_by)
 OSCAP_SETTER_GENERIC(cpe_item, const struct cpe_name *, deprecated_by, cpe_name_free, )
-OSCAP_DEPRECATED(
-	struct cpe_name *cpe_item_get_deprecated(const struct cpe_item *item)
-	{
-		return cpe_item_get_deprecated_by(item);
-	}
-)
 OSCAP_ACCESSOR_STRING(cpe_item, deprecation_date)
 OSCAP_GETTER(struct cpe_item_metadata *, cpe_item, metadata)
 OSCAP_IGETINS_GEN(cpe_reference, cpe_item, references, reference)
 OSCAP_IGETINS_GEN(cpe_check, cpe_item, checks, check)
 OSCAP_IGETINS(oscap_text, cpe_item, titles, title)
-OSCAP_IGETINS(oscap_text, cpe_item, notes, note)
 OSCAP_ITERATOR_REMOVE_F(cpe_reference) OSCAP_ITERATOR_REMOVE_F(cpe_check)
 
 struct cpe_notes {				///< representation of <notes> element
@@ -1069,7 +1062,7 @@ void cpe_item_export(const struct cpe_item *item, xmlTextWriterPtr writer, int b
 {
 
 	char *temp;
-	struct oscap_iterator *it;;
+	struct oscap_iterator *it;
 
 	__attribute__nonnull__(item);
 	__attribute__nonnull__(writer);
@@ -1293,6 +1286,19 @@ static void cpe_notes_export(const struct cpe_notes *notes, xmlTextWriterPtr wri
 	}
 	oscap_iterator_free(it);
 	xmlTextWriterEndElement(writer);
+}
+
+bool cpe_dict_model_set_origin_file(struct cpe_dict_model* dict, const char* origin_file)
+{
+	free(dict->origin_file);
+	dict->origin_file = oscap_strdup(origin_file);
+
+	return true;
+}
+
+const char* cpe_dict_model_get_origin_file(const struct cpe_dict_model* dict)
+{
+	return dict->origin_file;
 }
 
 /* End of private export functions

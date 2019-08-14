@@ -30,6 +30,10 @@ The rest of the options are passed directly to \fBoscap(8)\fR utility. For the d
 
 Last argument is SCAP content input file.
 
+Supported common options are:
+  \-\-verbose <verbosity_level>
+  \-\-verbose\-log\-file <file>
+
 .SS Evaluation of XCCDF content
 
 \fBxccdf eval\fR module evaluates XCCDF files or SCAP source datastreams. Result of each rule is printed to standard output, including rule title, rule id and security identifier (CVE, CCE).
@@ -50,7 +54,6 @@ Supported oscap xccdf eval options are:
   \-\-tailoring-id <component-id>
   \-\-cpe <name> (external OVAL dependencies are not supported yet!)
   \-\-oval-results
-  \-\-sce-results
   \-\-check-engine-results
   \-\-results <file>
   \-\-results-arf <file>
@@ -63,8 +66,6 @@ Supported oscap xccdf eval options are:
   \-\-datastream-id <id>
   \-\-xccdf-id <id>
   \-\-benchmark-id <id>
-  \-\-verbose <verbosity_level>
-  \-\-verbose\-log\-file <file>
 
 Remediation of virtual machines is not supported.
 
@@ -91,9 +92,6 @@ Supported oscap oval eval options are:
   \-\-skip-valid
   \-\-datastream-id <id>
   \-\-oval-id <id>
-  \-\-probe-root <dir>
-  \-\-verbose <verbosity_level>
-  \-\-verbose\-log\-file <file>
 
 .SS Collection of OVAL System Characteristic
 
@@ -113,8 +111,6 @@ Supported oscap oval collect options are:
   \-\-syschar <file>
   \-\-variables <file>
   \-\-skip-valid
-  \-\-verbose <verbosity_level>
-  \-\-verbose\-log\-file <file>
 
 .SH EXAMPLES
 

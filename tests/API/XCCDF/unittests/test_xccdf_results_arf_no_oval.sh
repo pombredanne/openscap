@@ -1,4 +1,5 @@
 #!/bin/bash
+. $builddir/tests/test_common.sh
 
 set -e
 set -o pipefail
@@ -15,7 +16,7 @@ echo "Stderr file = $stderr"
 echo "Result file = $result"
 [ -f $stderr ]; [ ! -s $stderr ]
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 $OSCAP ds rds-validate $resultArf
 
 $OSCAP info $resultArf > $stdout 2> $stderr

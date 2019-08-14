@@ -1,4 +1,5 @@
 #!/bin/bash
+. $builddir/tests/test_common.sh
 
 set -e
 set -o pipefail
@@ -17,7 +18,7 @@ echo "Stderr file = $stderr"
 echo "Result file = $result"
 [ -f $stderr ]; [ ! -s $stderr ]; :> $stderr
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 
 assert_exists 1 '//rule-result'
 assert_exists 1 '//rule-result/result'
@@ -32,7 +33,7 @@ $OSCAP xccdf eval --remediate --results $result $srcdir/${name}.xccdf.xml 2> $st
 [ -f $stderr ]; [ ! -s $stderr ]; rm $stderr
 [ ! -f test_file ]
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 
 assert_exists 1 '//rule-result'
 assert_exists 1 '//rule-result/result'

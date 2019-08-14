@@ -35,7 +35,9 @@
 #include <oscap_text.h>
 
 #include <oval_definitions.h>
-#include <oval_probe.h>
+#if defined(OVAL_PROBES_ENABLED)
+# include <oval_probe.h>
+#endif
 #include <cvss_score.h>
 #include <xccdf_benchmark.h>
 #include <xccdf_session.h>
@@ -130,7 +132,6 @@ struct oscap_action {
 	/* others */
         char *profile;
 	const char *rule;
-        char *show;
         char *format;
         const char *tmpl;
         char *id;
@@ -166,7 +167,6 @@ struct oscap_action {
 	int check_engine_results;
 	int export_variables;
         int list_dynamic;
-	char *probe_root;
 	char *verbosity_level;
 	char *fix_type;
 };
@@ -182,6 +182,8 @@ void oscap_print_error(void);
 bool check_verbose_options(struct oscap_action *action);
 void download_reporting_callback(bool warning, const char *format, ...);
 
+void report_missing_profile(const char *profile_suffix, const char *source_file);
+void report_multiple_profile_matches(const char *profile_suffix, const char *source_file);
 
 int xccdf_set_profile_or_report_bad_id(struct xccdf_session *session, const char *profile_id, const char *source_file);
 int evaluate_suffix_match_result_with_custom_reports(int suffix_match_result, const char *profile_suffix, const char *source_file, void (* report_missing)(const char *, const char *), void (* report_multiple)(const char *, const char *));
@@ -197,3 +199,28 @@ extern struct oscap_module OSCAP_CVRF_MODULE;
 extern struct oscap_module OSCAP_CPE_MODULE;
 extern struct oscap_module OSCAP_INFO_MODULE;
 
+#ifndef HAVE_GETOPT_H
+
+#define __getopt_argv_const const
+#define no_argument		0
+#define required_argument	1
+#define optional_argument	2
+
+extern char *optarg;
+extern int optind;
+extern int opterr;
+extern int optopt;
+
+struct option
+{
+	const char *name;
+	int has_arg;
+	int *flag;
+	int val;
+};
+
+getopt_long(int ___argc, char *__getopt_argv_const *___argv,
+	const char *__shortopts,
+	const struct option *__longopts, int *__longind);
+
+#endif

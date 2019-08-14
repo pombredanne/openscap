@@ -356,16 +356,6 @@ class OSCAP_Object(object):
             raise TypeError("Wrong call of oval_probe_session_query_objects function on %s" % (self.object,))
         return OSCAP.oval_probe_session_query_objects(self.instance)
 
-    def validate_document(self, file, doctype, version, cb, usr):
-        if self.object != "oscap":
-            raise TypeError("Wrong call of validate_document function on %s" % (self.object,))
-        return OSCAP.oscap_validate_document_py(file, doctype, version, self.__output_callback, (cb, usr))
-
-    def text_xccdf_substitute(self, text, cb, usr):
-        if self.object != "oscap":
-            raise TypeError("Wrong call of text_xccdf_substitute function on %s" % (self.object,))
-        return OSCAP.oscap_text_xccdf_substitute_py(text, cb, usr)
-
     """ ********* Implementation of required high level functions ********* """
 
     def get_all_values(self):
@@ -803,7 +793,7 @@ class _XCCDF_Benchmark_Class(OSCAP_Object):
 
     def __init__(self, path):
         dict.__setattr__(self, "object", "xccdf_benchmark")
-        dict.__setattr__(self, "instance", OSCAP.xccdf_benchmark_import(path))
+        dict.__setattr__(self, "instance", OSCAP.xccdf_benchmark_import_source(OSCAP.oscap_source_new_from_file(path)))
 
     def __repr__(self):
         return "<Oscap Object of type 'XCCDF Benchmark' at %s>" % (hex(id(self)),)
@@ -891,22 +881,6 @@ class CVSS_Class(OSCAP_Object):
         return "<Oscap Object of type 'CVSS Class' at %s>" % (hex(id(self)),)
 
 # ------------------------------------------------------------------------------------------------------------
-# CCE
-
-class CCE_Class(OSCAP_Object):
-    """
-    CCE Class
-    """
-
-    def __init__(self):
-        dict.__setattr__(self, "object", "cce")
-#        dict.__setattr__(self, "version", OSCAP.cce_supported())
-        pass
-
-    def __repr__(self):
-        return "<Oscap Object of type 'CCE Class' at %s>" % (hex(id(self)),)
-
-# ------------------------------------------------------------------------------------------------------------
 # SCE
 
 class SCE_Class(OSCAP_Object):
@@ -916,7 +890,6 @@ class SCE_Class(OSCAP_Object):
 
     def __init__(self):
         dict.__setattr__(self, "object", "sce")
-        #dict.__setattr__(self, "version", OSCAP.cce_supported())
         pass
 
     def __repr__(self):
@@ -937,7 +910,6 @@ ds = DS_Class()
 xccdf = XCCDF_Class()
 oval = OVAL_Class()
 cve = CVE_Class()
-cce = CCE_Class()
 cpe = CPE_Class()
 cvss = CVSS_Class()
 sce = SCE_Class()

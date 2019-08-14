@@ -27,19 +27,16 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
+#include "oval_types.h"
 #include "generic/bitmap.h"
 #include "generic/rbt/rbt.h"
 #include "_sexp-types.h"
 #include "_seap-packetq.h"
-#include "_sexp-parser.h"
 #include "_sexp-output.h"
 #include "_seap-command.h"
-#include "public/seap-scheme.h"
-#include "public/seap-message.h"
-#include "public/seap-command.h"
-#include "public/seap-error.h"
 #include "../../../common/util.h"
 
+typedef uint8_t SEAP_scheme_t;
 
 /*
  * Descriptor table + related stuff
@@ -47,7 +44,6 @@
 typedef struct {
         SEAP_msgid_t   next_id;
         SEXP_ostate_t *ostate; /* Output state */
-        SEXP_pstate_t *pstate; /* Parser state */
         SEAP_scheme_t  scheme; /* Protocol/Scheme used for this descriptor */
         void          *scheme_data; /* Protocol/Scheme related data */
 
@@ -63,16 +59,12 @@ typedef struct {
         SEAP_cmdid_t   next_cid;
         SEAP_cmdtbl_t *cmd_c_table; /* Local SEAP commands */
         SEAP_cmdtbl_t *cmd_w_table; /* Waiting SEAP commands */
+    oval_subtype_t subtype;
 } SEAP_desc_t;
 
 #define SEAP_DESC_FDIN  0x00000001
 #define SEAP_DESC_FDOUT 0x00000002
 #define SEAP_DESC_SELF  -1
-
-typedef struct {
-        rbt_t       *tree;
-        bitmap_t    *bmap;
-} SEAP_desctable_t;
 
 #define SEAP_DESCTBL_INITIALIZER { NULL, NULL }
 
@@ -80,7 +72,7 @@ typedef struct {
 #define SEAP_MAX_OPENDESC 128
 #define SDTABLE_REALLOC_ADD 4
 
-int          SEAP_desc_add (SEAP_desctable_t *sd_table, SEXP_pstate_t *pstate, SEAP_scheme_t scheme, void *scheme_data);
+int SEAP_desc_add(SEAP_desctable_t *sd_table, SEAP_scheme_t scheme, void *scheme_data);
 int          SEAP_desc_del (SEAP_desctable_t *sd_table, int sd);
 SEAP_desc_t *SEAP_desc_get (SEAP_desctable_t *sd_table, int sd);
 

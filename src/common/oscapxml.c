@@ -33,10 +33,11 @@
 #include <libxslt/xsltutils.h>
 #include <libexslt/exslt.h>
 #include <string.h>
-#ifndef _WIN32
+#ifndef OS_WINDOWS
 #include <unistd.h>
 #else
 #include <io.h>
+#include <windows.h>
 #endif
 #include <fcntl.h>
 
@@ -45,41 +46,52 @@
 #include "util.h"
 #include "list.h"
 #include "elements.h"
-#include "assume.h"
 #include "debug_priv.h"
 #include "oscap_source.h"
 #include "oscapxml.h"
 #include "source/schematron_priv.h"
 #include "source/validate_priv.h"
 #include "source/xslt_priv.h"
+#include "oscap_helpers.h"
 
-#ifndef OSCAP_DEFAULT_SCHEMA_PATH
-const char * const OSCAP_SCHEMA_PATH = "/usr/local/share/openscap/schemas";
+const char *const OSCAP_SCHEMA_PATH = OSCAP_DEFAULT_SCHEMA_PATH;
+const char *const OSCAP_XSLT_PATH = OSCAP_DEFAULT_XSLT_PATH;
+const char *const OSCAP_CPE_PATH = OSCAP_DEFAULT_CPE_PATH;
+
+#ifdef OS_WINDOWS
+static const char *_get_default_path(const char *defpath)
+{
+	/* On Windows, default paths are directory names of directories that are
+	 * located in the same directory as oscap.exe. We will make a full path
+	 * based on oscap.exe location.
+	 */
+	char oscap_path[PATH_MAX];
+	GetModuleFileName(NULL, oscap_path, PATH_MAX);
+	char *oscap_path_dirname = oscap_dirname(oscap_path);
+	const char *path = oscap_sprintf("%s\\%s", oscap_path_dirname, defpath);
+	free(oscap_path_dirname);
+	return path;
+}
 #else
-const char * const OSCAP_SCHEMA_PATH = OSCAP_DEFAULT_SCHEMA_PATH;
+static const char *_get_default_path(const char *defpath)
+{
+	return defpath;
+}
 #endif
 
-#ifndef OSCAP_DEFAULT_XSLT_PATH
-const char * const OSCAP_XSLT_PATH = "/usr/local/share/openscap/xsl";
-#else
-const char * const OSCAP_XSLT_PATH = OSCAP_DEFAULT_XSLT_PATH;
-#endif
-
-#ifndef OSCAP_DEFAULT_CPE_PATH
-const char * const OSCAP_CPE_PATH = "/usr/local/share/openscap/cpe";
-#else
-const char * const OSCAP_CPE_PATH = OSCAP_DEFAULT_CPE_PATH;
-#endif
-
-/* return default path if pathvar is not defined */
+/*
+ * If environment variable specified by 'pathvar' is defined, returns value of this environment variable.
+ * If this environment variable is not defined, returns default path, provided by 'defpath' argument.
+ */
 static const char * oscap_path_to(const char *pathvar, const char *defpath) {
 	const char *path = NULL;
 
 	if (pathvar != NULL)
 		path = getenv(pathvar);
 
-	if (path == NULL || oscap_streq(path, ""))
-		path = defpath;
+	if (path == NULL || oscap_streq(path, "")) {
+		path = _get_default_path(defpath);
+	}
 
 	return path;
 }
@@ -92,13 +104,6 @@ const char *oscap_path_to_xslt(void)
 {
 	return oscap_path_to("OSCAP_XSLT_PATH", OSCAP_XSLT_PATH);
 }
-
-OSCAP_DEPRECATED(
-const char * oscap_path_to_schematron() {
-	// It has never returned correct path to schematron files.
-	return oscap_path_to_xslt();
-}
-)
 
 const char * oscap_path_to_cpe() {
 	return oscap_path_to("OSCAP_CPE_PATH", OSCAP_CPE_PATH);
@@ -120,45 +125,12 @@ void oscap_cleanup(void)
 
 const char *oscap_get_version(void) { return OPENSCAP_VERSION; }
 
-int oscap_validate_document(const char *xmlfile, oscap_document_type_t doctype, const char *version, xml_reporter reporter, void *arg)
-{
-	if (xmlfile == NULL) {
-		oscap_seterr(OSCAP_EFAMILY_OSCAP, "'xmlfile' == NULL");
-		return -1;
-	}
-
-	if (access(xmlfile, R_OK)) {
-		oscap_seterr(OSCAP_EFAMILY_GLIBC, "%s '%s'", strerror(errno), xmlfile);
-		return -1;
-	}
-
-	struct oscap_source *source = oscap_source_new_from_file(xmlfile);
-	int ret = oscap_source_validate_priv(source, doctype, version, reporter, arg);
-	oscap_source_free(source);
-	return ret;
-}
-
-int oscap_schematron_validate_document(const char *xmlfile, oscap_document_type_t doctype, const char *version, const char *outfile) {
-
-	struct oscap_source *source = oscap_source_new_from_file(xmlfile);
-	int ret = oscap_source_validate_schematron_priv(source, doctype, version, outfile);
-	oscap_source_free(source);
-	return ret;
-}
-
 int oscap_apply_xslt(const char *xmlfile, const char *xsltfile, const char *outfile, const char **params)
 {
 	struct oscap_source *source = oscap_source_new_from_file(xmlfile);
 	int ret = oscap_source_apply_xslt_path(source, xsltfile, outfile, params, oscap_path_to_xslt());
 	oscap_source_free(source);
 	return ret;
-}
-
-int oscap_determine_document_type(const char *document, oscap_document_type_t *doc_type) {
-	struct oscap_source *source = oscap_source_new_from_file(document);
-	*doc_type = oscap_source_get_scap_type(source);
-	oscap_source_free(source);
-	return (*doc_type == OSCAP_DOCUMENT_UNKNOWN) ? -1 : 0;
 }
 
 const char *oscap_document_type_to_string(oscap_document_type_t type)

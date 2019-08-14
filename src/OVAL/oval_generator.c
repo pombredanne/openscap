@@ -34,7 +34,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#ifndef _WIN32
+#ifndef OS_WINDOWS
 #include <sys/time.h>
 #endif
 
@@ -105,12 +105,6 @@ char *oval_generator_get_product_version(struct oval_generator *generator)
 	return generator->product_version;
 }
 
-char *oval_generator_get_schema_version(struct oval_generator *generator)
-{
-	/* Removed a const type because we can't change API of this function. */
-	return (char *) oval_generator_get_core_schema_version(generator);
-}
-
 const char *oval_generator_get_core_schema_version(struct oval_generator *generator)
 {
 	return generator->core_schema_version;
@@ -143,11 +137,6 @@ void oval_generator_set_product_version(struct oval_generator *generator, const 
 	generator->product_version = oscap_strdup(product_version);
 }
 
-void oval_generator_set_schema_version(struct oval_generator *generator, const char *schema_version)
-{
-	oval_generator_set_core_schema_version(generator, schema_version);
-}
-
 void oval_generator_set_core_schema_version(struct oval_generator *generator, const char *schema_version)
 {
 	free(generator->core_schema_version);
@@ -164,13 +153,20 @@ void oval_generator_update_timestamp(struct oval_generator *generator)
 {
 	time_t et;
 	struct tm *lt;
-	char timestamp[] = "yyyy-mm-ddThh:mm:ss";
 
 	time(&et);
 	lt = localtime(&et);
-	snprintf(timestamp, sizeof(timestamp), "%4d-%02d-%02dT%02d:%02d:%02d",
+	int timestamp_size = snprintf(NULL, 0, "%4d-%02d-%02dT%02d:%02d:%02d",
+		 1900 + lt->tm_year, 1 + lt->tm_mon, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
+	if (timestamp_size < 0) {
+		return;
+	}
+	timestamp_size++; // +1 for terminating '\0' byte
+	char *timestamp = malloc(timestamp_size);
+	snprintf(timestamp, timestamp_size, "%4d-%02d-%02dT%02d:%02d:%02d",
 		 1900 + lt->tm_year, 1 + lt->tm_mon, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec);
 	oval_generator_set_timestamp(generator, timestamp);
+	free(timestamp);
 }
 
 void oval_generator_add_platform_schema_version(struct oval_generator *generator, const char *platform, const char *schema_version)

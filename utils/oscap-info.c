@@ -59,14 +59,12 @@ static int app_info(const struct oscap_action *action);
 struct oscap_module OSCAP_INFO_MODULE = {
     .name = "info",
     .parent = &OSCAP_ROOT_MODULE,
-    .summary = "info module",
+	.summary = "Print information about a SCAP file.",
     .usage = "some-file.xml",
-    .help = "Print information about a file\n"
-    "\n"
-    "Options:\n"
-    "   --fetch-remote-resources \r\t\t\t\t - Download remote content referenced by DataStream.\n"
-    "   --profile <id>\r\t\t\t\t - Show info of the profile with the given ID..\n"
-    "   --profiles\r\t\t\t\t - Show profiles from the input file in the <id>:<title> format, one line per profile.\n",
+	.help = "Options:\n"
+		"   --fetch-remote-resources      - Download remote content referenced by DataStream.\n"
+		"   --profile <id>                - Show info of the profile with the given ID.\n"
+		"   --profiles                    - Show profiles from the input file in the <id>:<title> format, one line per profile.\n",
     .opt_parser = getopt_info,
     .func = app_info
 };
@@ -89,7 +87,10 @@ static inline void _print_xccdf_status(struct xccdf_status *status, const char *
 		if (date_time != 0) {
 			struct tm *date = localtime(&date_time);
 			char date_str[] = "YYYY-DD-MM";
-			snprintf(date_str, sizeof(date_str), "%04d-%02d-%02d", date->tm_year + 1900, date->tm_mon + 1, date->tm_mday);
+			int ret = snprintf(date_str, sizeof(date_str), "%04d-%02d-%02d", date->tm_year + 1900, date->tm_mon + 1, date->tm_mday);
+			if (ret < 0) {
+				return;
+			}
 			printf("%sGenerated: %s\n", prefix, date_str);
 		}
 	}
@@ -143,7 +144,7 @@ static void _print_xccdf_profile_verbose(const struct xccdf_profile *prof, const
 	printf("%s\tTitle: %s\n", prefix, profile_title);
 	free(profile_title);
 
-	printf("%s\tId: %s%s\n", prefix,
+	printf("%s\tId: %s%s\n\n", prefix,
 		xccdf_profile_get_id(prof),
 		xccdf_profile_get_abstract(prof) ? " (abstract)" : "");
 
@@ -269,7 +270,7 @@ static inline void _print_xccdf_tailoring_header(struct xccdf_tailoring *tailori
 	if (tailoring == NULL) {
 		return;
 	}
-	printf("%sBenchmark Hint: %s\n", prefix, xccdf_tailoring_get_benchmark_ref(tailoring));
+	printf("%sBenchmark Hint: %s\n", prefix ? prefix : "", xccdf_tailoring_get_benchmark_ref(tailoring));
 }
 
 static inline void _print_xccdf_tailoring(struct oscap_source *source, const char *prefix, void (*print_one_profile)(const struct xccdf_profile *, const char *))
@@ -340,10 +341,7 @@ static int app_info_single_ds_profiles_only(struct ds_stream_index_iterator* sds
 	return OSCAP_OK;
 }
 
-void report_multiple_profile_matches(const char *profile_suffix, const char *source_file);
-void report_missing_profile(const char *profile_suffix, const char *source_file);
-
-const char *tailoring_get_profile_or_report_multiple_ids(struct xccdf_tailoring *tailoring, const char *profile_suffix, const char *source_file)
+static const char *tailoring_get_profile_or_report_multiple_ids(struct xccdf_tailoring *tailoring, const char *profile_suffix, const char *source_file)
 {
 	int match_status;
 	const char *result = xccdf_tailoring_match_profile_id(tailoring, profile_suffix, &match_status);
@@ -351,7 +349,7 @@ const char *tailoring_get_profile_or_report_multiple_ids(struct xccdf_tailoring 
 	return result;
 }
 
-const char *benchmark_get_profile_or_report_multiple_ids(struct xccdf_benchmark *bench, const char *profile_suffix, const char *source_file)
+static const char *benchmark_get_profile_or_report_multiple_ids(struct xccdf_benchmark *bench, const char *profile_suffix, const char *source_file)
 {
 	int match_status;
 	const char *result = xccdf_benchmark_match_profile_id(bench, profile_suffix, &match_status);
@@ -359,7 +357,7 @@ const char *benchmark_get_profile_or_report_multiple_ids(struct xccdf_benchmark 
 	return result;
 }
 
-const char *benchmark_get_profile_or_report_id_issues(struct xccdf_benchmark *bench, const char *profile_suffix, const char *source_file)
+static const char *benchmark_get_profile_or_report_id_issues(struct xccdf_benchmark *bench, const char *profile_suffix, const char *source_file)
 {
 	int match_status;
 	const char *result = xccdf_benchmark_match_profile_id(bench, profile_suffix, &match_status);

@@ -1,5 +1,8 @@
 # OpenSCAP
 
+[![Build status](https://ci.appveyor.com/api/projects/status/3o5fnld1m98bo0so/branch/master?svg=true)](https://ci.appveyor.com/project/OpenSCAP/openscap/branch/master)
+[![Build Status](https://travis-ci.org/OpenSCAP/openscap.svg?branch=master)](https://travis-ci.org/OpenSCAP/openscap)
+
 Open Source Security Compliance Solution
 
 ## About
@@ -8,83 +11,13 @@ The oscap program is a command line tool that allows users to load, scan,
 validate, edit, and export SCAP documents.
 
  * Homepage of the project: [www.open-scap.org](http://www.open-scap.org)
- * Manual: [Oscap User Manual](https://github.com/OpenSCAP/openscap/blob/maint-1.2/docs/manual/manual.adoc)
- * For new contributors: [How to contribute](https://github.com/OpenSCAP/openscap/blob/maint-1.2/docs/contribute/contribute.adoc)
+ * User Manual: [OpenSCAP User Manual](docs/manual/manual.adoc)
+ * Compilation, testing and debugging: [OpenSCAP Developer Manual](docs/developer/developer.adoc)
+ * For new contributors: [How to contribute](docs/contribute/contribute.adoc)
 
-## Compilation
+## Contributing
 
-Choose *1a* or *1b* depending on whether you want sources from a release tarball or the git repository.
-
-
-1) a) Use a release tarball:
-```
-# replace ${version} with the desired version
-wget https://github.com/OpenSCAP/openscap/releases/download/${version}/openscap-${version}.tar.gz
-tar -xzpf openscap-${version}.tar.gz
-cd openscap-${version}
-```
-
-**OR**
-
-1) b) Use fresh sources from git repository.
-
-```
-git clone https://github.com/OpenSCAP/openscap.git
-cd openscap
-```
-
-2) To build the library you will also need the following build dependencies
-(some of these are optional, if they are not detected, openscap will be compiled
-without respective optional features):
-```
-cmake \
-dbus-devel GConf2-devel libacl-devel libblkid-devel libcap-devel libcurl-devel \
-libgcrypt-devel libselinux-devel libxml2-devel libxslt-devel make openldap-devel \
-pcre-devel perl-XML-Parser perl-XML-XPath perl-devel python-devel rpm-devel swig \
-bzip2-devel
-```
-On Ubuntu 16.04 the command to install these package is
-```code
-sudo apt-get install -y autoconf automake libtool make libdbus-1-dev libdbus-glib-1-dev libcurl4-openssl-dev libgcrypt20-dev libselinux1-dev libxslt1-dev libgconf2-dev libacl1-dev libblkid-dev libcap-dev libxml2-dev libldap2-dev libpcre3-dev python-dev swig libxml-parser-perl libxml-xpath-perl libperl5.22 python-dev libbz2-dev librpm-dev swig
-```
-
-When you have all the build dependencies installed you can run the following
-commands to build the library:
-```
-cd build/
-cmake ..
-make
-```
-
-3) After building the library you might want to run library self-checks. To do
-that you need to have these additional packages installed:
-```
-wget lua which procps-ng initscripts chkconfig sendmail
-```
-and it is also required to have `sendmail` service running on the system:
-```
-systemctl start sendmail.service
-```
-Now you can execute the following command to run library self-checks:
-```
-make test
-```
-Note: If you want to run `make distcheck` you will also need to install
-`asciidoctor`. You can either install `rubygem-asciidoctor` package (available
-on Fedora), or you can install `rubygems` package and then run
-`gem install asciidoctor`.
-
-It's also possible to use the make check to test any other oscap binary present in the system. You just have to set the path of the binary to the CUSTOM_OSCAP variable:
-```
-export CUSTOM_OSCAP=/usr/bin/oscap; make test
-```
-Not every check tests the oscap tool, however, when the CUSTOM_OSCAP variable is set, only the checks which do are executed.
-
-
-4) Run the installation procedure by executing the following command:
-```
-make install
-```
+We welcome all contributions to the OpenSCAP project. If you would like to contribute, either by fixing existing issues or adding new features, please check out our [contribution guide](docs/contribute/contribute.adoc) to get started. If you would like to discuss anything, ask questions, or if you need additional help getting started, you can either send a message to our FreeNode IRC channel, **#openscap**, or to our [mailing list](https://www.redhat.com/mailman/listinfo/open-scap-list).
 
 
 ## Use cases

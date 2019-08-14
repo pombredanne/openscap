@@ -23,12 +23,12 @@
 #include <config.h>
 #include <string.h>
 #include <errno.h>
-#include "common/assume.h"
-#include "public/sm_alloc.h"
+
 #include "_sexp-types.h"
 #include "_sexp-value.h"
 #include "_sexp-rawptr.h"
 #include "public/sexp-manip_r.h"
+#include "debug_priv.h"
 
 SEXP_t *SEXP_init(SEXP_t *sexp_mem)
 {
@@ -243,15 +243,28 @@ SEXP_t *SEXP_string_newf_r(SEXP_t *sexp_mem, const char *format, ...)
 SEXP_t *SEXP_string_newf_rv(SEXP_t *sexp_mem, const char *format, va_list ap)
 {
         SEXP_val_t v_dsc;
-        char      *v_string;
-        int        v_strlen;
+	char *v_string = NULL;
+	int v_strlen = 0;
+	va_list copy;
 
         if (sexp_mem == NULL) {
                 errno = EFAULT;
                 return (NULL);
         }
 
-        v_strlen = vasprintf (&v_string, format, ap);
+	va_copy(copy, ap);
+	v_strlen = vsnprintf(v_string, v_strlen, format, copy);
+	va_end(copy);
+	if (v_strlen < 0) {
+		return NULL;
+	}
+	v_strlen++; /* For '\0' */
+	v_string = malloc(v_strlen);
+	v_strlen = vsnprintf(v_string, v_strlen, format, ap);
+	if (v_strlen < 0) {
+		free(v_string);
+		return NULL;
+	}
 
         if (v_strlen < 0) {
                 /* TODO: handle this */
@@ -266,7 +279,7 @@ SEXP_t *SEXP_string_newf_rv(SEXP_t *sexp_mem, const char *format, va_list ap)
         }
 
         memcpy  (v_dsc.mem, v_string, sizeof (char) * v_strlen);
-        sm_free (v_string);
+	free(v_string);
 
         SEXP_init(sexp_mem);
         sexp_mem->s_type = NULL;
@@ -422,16 +435,16 @@ void __SEXP_free_r (SEXP_t *s_exp, const char *file, uint32_t line, const char *
                 if (SEXP_rawval_decref (s_exp->s_valp)) {
                         switch (v_dsc.type) {
                         case SEXP_VALTYPE_STRING:
-                                sm_free (v_dsc.hdr);
+				oscap_aligned_free(v_dsc.hdr);
                                 break;
                         case SEXP_VALTYPE_NUMBER:
-                                sm_free (v_dsc.hdr);
+				oscap_aligned_free(v_dsc.hdr);
                                 break;
                         case SEXP_VALTYPE_LIST:
                                 if (SEXP_LCASTP(v_dsc.mem)->b_addr != NULL)
                                         SEXP_rawval_lblk_free ((uintptr_t)SEXP_LCASTP(v_dsc.mem)->b_addr, SEXP_free_r);
 
-                                sm_free (v_dsc.hdr);
+				oscap_aligned_free(v_dsc.hdr);
                                 break;
                         default:
                                 abort ();

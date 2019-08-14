@@ -1,4 +1,5 @@
 #!/bin/bash
+. $builddir/tests/test_common.sh
 
 set -e
 set -o pipefail
@@ -18,7 +19,7 @@ echo "Stderr file = $stderr"
 echo "Result file = $result"
 [ -f $stderr ]; [ ! -s $stderr ]; :> $stderr
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 
 assert_exists 1 '/Benchmark/Rule'
 assert_exists 1 '/Benchmark/Rule/fix'
@@ -39,7 +40,7 @@ $OSCAP xccdf eval --remediate --results $result $srcdir/${name}.xccdf.xml 2> $st
 sed -i -E "/^W: oscap: The xccdf:rule-result\/xccdf:instance element was not found./d" "$stderr"
 [ -f $stderr ]; [ ! -s $stderr ]; rm $stderr
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 
 assert_exists 1 '/Benchmark/Rule'
 assert_exists 1 '/Benchmark/Rule/fix'

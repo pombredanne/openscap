@@ -11,6 +11,8 @@
 # Normalized path.
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/sbin:/usr/local/bin
 
+PREFERRED_PYTHON=@PREFERRED_PYTHON_PATH@
+
 # Some of the tests rely on the "C" locale and would fail with some locales.
 LC_ALL=C
 export LC_ALL
@@ -72,31 +74,27 @@ function test_init {
 }
 
 # Execute test and report its results.
-function test_run {    
-    printf "+ %-60s" "$1";
-    echo -e "TEST: $1" >&2; 
+function test_run {
+    printf "+ %-60s\n" "$1";
+    echo -e "TEST: $1" >&2;
     shift
     ( exec 1>&2 ; eval "$@" )
     ret_val=$?
-    if [ $ret_val -eq 0 ]; then 
-	echo "[ PASS ]"; 
+    if [ $ret_val -eq 0 ]; then
 	echo -e "RESULT: PASSED\n" >&2
 	return 0;
     elif [ $ret_val -eq 1 ]; then
-        result=$[$result + $ret_val]
-	echo "[ FAIL ]"; 
+	result=$(($result + $ret_val))
 	echo -e "RESULT: FAILED\n" >&2
 	return 1;
     elif [ $ret_val -eq 255 ]; then
-	echo "[ SKIP ]"; 
 	echo -e "RESULT: SKIPPED\n" >&2
-	return 0; 
+	return 0;
     else
-        result=$[$result + $ret_val]
-	echo "[ WARN ]"; 
+	result=$(($result + $ret_val))
 	echo -e "RESULT: WARNING (unknown exist status $ret_val)\n" >&2
 	return 1;
-    fi    
+    fi
 }
 
 # Clean-up testing environment.
@@ -124,10 +122,10 @@ function require {
 # Check if probe exists, use it as follows:
 # probecheck 'probe' || return 255
 function probecheck {
-    if [ ! -f @CMAKE_BINARY_DIR@/src/OVAL/probes/probe_${1} ]; then
-	echo -e "Probe $1 does not exist!\n"
-	return 255; # Test is not applicable.
-    fi
+	if ! $OSCAP --version | grep "\<"$1"\>" >/dev/null ; then
+		echo -e "Probe $1 does not exist!\n"
+		return 255 # Test is not applicable.
+	fi
     return 0
 }
 
@@ -168,10 +166,10 @@ function verify_results {
 	
 	if [ ! $RES = $CMT ]; then
 	    echo "Result of ${OVAL_ID} should be ${CMT} and is ${RES}"
-	    ret_val=$[$ret_val + 1]
+	    ret_val=$(($ret_val + 1))
 	fi
-	
-	ID=$[$ID+1]
+
+	ID=$(($ID+1))
     done
 
     return $([ $ret_val -eq 0 ])

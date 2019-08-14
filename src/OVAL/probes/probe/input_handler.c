@@ -27,7 +27,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <string.h>
-#include <seap.h>
+#include "_seap.h"
 #include <probe-api.h>
 
 #include "common/debug_priv.h"
@@ -37,6 +37,11 @@
 #include "rcache.h"
 #include "input_handler.h"
 #include "common/compat_pthread_barrier.h"
+
+static void pthread_attr_cleanup_handler(void *arg)
+{
+	pthread_attr_destroy(arg);
+}
 
 /*
  * The input handler waits for incomming eval requests and either returns
@@ -54,7 +59,7 @@ void *probe_input_handler(void *arg)
         SEXP_t *probe_in, *probe_out, *oid;
 
 #if defined(HAVE_PTHREAD_SETNAME_NP)
-# if defined(__APPLE__)
+# if defined(OS_APPLE)
 	pthread_setname_np("input_handler");
 # else
 	pthread_setname_np(pthread_self(), "input_handler");
@@ -74,7 +79,7 @@ void *probe_input_handler(void *arg)
                 return (NULL);
         }
 
-        pthread_cleanup_push((void(*)(void *))pthread_attr_destroy, (void *)&pth_attr);
+	pthread_cleanup_push(pthread_attr_cleanup_handler, (void *)&pth_attr);
         
         switch (errno = pthread_barrier_wait(&OSCAP_GSYM(th_barrier)))
         {
@@ -118,14 +123,10 @@ void *probe_input_handler(void *arg)
 		if (oid != NULL) {
 			SEXP_VALIDATE(oid);
 
-			dD("offline_mode=%08x", OSCAP_GSYM(offline_mode));
-			dD("offline_mode_supported=%08x", OSCAP_GSYM(offline_mode_supported));
-
-			if ((OSCAP_GSYM(offline_mode) != PROBE_OFFLINE_NONE) &&
-			    !(OSCAP_GSYM(offline_mode) & OSCAP_GSYM(offline_mode_supported))) {
+			if (probe->offline_mode && probe->supported_offline_mode == PROBE_OFFLINE_NONE) {
 				dW("Requested offline mode is not supported by %s.", probe->name);
 				/* Return a dummy. */
-				probe_out = probe_cobj_new(OSCAP_GSYM(offline_mode_cobjflag), NULL, NULL, NULL);
+				probe_out = probe_cobj_new(SYSCHAR_FLAG_NOT_APPLICABLE, NULL, NULL, NULL);
 				probe_ret = 0;
 				SEXP_free(oid);
 				SEXP_free(probe_in);
@@ -159,13 +160,12 @@ void *probe_input_handler(void *arg)
 	                                        SEXP_free(skip_flag);
 	                                        SEXP_free(obj_mask);
 					} else {
-						probe_pwpair_t *pair;
 
-	                                        SEXP_free(oid);
+						SEXP_free(oid);
 						SEXP_free(skip_flag);
 						SEXP_free(obj_mask);
 
-	                                        pair = oscap_talloc(probe_pwpair_t);
+						probe_pwpair_t *pair = malloc(sizeof(probe_pwpair_t));
 						pair->probe = probe;
 						pair->pth   = probe_worker_new();
 						pair->pth->sid = SEAP_msg_id(seap_request);

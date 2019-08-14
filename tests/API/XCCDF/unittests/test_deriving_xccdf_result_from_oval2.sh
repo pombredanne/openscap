@@ -1,7 +1,10 @@
 #!/bin/bash
+. $builddir/tests/test_common.sh
 
 set -e
 set -o pipefail
+
+touch not_executable
 
 name=$(basename $0 .sh)
 
@@ -14,7 +17,7 @@ echo "Stderr file = $stderr"
 echo "Result file = $result"
 [ -f $stderr ]; [ ! -s $stderr ]; rm $stderr
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 
 assert_exists 2 '//rule-result'
 assert_exists 2 '//rule-result/result'
@@ -31,3 +34,5 @@ assert_exists 1 '//score'
 assert_exists 1 '//score[text()="100.000000"]'
 
 rm $result
+
+rm not_executable

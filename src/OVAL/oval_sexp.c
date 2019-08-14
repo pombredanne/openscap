@@ -39,7 +39,7 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-#include <seap.h>
+#include "_seap.h"
 #include <assert.h>
 
 #include "oval_probe_impl.h"
@@ -50,7 +50,6 @@
 #include "adt/oval_string_map_impl.h"
 #include "common/debug_priv.h"
 #include "common/_error.h"
-#include "public/oval_version.h"
 #include "public/oval_schema_version.h"
 
 
@@ -108,7 +107,9 @@ static SEXP_t *oval_entity_to_sexp(struct oval_entity *ent)
 				 /* operation */
 				 r1 = SEXP_string_new(":operation", 10),
 				 r2 = SEXP_number_newu_32(oval_entity_get_operation(ent)), NULL);
-	SEXP_vfree(r0, r1, r2, NULL);
+	SEXP_free(r0);
+	SEXP_free(r1);
+	SEXP_free(r2);
 
         if (oval_entity_get_mask(ent)) {
             SEXP_list_add(elm_name, r0 = SEXP_string_new("mask", 4));
@@ -129,7 +130,9 @@ static SEXP_t *oval_entity_to_sexp(struct oval_entity *ent)
 		SEXP_list_add(elm_name, r0 = SEXP_string_new(":var_ref", 8));
 		SEXP_list_add(elm_name, r1 = SEXP_string_newf("%s", oval_variable_get_id(var)));
 		SEXP_list_add(elm, elm_name);
-		SEXP_vfree(r0, r1, elm_name, NULL);
+		SEXP_free(r0);
+		SEXP_free(r1);
+		SEXP_free(elm_name);
 	} else {
 		/* value */
 		struct oval_value *val;
@@ -297,7 +300,9 @@ static SEXP_t *oval_filter_to_sexp(struct oval_filter *filter)
 	elm = probe_ent_creat1("filter",
 			       attr,
 			       r1 = SEXP_string_newf("%s", ste_id));
-	SEXP_vfree(attr, r0, r1, NULL);
+	SEXP_free(attr);
+	SEXP_free(r0);
+	SEXP_free(r1);
 
 	return (elm);
 }
@@ -569,11 +574,15 @@ int oval_object_to_sexp(void *sess, const char *typestr, struct oval_syschar *sy
 		// todo: SEXP_list_push()
 		stmp = SEXP_list_new(r0 = SEXP_string_new("varrefs", 7),
 				     r1 = SEXP_number_newu(varref_cnt), r2 = SEXP_number_newu(ent_cnt), NULL);
-		SEXP_vfree(r0, r1, r2, NULL);
+		SEXP_free(r0);
+		SEXP_free(r1);
+		SEXP_free(r2);
 
 		r0 = SEXP_list_join(stmp, varrefs);
 		SEXP_list_add(obj_sexp, r0);
-		SEXP_vfree(stmp, varrefs, r0, NULL);
+		SEXP_free(stmp);
+		SEXP_free(varrefs);
+		SEXP_free(r0);
 	}
 
 	stmp = SEXP_list_join(obj_sexp, ent_lst);
@@ -654,7 +663,13 @@ static struct oval_record_field *oval_record_field_ITEM_from_sexp(SEXP_t *sexp)
 		return NULL;
 
 	rf = oval_record_field_new(OVAL_RECORD_FIELD_ITEM);
-	oval_record_field_set_name(rf, oval_sysent_get_name(sysent));
+
+	SEXP_t *name_sexp = probe_ent_getattrval(sexp, "name");
+	char *name_str = SEXP_string_cstr(name_sexp);
+	oval_record_field_set_name(rf, name_str);
+	free(name_str);
+	SEXP_free(name_sexp);
+
 	oval_record_field_set_value(rf, oval_sysent_get_value(sysent));
 	oval_record_field_set_datatype(rf, oval_sysent_get_datatype(sysent));
 	oval_record_field_set_mask(rf, oval_sysent_get_mask(sysent));
@@ -692,7 +707,12 @@ int oval_state_to_sexp(void *sess, struct oval_state *state, SEXP_t **out_sexp)
 				 NULL);
 
 	ste = SEXP_list_new(ste_name, NULL);
-	SEXP_vfree(r0, r1, r2, r3, r4, ste_name, NULL);
+	SEXP_free(r0);
+	SEXP_free(r1);
+	SEXP_free(r2);
+	SEXP_free(r3);
+	SEXP_free(r4);
+	SEXP_free(ste_name);
 
 	contents = oval_state_get_contents(state);
 	while (oval_state_content_iterator_has_more(contents)) {
@@ -767,7 +787,8 @@ int oval_state_to_sexp(void *sess, struct oval_state *state, SEXP_t **out_sexp)
 
  fail:
 	oval_state_content_iterator_free(contents);
-	SEXP_vfree(ste, ste_ent, NULL);
+	SEXP_free(ste);
+	SEXP_free(ste_ent);
 	return (-1);
 }
 
@@ -815,7 +836,8 @@ static struct oval_sysent *oval_sexp_to_sysent(struct oval_syschar_model *model,
 	    txt_sexp = probe_ent_getval(sexp);
 	    SEXP_string_cstr_r(txt_sexp, txt, sizeof txt);
 
-	    SEXP_vfree(lvl_sexp, txt_sexp);
+		SEXP_free(lvl_sexp);
+		SEXP_free(txt_sexp);
 
 	    /* TODO: sanity checks */
 
@@ -824,6 +846,8 @@ static struct oval_sysent *oval_sexp_to_sysent(struct oval_syschar_model *model,
 	    oval_message_set_level(msg, lvl);
 	    oval_message_set_text(msg, txt);
 	    oval_sysitem_add_message(item, msg);
+
+	    free(key);
 
 	    return (NULL);
 	}
@@ -919,7 +943,7 @@ static struct oval_sysitem *oval_sexp_to_sysitem(struct oval_syschar_model *mode
 {
 	_A(sexp);
 
-	char *name, *id;
+	char *item_name, *name, *id, *family;
 	SEXP_t *id_sexp;
 	struct oval_sysitem *sysitem = NULL;
 
@@ -934,13 +958,17 @@ static struct oval_sysitem *oval_sexp_to_sysitem(struct oval_syschar_model *mode
 		return sysitem;
         }
 
-	name = probe_ent_getname(sexp);
+	item_name = probe_ent_getname(sexp);
 
-	if (name == NULL) {
+	if (item_name == NULL) {
                 free(id);
 		return NULL;
         } else {
-		char *endptr = strrchr(name, '_');
+		family = item_name;
+		char *endptr = strchr(family, ':');
+		*endptr = '\0';
+		name = endptr + 1;
+		endptr = strrchr(name, '_');
 
 		if (strcmp(endptr, "_item") != 0)
 			goto cleanup;
@@ -948,9 +976,9 @@ static struct oval_sysitem *oval_sexp_to_sysitem(struct oval_syschar_model *mode
 		*endptr = '\0';	// cut off the '_item' part
 	}
 
-	int type = oval_str_to_subtype(name);
+	int type = oval_subtype_from_str(family, name);
 
-	dD("Syschar entry type: %d '%s' => %s", type, name,
+	dD("Syschar entry type: %d '%s' => %s", type, item_name,
 	   ((type != OVAL_SUBTYPE_UNKNOWN) ? "decoded OK" : "FAILED to decode"));
 #ifndef NDEBUG
 	if (type == OVAL_SUBTYPE_UNKNOWN)
@@ -973,7 +1001,7 @@ static struct oval_sysitem *oval_sexp_to_sysitem(struct oval_syschar_model *mode
 
  cleanup:
         free(id);
-	free(name);
+	free(item_name);
 	return sysitem;
 }
 

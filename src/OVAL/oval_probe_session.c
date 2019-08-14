@@ -37,7 +37,6 @@
 #include <stdlib.h>
 
 #include "common/_error.h"
-#include "common/assume.h"
 #include "common/bfind.h"
 #include "common/debug_priv.h"
 
@@ -47,7 +46,8 @@
 #include "_oval_probe_handler.h"
 #include "oval_probe_impl.h"
 #include "oval_probe_ext.h"
-#include "oval_probe_meta.h"
+#include "probe-table.h"
+#include "oval_types.h"
 
 #if defined(OSCAP_THREAD_SAFE)
 #include <pthread.h>
@@ -93,7 +93,6 @@ static void oval_probe_session_libinit(void)
 	SEXP_free((SEXP_t *)exp);
 
         ncache_libinit();
-        oval_probe_tblinit();
 }
 
 /**
@@ -120,9 +119,6 @@ static void __init_once(void)
 
 static void oval_probe_session_init(oval_probe_session_t *sess, struct oval_syschar_model *model)
 {
-        void *handler_arg;
-        register size_t i;
-
         sess->ph = oval_phtbl_new();
         sess->sys_model = model;
         sess->flg = 0;
@@ -132,25 +128,24 @@ static void oval_probe_session_init(oval_probe_session_t *sess, struct oval_sysc
 
         __init_once();
 
-        dD("__probe_meta_count = %zu", OSCAP_GSYM(__probe_meta_count));
-
-        for (i = 0; i < OSCAP_GSYM(__probe_meta_count); ++i) {
-                handler_arg = NULL;
-
-                if (OSCAP_GSYM(__probe_meta)[i].flags & OVAL_PROBEMETA_EXTERNAL)
-                        handler_arg = sess->pext;
-
-                oval_probe_handler_set(sess->ph,
-				       OSCAP_GSYM(__probe_meta)[i].otype,
-				       OSCAP_GSYM(__probe_meta)[i].handler, handler_arg);
-        }
+	oval_probe_handler_t *probe_handler;
+	int probe_count = probe_table_size();
+	for (int i = 0; i < probe_count; i++) {
+		oval_subtype_t type = probe_table_at_index(i);
+		if ((oval_independent_subtype_t) type == OVAL_INDEPENDENT_SYSCHAR_SUBTYPE) {
+			probe_handler = &oval_probe_sys_handler;
+		} else {
+			probe_handler = &oval_probe_ext_handler;
+		}
+		oval_probe_handler_set(sess->ph, type, probe_handler, sess->pext);
+	}
 
         oval_probe_handler_set(sess->ph, OVAL_SUBTYPE_ALL, oval_probe_ext_handler, sess->pext); /* special case for reset */
 }
 
 oval_probe_session_t *oval_probe_session_new(struct oval_syschar_model *model)
 {
-        oval_probe_session_t *sess = oscap_talloc(oval_probe_session_t);
+        oval_probe_session_t *sess = malloc(sizeof(oval_probe_session_t));
         oval_probe_session_init(sess, model);
         return sess;
 }
@@ -177,12 +172,6 @@ void oval_probe_session_destroy(oval_probe_session_t *sess)
 {
 	oval_probe_session_free(sess);
 	free(sess);
-}
-
-int oval_probe_session_close(oval_probe_session_t *sess)
-{
-        /* send close to all probes */
-        return(-1);
 }
 
 int oval_probe_session_reset(oval_probe_session_t *sess, struct oval_syschar_model *sysch)
@@ -213,12 +202,6 @@ int oval_probe_session_abort(oval_probe_session_t *sess)
 	}
 
         return ph->func(OVAL_SUBTYPE_ALL, ph->uptr, PROBE_HANDLER_ACT_ABORT);
-}
-
-int oval_probe_session_sethandler(oval_probe_session_t *sess, oval_subtype_t type, oval_probe_handler_t handler, void *ptr)
-{
-	dE("Operation not supported");
-        return(-1);
 }
 
 struct oval_syschar_model *oval_probe_session_getmodel(oval_probe_session_t *sess)

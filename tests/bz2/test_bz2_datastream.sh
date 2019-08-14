@@ -23,7 +23,7 @@ bzip2 $xccdf
 $OSCAP info "${xccdf}.bz2" 2> $stderr
 [ -f $stderr ]; [ ! -s $stderr ]
 
-$OSCAP xccdf validate-xml "${xccdf}.bz2" > $stderr
+$OSCAP xccdf validate "${xccdf}.bz2" > $stderr
 [ ! -s $stderr ]
 bash $builddir/run ./test_bz2_memory_source "${xccdf}.bz2" | grep 'XCCDF Checklist'
 
@@ -66,6 +66,6 @@ $OSCAP xccdf generate report --output $report "${arf}.bz2" 2> $stderr
 [ -f $report ]
 bash $builddir/run ./test_bz2_memory_source "${arf}.bz2" | grep 'ARF Result Datastream'
 
-grep 'OVAL details' $report
+grep 'OVAL test results details' $report
 rm $stderr
 rm -rf $dir

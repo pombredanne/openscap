@@ -24,7 +24,9 @@
 #include <config.h>
 #endif
 
-#include <oval_probe.h>
+#if defined(OVAL_PROBES_ENABLED)
+# include <oval_probe.h>
+#endif
 #include <oval_agent_api.h>
 #include <oval_agent_xccdf_api.h>
 #include <oval_results.h>
@@ -46,7 +48,7 @@
 #include <getopt.h>
 #endif
 
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 #include <io.h>
 #include <windows.h>
 #else
@@ -60,7 +62,7 @@
 #include "oscap.h"
 #include "oscap_source.h"
 #include <oscap_debug.h>
-#include "util.h"
+#include "oscap_helpers.h"
 
 #ifndef O_NOFOLLOW
 #define O_NOFOLLOW 0
@@ -76,7 +78,7 @@ static bool getopt_generate(int argc, char **argv, struct oscap_action *action);
 static int app_xccdf_xslt(const struct oscap_action *action);
 static int app_generate_fix(const struct oscap_action *action);
 
-#define XCCDF_SUBMODULES_NUM		8
+#define XCCDF_SUBMODULES_NUM		7
 #define XCCDF_GEN_SUBMODULES_NUM	5 /* See actual arrays
 						initialization below. */
 static struct oscap_module* XCCDF_SUBMODULES[XCCDF_SUBMODULES_NUM];
@@ -96,22 +98,10 @@ static struct oscap_module XCCDF_RESOLVE = {
     .summary = "Resolve an XCCDF document",
     .usage = "[options] -o output-xccdf.xml input-xccdf.xml",
     .help =
-        "Options:\n"
-        "   --force\r\t\t\t\t - Force resolving XCCDF document even if it is aleready marked as resolved.",
+		"Options:\n"
+		"   --force                       - Force resolving XCCDF document even if it is aleready marked as resolved.",
     .opt_parser = getopt_xccdf,
     .func = app_xccdf_resolve
-};
-
-static struct oscap_module XCCDF_VALIDATE_XML = {
-    .name = "validate-xml",
-    .parent = &OSCAP_XCCDF_MODULE,
-    .summary = "Validate XCCDF XML content",
-    .usage = "xccdf-file.xml",
-    .opt_parser = getopt_xccdf,
-	.func = app_xccdf_validate,
-	.help = "Options:\n"
-		"   --schematron\r\t\t\t\t - Use schematron-based validation in addition to XML Schema\n"
-	,
 };
 
 static struct oscap_module XCCDF_VALIDATE = {
@@ -122,7 +112,7 @@ static struct oscap_module XCCDF_VALIDATE = {
     .opt_parser = getopt_xccdf,
 	.func = app_xccdf_validate,
 	.help = "Options:\n"
-		"   --schematron\r\t\t\t\t - Use schematron-based validation in addition to XML Schema\n"
+		"   --schematron                  - Use schematron-based validation in addition to XML Schema\n"
 	,
 };
 
@@ -134,18 +124,18 @@ static struct oscap_module XCCDF_EXPORT_OVAL_VARIABLES = {
     .opt_parser = getopt_xccdf,
     .func = app_xccdf_export_oval_variables,
 	.help =	"Options:\n"
-		"   --profile <name>\r\t\t\t\t - The name of Profile to be evaluated.\n"
-		"   --skip-valid \r\t\t\t\t - Skip validation.\n"
-		"   --fetch-remote-resources \r\t\t\t\t - Download remote content referenced by XCCDF.\n"
-		"   --datastream-id <id> \r\t\t\t\t - ID of the datastream in the collection to use.\n"
-		"                        \r\t\t\t\t   (only applicable for source datastreams)\n"
-		"   --xccdf-id <id> \r\t\t\t\t - ID of component-ref with XCCDF in the datastream that should be evaluated.\n"
-		"                   \r\t\t\t\t   (only applicable for source datastreams)\n"
-		"   --benchmark-id <id> \r\t\t\t\t - ID of XCCDF Benchmark in some component in the datastream that should be evaluated.\n"
-		"                   \r\t\t\t\t   (only applicable for source datastreams)\n"
-		"                   \r\t\t\t\t   (only applicable when datastream-id AND xccdf-id are not specified)\n"
-		"   --cpe <name>\r\t\t\t\t - Use given CPE dictionary or language (autodetected)\n"
-		"               \r\t\t\t\t   for applicability checks.\n"
+		"   --profile <name>              - The name of Profile to be evaluated.\n"
+		"   --skip-valid                  - Skip validation.\n"
+		"   --fetch-remote-resources      - Download remote content referenced by XCCDF.\n"
+		"   --datastream-id <id>          - ID of the datastream in the collection to use.\n"
+		"                                   (only applicable for source datastreams)\n"
+		"   --xccdf-id <id>               - ID of component-ref with XCCDF in the datastream that should be evaluated.\n"
+		"                                   (only applicable for source datastreams)\n"
+		"   --benchmark-id <id>           - ID of XCCDF Benchmark in some component in the datastream that should be evaluated.\n"
+		"                                   (only applicable for source datastreams)\n"
+		"                                   (only applicable when datastream-id AND xccdf-id are not specified)\n"
+		"   --cpe <name>                  - Use given CPE dictionary or language (autodetected)\n"
+		"                                   for applicability checks.\n"
 	,
 };
 
@@ -156,39 +146,36 @@ static struct oscap_module XCCDF_EVAL = {
     .usage = "[options] INPUT_FILE [oval-definitions-files]",
     .help =
 		"INPUT_FILE - XCCDF file or a source data stream file\n\n"
-        "Options:\n"
-        "   --profile <name>\r\t\t\t\t - The name of Profile to be evaluated.\n"
-	"   --rule <name>\r\t\t\t\t - The name of a single rule to be evaluated.\n"
-        "   --tailoring-file <file>\r\t\t\t\t - Use given XCCDF Tailoring file.\n"
-        "   --tailoring-id <component-id>\r\t\t\t\t - Use given DS component as XCCDF Tailoring file.\n"
-        "   --cpe <name>\r\t\t\t\t - Use given CPE dictionary or language (autodetected)\n"
-        "               \r\t\t\t\t   for applicability checks.\n"
-        "   --oval-results\r\t\t\t\t - Save OVAL results as well.\n"
-        "   --sce-results\r\t\t\t\t - Save SCE results as well. (DEPRECATED! use --check-engine-results)\n"
-        "   --check-engine-results\r\t\t\t\t - Save results from check engines loaded from plugins as well.\n"
-        "   --export-variables\r\t\t\t\t - Export OVAL external variables provided by XCCDF.\n"
-        "   --results <file>\r\t\t\t\t - Write XCCDF Results into file.\n"
-        "   --results-arf <file>\r\t\t\t\t - Write ARF (result data stream) into file.\n"
-        "   --stig-viewer <file>\r\t\t\t\t - Writes XCCDF results into FILE in a format readable by DISA STIG Viewer\n"
-        "   --thin-results\r\t\t\t\t - Thin Results provides only minimal amount of information in OVAL/ARF results.\n"
-        "                 \r\t\t\t\t   The option --without-syschar is automatically enabled when you use Thin Results.\n"
-        "   --without-syschar \r\t\t\t\t - Don't provide system characteristic in OVAL/ARF result files.\n"
-        "   --report <file>\r\t\t\t\t - Write HTML report into file.\n"
-        "   --skip-valid \r\t\t\t\t - Skip validation.\n"
-	"   --fetch-remote-resources \r\t\t\t\t - Download remote content referenced by XCCDF.\n"
-	"   --progress \r\t\t\t\t - Switch to sparse output suitable for progress reporting.\n"
-	"              \r\t\t\t\t   Format is \"$rule_id:$result\\n\".\n"
-	"   --datastream-id <id> \r\t\t\t\t - ID of the datastream in the collection to use.\n"
-	"                        \r\t\t\t\t   (only applicable for source datastreams)\n"
-	"   --xccdf-id <id> \r\t\t\t\t - ID of component-ref with XCCDF in the datastream that should be evaluated.\n"
-	"                   \r\t\t\t\t   (only applicable for source datastreams)\n"
-	"   --benchmark-id <id> \r\t\t\t\t - ID of XCCDF Benchmark in some component in the datastream that should be evaluated.\n"
-	"                   \r\t\t\t\t   (only applicable for source datastreams)\n"
-	"                   \r\t\t\t\t   (only applicable when datastream-id AND xccdf-id are not specified)\n"
-	"   --remediate \r\t\t\t\t - Automatically execute XCCDF fix elements for failed rules.\n"
-	"               \r\t\t\t\t   Use of this option is always at your own risk.\n"
-	"   --verbose <verbosity_level>\r\t\t\t\t - Turn on verbose mode at specified verbosity level.\n"
-	"   --verbose-log-file <file>\r\t\t\t\t - Write verbose informations into file.\n",
+		"Options:\n"
+		"   --profile <name>              - The name of Profile to be evaluated.\n"
+		"   --rule <name>                 - The name of a single rule to be evaluated.\n"
+		"   --tailoring-file <file>       - Use given XCCDF Tailoring file.\n"
+		"   --tailoring-id <component-id> - Use given DS component as XCCDF Tailoring file.\n"
+		"   --cpe <name>                  - Use given CPE dictionary or language (autodetected)\n"
+		"                                   for applicability checks.\n"
+		"   --oval-results                - Save OVAL results as well.\n"
+		"   --check-engine-results        - Save results from check engines loaded from plugins as well.\n"
+		"   --export-variables            - Export OVAL external variables provided by XCCDF.\n"
+		"   --results <file>              - Write XCCDF Results into file.\n"
+		"   --results-arf <file>          - Write ARF (result data stream) into file.\n"
+		"   --stig-viewer <file>          - Writes XCCDF results into FILE in a format readable by DISA STIG Viewer\n"
+		"   --thin-results                - Thin Results provides only minimal amount of information in OVAL/ARF results.\n"
+		"                                   The option --without-syschar is automatically enabled when you use Thin Results.\n"
+		"   --without-syschar             - Don't provide system characteristic in OVAL/ARF result files.\n"
+		"   --report <file>               - Write HTML report into file.\n"
+		"   --skip-valid                  - Skip validation.\n"
+		"   --fetch-remote-resources      - Download remote content referenced by XCCDF.\n"
+		"   --progress                    - Switch to sparse output suitable for progress reporting.\n"
+		"                                   Format is \"$rule_id:$result\\n\".\n"
+		"   --datastream-id <id>          - ID of the datastream in the collection to use.\n"
+		"                                   (only applicable for source datastreams)\n"
+		"   --xccdf-id <id>               - ID of component-ref with XCCDF in the datastream that should be evaluated.\n"
+		"                                   (only applicable for source datastreams)\n"
+		"   --benchmark-id <id>           - ID of XCCDF Benchmark in some component in the datastream that should be evaluated.\n"
+		"                                   (only applicable for source datastreams)\n"
+		"                                   (only applicable when datastream-id AND xccdf-id are not specified)\n"
+		"   --remediate                   - Automatically execute XCCDF fix elements for failed rules.\n"
+		"                                   Use of this option is always at your own risk.\n",
     .opt_parser = getopt_xccdf,
     .func = app_evaluate_xccdf
 };
@@ -199,24 +186,21 @@ static struct oscap_module XCCDF_REMEDIATE = {
 	.summary =	"Perform remediation driven by XCCDF TestResult file or ARF.",
 	.usage =	"[options] INPUT_FILE [oval-definitions-files]",
 	.help =		"INPUT_FILE - XCCDF TestResult file or ARF\n\n"
-			"Options:\n"
-			"  --result-id\r\t\t\t\t - TestResult ID to be processed. Default is the most recent one.\n"
-			"  --skip-valid\r\t\t\t\t - Skip validation.\n"
-			"  --cpe <name>\r\t\t\t\t - Use given CPE dictionary or language (autodetected)\n"
-			"              \r\t\t\t\t   for applicability checks.\n"
-			"  --fetch-remote-resources\r\t\t\t\t - Download remote content referenced by XCCDF.\n"
-			"  --results <file>\r\t\t\t\t - Write XCCDF Results into file.\n"
-			"  --results-arf <file>\r\t\t\t\t - Write ARF (result data stream) into file.\n"
-			"  --stig-viewer <file>\r\t\t\t\t - Writes XCCDF results into FILE in a format readable by DISA STIG Viewer\n"
-			"  --report <file>\r\t\t\t\t - Write HTML report into file.\n"
-			"  --oval-results\r\t\t\t\t - Save OVAL results.\n"
-			"  --export-variables\r\t\t\t\t - Export OVAL external variables provided by XCCDF.\n"
-			"  --sce-results\r\t\t\t\t - Save SCE results. (DEPRECATED! use --check-engine-results)\n"
-			"  --check-engine-results\r\t\t\t\t - Save results from check engines loaded from plugins as well.\n"
-			"  --progress \r\t\t\t\t - Switch to sparse output suitable for progress reporting.\n"
-			"             \r\t\t\t\t   Format is \"$rule_id:$result\\n\".\n"
-			"  --verbose <verbosity_level>\r\t\t\t\t - Turn on verbose mode at specified verbosity level.\n"
-			"  --verbose-log-file <file>\r\t\t\t\t - Write verbose informations into file.\n"
+		"Options:\n"
+		"   --result-id                   - TestResult ID to be processed. Default is the most recent one.\n"
+		"   --skip-valid                  - Skip validation.\n"
+		"   --cpe <name>                  - Use given CPE dictionary or language (autodetected)\n"
+		"                                   for applicability checks.\n"
+		"   --fetch-remote-resources      - Download remote content referenced by XCCDF.\n"
+		"   --results <file>              - Write XCCDF Results into file.\n"
+		"   --results-arf <file>          - Write ARF (result data stream) into file.\n"
+		"   --stig-viewer <file>          - Writes XCCDF results into FILE in a format readable by DISA STIG Viewer\n"
+		"   --report <file>               - Write HTML report into file.\n"
+		"   --oval-results                - Save OVAL results.\n"
+		"   --export-variables            - Export OVAL external variables provided by XCCDF.\n"
+		"   --check-engine-results        - Save results from check engines loaded from plugins as well.\n"
+		"   --progress                    - Switch to sparse output suitable for progress reporting.\n"
+		"                                   Format is \"$rule_id:$result\\n\".\n"
 	,
 	.opt_parser = getopt_xccdf,
 	.func = app_xccdf_remediate
@@ -224,7 +208,7 @@ static struct oscap_module XCCDF_REMEDIATE = {
 
 #define GEN_OPTS \
         "Generate options:\n" \
-        "   --profile <profile-id>\r\t\t\t\t - Apply profile with given ID to the Benchmark before further processing takes place.\n"
+	"   --profile <profile-id>        - Apply profile with given ID to the Benchmark before further processing takes place.\n"
 
 static struct oscap_module XCCDF_GENERATE = {
     .name = "generate",
@@ -243,11 +227,10 @@ static struct oscap_module XCCDF_GEN_REPORT = {
     .summary = "Generate results report",
     .usage = "[options] xccdf-file.xml",
     .help = GEN_OPTS
-        "\nReport Options:\n"
-        "   --result-id <id>\r\t\t\t\t - TestResult ID to be processed. Default is the most recent one.\n"
-        "   --show <result-type*>\r\t\t\t\t - Rule results to show. Defaults to everything but notselected and notapplicable.\n"
-        "   --output <file>\r\t\t\t\t - Write the document into file.\n"
-        "   --oval-template <template-string> - Template which will be used to obtain OVAL result files.\n",
+		"\nReport Options:\n"
+		"   --result-id <id>              - TestResult ID to be processed. Default is the most recent one.\n"
+		"   --output <file>               - Write the document into file.\n"
+		"   --oval-template <template-string> - Template which will be used to obtain OVAL result files.\n",
     .opt_parser = getopt_xccdf,
     .user = "xccdf-report.xsl",
     .func = app_xccdf_xslt
@@ -259,11 +242,11 @@ static struct oscap_module XCCDF_GEN_GUIDE = {
     .summary = "Generate security guide",
     .usage = "[options] xccdf-file.xml",
     .help = GEN_OPTS
-        "\nGuide Options:\n"
-        "   --output <file>\r\t\t\t\t - Write the document into file.\n"
-        "   --hide-profile-info\r\t\t\t\t - Do not output additional information about selected profile.\n"
-		"   --benchmark-id <id> \r\t\t\t\t - ID of XCCDF Benchmark in some component in the datastream that should be used.\n"
-		"                   \r\t\t\t\t   (only applicable for source datastreams)\n",
+		"\nGuide Options:\n"
+		"   --output <file>               - Write the document into file.\n"
+		"   --hide-profile-info           - Do not output additional information about selected profile.\n"
+		"   --benchmark-id <id>           - ID of XCCDF Benchmark in some component in the datastream that should be used.\n"
+		"                                   (only applicable for source datastreams)\n",
     .opt_parser = getopt_xccdf,
     .user = "xccdf-guide.xsl",
     .func = app_xccdf_xslt
@@ -276,18 +259,18 @@ static struct oscap_module XCCDF_GEN_FIX = {
     .usage = "[options] xccdf-file.xml",
     .help = GEN_OPTS
         "\nFix Options:\n"
-		"   --fix-type <type>\r\t\t\t\t - Fix type. Should be one of: bash, ansible, puppet, anaconda (default: bash).\n"
-        "   --output <file>\r\t\t\t\t - Write the script into file.\n"
-        "   --result-id <id>\r\t\t\t\t - Fixes will be generated for failed rule-results of the specified TestResult.\n"
-		"   --template <id|filename>\r\t\t\t\t - Fix template. (default: bash)\n"
-		"   --benchmark-id <id> \r\t\t\t\t - ID of XCCDF Benchmark in some component in the datastream that should be used.\n"
-		"                   \r\t\t\t\t   (only applicable for source datastreams)\n"
-		"   --xccdf-id <id> \r\t\t\t\t - ID of component-ref with XCCDF in the datastream that should be evaluated.\n"
-		"                   \r\t\t\t\t   (only applicable for source datastreams)\n"
-		"   --tailoring-file <file>\r\t\t\t\t - Use given XCCDF Tailoring file.\n"
-		"                   \r\t\t\t\t   (only applicable for source datastreams)\n"
-		"   --tailoring-id <component-id>\r\t\t\t\t - Use given DS component as XCCDF Tailoring file.\n"
-		"                   \r\t\t\t\t   (only applicable for source datastreams)\n",
+		"   --fix-type <type>             - Fix type. Should be one of: bash, ansible, puppet, anaconda (default: bash).\n"
+		"   --output <file>               - Write the script into file.\n"
+		"   --result-id <id>              - Fixes will be generated for failed rule-results of the specified TestResult.\n"
+		"   --template <id|filename>      - Fix template. (default: bash)\n"
+		"   --benchmark-id <id>           - ID of XCCDF Benchmark in some component in the datastream that should be used.\n"
+		"                                   (only applicable for source datastreams)\n"
+		"   --xccdf-id <id>               - ID of component-ref with XCCDF in the datastream that should be evaluated.\n"
+		"                                   (only applicable for source datastreams)\n"
+		"   --tailoring-file <file>       - Use given XCCDF Tailoring file.\n"
+		"                                   (only applicable for source datastreams)\n"
+		"   --tailoring-id <component-id> - Use given DS component as XCCDF Tailoring file.\n"
+		"                                   (only applicable for source datastreams)\n",
     .opt_parser = getopt_xccdf,
     .user = "legacy-fix.xsl",
     .func = app_generate_fix
@@ -299,9 +282,9 @@ static struct oscap_module XCCDF_GEN_CUSTOM = {
     .summary = "Generate a custom output (depending on given XSLT file) from an XCCDF file",
     .usage = "--stylesheet <file> [--output <file>] xccdf-file.xml",
     .help = GEN_OPTS
-        "\nCustom Options:\n"
-        "   --stylesheet <file>\r\t\t\t\t - Specify an absolute path to a custom stylesheet to format the output.\n"
-        "   --output <file>\r\t\t\t\t - Write the document into file.\n",
+		"\nCustom Options:\n"
+		"   --stylesheet <file>           - Specify an absolute path to a custom stylesheet to format the output.\n"
+		"   --output <file>               - Write the document into file.\n",
     .opt_parser = getopt_xccdf,
     .user = NULL,
     .func = app_xccdf_xslt
@@ -319,7 +302,6 @@ static struct oscap_module* XCCDF_SUBMODULES[XCCDF_SUBMODULES_NUM] = {
     &XCCDF_EVAL,
     &XCCDF_RESOLVE,
     &XCCDF_VALIDATE,
-    &XCCDF_VALIDATE_XML,
     &XCCDF_EXPORT_OVAL_VARIABLES,
     &XCCDF_GENERATE,
 	&XCCDF_REMEDIATE,
@@ -331,7 +313,7 @@ static struct oscap_module* XCCDF_SUBMODULES[XCCDF_SUBMODULES_NUM] = {
  * PASS:green(32), FAIL:red(31), ERROR:lred(1;31), UNKNOWN:grey(1;30), NOT_APPLICABLE:default bold(1), NOT_CHECKED:default bold(1),
  * NOT_SELECTED:default dim(2), INFORMATIONAL:blue(34), FIXED:yellow(1;33)
  */
-#if defined(_WIN32)
+#if defined(OS_WINDOWS)
 int RESULT_COLORS[] = {0, 10, 12, 12, 8, 15, 15, 15, 9, 14};
 #else
 static const char * RESULT_COLORS[] = {"", "32", "31", "1;31", "1;30", "1", "1", "2", "34", "1;33" };
@@ -352,7 +334,7 @@ static int callback_scr_rule(struct xccdf_rule *rule, void *arg)
 
 	/* print */
 	if (isatty(1)) {
-#if defined(_WIN32)
+#if defined(OS_WINDOWS)
 		HANDLE console;
 		console = GetStdHandle(STD_OUTPUT_HANDLE);
 		printf("Title");
@@ -365,7 +347,7 @@ static int callback_scr_rule(struct xccdf_rule *rule, void *arg)
 	} else
 		printf("Title\r\t%s\n", title);
 	free((char *)title);
-#if defined(_WIN32)
+#if defined(OS_WINDOWS)
 	printf("Rule\t%s\n", rule_id);
 #else
 	printf("Rule\r\t%s\n", rule_id);
@@ -375,7 +357,7 @@ static int callback_scr_rule(struct xccdf_rule *rule, void *arg)
 	while (xccdf_ident_iterator_has_more(idents)) {
 		const struct xccdf_ident *ident = xccdf_ident_iterator_next(idents);
 		const char *ident_id = xccdf_ident_get_id(ident);
-#if defined(_WIN32)
+#if defined(OS_WINDOWS)
 		printf("Ident\t%s\n", ident_id);
 #else
 		printf("Ident\r\t%s\n", ident_id);
@@ -397,14 +379,14 @@ static int callback_scr_result(struct xccdf_rule_result *rule_result, void *arg)
 		return 0;
 
 	/* print result */
-#if defined(_WIN32)
+#if defined(OS_WINDOWS)
 	printf("Result\t");
 #else
 	printf("Result\r\t");
 #endif
 	const char * result_str = xccdf_test_result_type_get_text(result);
 	if (isatty(1)) {
-#if defined(_WIN32)
+#if defined(OS_WINDOWS)
 		HANDLE console;
 		console = GetStdHandle(STD_OUTPUT_HANDLE);
 		SetConsoleTextAttribute(console, RESULT_COLORS[result]);
@@ -554,9 +536,6 @@ int app_evaluate_xccdf(const struct oscap_action *action)
 	int result = OSCAP_ERROR;
 #if defined(HAVE_SYSLOG_H)
 	int priority = LOG_NOTICE;
-	if (!oscap_set_verbose(action->verbosity_level, action->f_verbose_log, false)) {
-		goto cleanup;
-	}
 
 	/* syslog message */
 	syslog(priority, "Evaluation started. Content: %s, Profile: %s.", action->f_xccdf, action->profile);
@@ -724,10 +703,6 @@ static int app_xccdf_export_oval_variables(const struct oscap_action *action)
 
 int app_xccdf_remediate(const struct oscap_action *action)
 {
-	if (!oscap_set_verbose(action->verbosity_level, action->f_verbose_log, false)) {
-		return OSCAP_ERROR;
-	}
-
 	struct xccdf_session *session = NULL;
 	int result = OSCAP_ERROR;
 	session = xccdf_session_new(action->f_xccdf);
@@ -880,10 +855,6 @@ int app_generate_fix(const struct oscap_action *action)
 	struct ds_rds_session *arf_session = NULL;
 	const char *template = NULL;
 
-	if (!oscap_set_verbose(action->verbosity_level, action->f_verbose_log, false)) {
-		return OSCAP_ERROR;
-	}
-
 	if (action->fix_type != NULL && action->tmpl != NULL) {
 		/* Avoid undefined situations, eg.:
 		 * oscap xccdf generate fix --fix-type ansible --template urn:xccdf:fix:scipt:sh
@@ -958,7 +929,7 @@ int app_generate_fix(const struct oscap_action *action)
 	if (xccdf_session_load(session) != 0)
 		goto cleanup;
 
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 	int output_fd = _fileno(stdout);
 #else
 	int output_fd = STDOUT_FILENO;
@@ -995,7 +966,7 @@ int app_generate_fix(const struct oscap_action *action)
 			ret = OSCAP_OK;
 	}
 cleanup2:
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 	if (output_fd != _fileno(stdout))
 #else
 	if (output_fd != STDOUT_FILENO)
@@ -1035,7 +1006,6 @@ int app_xccdf_xslt(const struct oscap_action *action)
 
 	const char *params[] = {
 		"result-id",         action->id,
-		"show",              action->show,
 		"benchmark_id",      action->f_benchmark_id,
 		"profile_id",        action->profile,
 		"template",          action->tmpl,
@@ -1077,7 +1047,6 @@ enum oval_opt {
     XCCDF_OPT_PROFILE,
     XCCDF_OPT_RULE,
     XCCDF_OPT_REPORT_FILE,
-    XCCDF_OPT_SHOW,
     XCCDF_OPT_TEMPLATE,
     XCCDF_OPT_FORMAT,
     XCCDF_OPT_OVAL_TEMPLATE,
@@ -1090,8 +1059,6 @@ enum oval_opt {
     XCCDF_OPT_CPE_DICT,
     XCCDF_OPT_OUTPUT = 'o',
     XCCDF_OPT_RESULT_ID = 'i',
-	XCCDF_OPT_VERBOSE,
-	XCCDF_OPT_VERBOSE_LOG_FILE,
 	XCCDF_OPT_FIX_TYPE
 };
 
@@ -1115,7 +1082,6 @@ bool getopt_xccdf(int argc, char **argv, struct oscap_action *action)
 		{"rule", 		required_argument, NULL, XCCDF_OPT_RULE},
 		{"result-id",		required_argument, NULL, XCCDF_OPT_RESULT_ID},
 		{"report", 		required_argument, NULL, XCCDF_OPT_REPORT_FILE},
-		{"show", 		required_argument, NULL, XCCDF_OPT_SHOW},
 		{"template", 		required_argument, NULL, XCCDF_OPT_TEMPLATE},
 		{"oval-template", 	required_argument, NULL, XCCDF_OPT_OVAL_TEMPLATE},
 		{"stylesheet",	required_argument, NULL, XCCDF_OPT_STYLESHEET_FILE},
@@ -1124,13 +1090,10 @@ bool getopt_xccdf(int argc, char **argv, struct oscap_action *action)
 		{"cpe",	required_argument, NULL, XCCDF_OPT_CPE},
 		{"cpe-dict",	required_argument, NULL, XCCDF_OPT_CPE_DICT}, // DEPRECATED!
 		{"sce-template", 	required_argument, NULL, XCCDF_OPT_SCE_TEMPLATE},
-		{ "verbose", required_argument, NULL, XCCDF_OPT_VERBOSE },
-		{ "verbose-log-file", required_argument, NULL, XCCDF_OPT_VERBOSE_LOG_FILE },
 		{"fix-type", required_argument, NULL, XCCDF_OPT_FIX_TYPE},
 	// flags
 		{"force",		no_argument, &action->force, 1},
 		{"oval-results",	no_argument, &action->oval_results, 1},
-		{"sce-results",	no_argument, &action->check_engine_results, 1},
 		{"check-engine-results", no_argument, &action->check_engine_results, 1},
 		{"skip-valid",		no_argument, &action->validate, 0},
 		{"fetch-remote-resources", no_argument, &action->remote_resources, 1},
@@ -1160,7 +1123,6 @@ bool getopt_xccdf(int argc, char **argv, struct oscap_action *action)
 		case XCCDF_OPT_RULE:		action->rule = optarg;		break;
 		case XCCDF_OPT_RESULT_ID:	action->id = optarg;		break;
 		case XCCDF_OPT_REPORT_FILE:	action->f_report = optarg; 	break;
-		case XCCDF_OPT_SHOW:		action->show = optarg;		break;
 		case XCCDF_OPT_TEMPLATE:	action->tmpl = optarg;		break;
 		case XCCDF_OPT_OVAL_TEMPLATE:	action->oval_template = optarg; break;
 		/* we use realpath to get an absolute path to given XSLT to prevent openscap from looking
@@ -1175,21 +1137,12 @@ bool getopt_xccdf(int argc, char **argv, struct oscap_action *action)
 				action->cpe = optarg; break;
 			}
 		case XCCDF_OPT_SCE_TEMPLATE:	action->sce_template = optarg; break;
-		case XCCDF_OPT_VERBOSE:
-			action->verbosity_level = optarg;
-			break;
-		case XCCDF_OPT_VERBOSE_LOG_FILE:
-			action->f_verbose_log = optarg;
-			break;
 		case XCCDF_OPT_FIX_TYPE:
 			action->fix_type = optarg;
 			break;
 		case 0: break;
 		default: return oscap_module_usage(action->module, stderr, NULL);
 		}
-	}
-	if (!check_verbose_options(action)) {
-		return false;
 	}
 
 	if (action->module == &XCCDF_EVAL) {

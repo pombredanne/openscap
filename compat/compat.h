@@ -22,20 +22,14 @@
 
 #ifndef OSCAP_COMPAT_H_
 #define OSCAP_COMPAT_H_
+
 #include "oscap_export.h"
+#include "oscap_platforms.h"
 
 /* Fallback functions fixing portability issues */
 
 #ifndef HAVE_STRSEP
 char *strsep(char **stringp, const char *delim);
-#endif
-
-#ifndef HAVE_FLOCK
-#define LOCK_SH 1   /* Shared lock.  */
-#define LOCK_EX 2   /* Exclusive lock.  */
-#define LOCK_UN 8   /* Unlock.  */
-#define LOCK_NB 4   /* Don't block when locking.  */
-int flock (int fd, int operation);
 #endif
 
 #ifndef HAVE_STRPTIME
@@ -47,7 +41,7 @@ char *strptime(const char *buf, const char *format, struct tm *tm);
 #define OSCAP_UNIX
 #endif
 
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 #define PATH_MAX _MAX_PATH
 #endif
 
@@ -64,30 +58,13 @@ typedef SSIZE_T ssize_t;
 
 #endif
 
-#ifndef HAVE_GETOPT_H
+#if !defined(HAVE_DEV_TO_TTY) && !defined(OS_WINDOWS)
+#include <sys/types.h>
+#define ABBREV_DEV  1     /* remove /dev/         */
+#define ABBREV_TTY  2     /* remove tty           */
+#define ABBREV_PTS  4     /* remove pts/          */
 
-#define __getopt_argv_const const
-#define no_argument		0
-#define required_argument	1
-#define optional_argument	2
-
-char *optarg;
-int optind;
-int opterr;
-int optopt;
-
-struct option
-{
-	const char *name;
-	int has_arg;
-	int *flag;
-	int val;
-};
-
-OSCAP_API int getopt_long(int ___argc, char *__getopt_argv_const *___argv,
-	const char *__shortopts,
-	const struct option *__longopts, int *__longind);
-
+extern unsigned dev_to_tty(char *__restrict ret, unsigned chop, dev_t dev_t_dev, int pid, unsigned int flags);
 #endif
 
 #endif

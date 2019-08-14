@@ -24,10 +24,11 @@
 #ifndef OSCAP_UTIL_H_
 #define OSCAP_UTIL_H_
 
+#include "oscap_platforms.h"
+#include <stdlib.h>
 #include <stdbool.h>
 #include <assert.h>
 #include "public/oscap.h"
-#include "alloc.h"
 #include <stdarg.h>
 #include <string.h>
 #include "oscap_export.h"
@@ -335,16 +336,42 @@ static inline bool oscap_str_endswith(const char *str, const char *suffix) {
 		return false;
 	return strncmp(str + str_len - suffix_len, suffix, suffix_len) == 0;
 }
+
+/// Allocate aligned memory
+static inline void *oscap_aligned_malloc(size_t size, size_t alignment) {
+#ifdef WIN32
+	return _aligned_malloc(size, alignment);
+#else
+	void *ptr = NULL;
+	posix_memalign(&ptr, alignment, size);
+	return ptr;
+#endif
+}
+
+/// Free aligned memory
+static inline void oscap_aligned_free(void *memblock) {
+#ifdef WIN32
+	_aligned_free(memblock);
+#else
+	free(memblock);
+#endif
+}
+
 /// Trim whitespace (modifies its argument!)
 char *oscap_trim(char *str);
 /// Print to a newly allocated string using a va_list.
 char *oscap_vsprintf(const char *fmt, va_list ap);
 
-// FIXME: This is there because of the SCE engine using this particular function
-
-/// Print to a newly allocated string using varialbe arguments.
-OSCAP_API char *oscap_sprintf(const char *fmt, ...);
-
+/**
+ * Join 2 paths in an intelligent way.
+ * Both paths are allowed to be NULL.
+ * Caller is responsible for freeing the returned pointer.
+ * @param path1 first path
+ * @param path2 second path
+ * @return Join of path1 and path2. The first path is separated by the second
+ * path by exactly 1 slash separator.
+ */
+char *oscap_path_join(const char *path1, const char *path2);
 
 /// In a list of key-value pairs (odd indicies are keys, even values), find a value for given key
 const char *oscap_strlist_find_value(char ** const kvalues, const char *key);
@@ -374,13 +401,16 @@ char *oscap_expand_ipv6(const char *input);
 # define OSCAP_CONCAT(a,b) OSCAP_CONCAT1(a,b)
 #endif
 
+/**
+ * Mark global symbols.
+ * This macro can be used to wrap global variables and helps distinguish
+ * global variables and local varibles.
+ * It adds '___G_' prefix to variable name.
+ */
 #define OSCAP_GSYM(s) OSCAP_CONCAT(___G_, s)
 
 #define protect_errno                                                   \
         for (int OSCAP_CONCAT(__e,__LINE__)=errno, OSCAP_CONCAT(__s,__LINE__)=1; OSCAP_CONCAT(__s,__LINE__)--; errno=OSCAP_CONCAT(__e,__LINE__))
-
-
-/* The following functions aren't hidden, because they're used by some probes. */
 
 /**
  * Convert a string to an enumeration constant.
@@ -388,7 +418,7 @@ char *oscap_expand_ipv6(const char *input);
  * @param str string to be converted
  * @memberof oscap_string_map
  */
-OSCAP_API int oscap_string_to_enum(const struct oscap_string_map *map, const char *str);
+int oscap_string_to_enum(const struct oscap_string_map *map, const char *str);
 
 /**
  * Convert an enumeration constant to its corresponding string representation.
@@ -396,7 +426,7 @@ OSCAP_API int oscap_string_to_enum(const struct oscap_string_map *map, const cha
  * @param val value to be converted
  * @memberof oscap_string_map
  */
-OSCAP_API const char *oscap_enum_to_string(const struct oscap_string_map *map, int val);
+const char *oscap_enum_to_string(const struct oscap_string_map *map, int val);
 
 /**
  * Split a string.
@@ -406,33 +436,7 @@ OSCAP_API const char *oscap_enum_to_string(const struct oscap_string_map *map, i
  * @param str String we want to split
  * @param delim Delimiter of string parts
  */
-OSCAP_API char **oscap_split(char *str, const char *delim);
-
-/**
- * Return the canonicalized absolute pathname.
- * @param path path
- * @param resolved_path pointer to a buffer
- * @return resolved_path or NULL in case of error
- */
-OSCAP_API char *oscap_realpath(const char *path, char *resolved_path);
-
-/**
- * Return filename component of a path
- * @param path path
- * The function can modify the contents of path, so the caller should pass a copy of path.
- * @return filename component of path
- * The caller is responsible to free the returned buffer.
- */
-OSCAP_API char *oscap_basename(char *path);
-
-/**
- * Return directory component of a path
- * @param path path
- * The function can modify the contents of path, so the caller should pass a copy of path.
- * @return dirname component of path
- * The caller is responsible to free the returned buffer.
- */
-OSCAP_API char *oscap_dirname(char *path);
+char **oscap_split(char *str, const char *delim);
 
 /**
  * compare two strings ignoring case
@@ -442,7 +446,7 @@ OSCAP_API char *oscap_dirname(char *path);
  * after ignoring case, found to be less than, to match, or be greater
  * than s2,  respectively.
  */
-OSCAP_API int oscap_strcasecmp(const char *s1, const char *s2);
+int oscap_strcasecmp(const char *s1, const char *s2);
 
 /**
 * compare two strings ignoring case
@@ -453,15 +457,43 @@ OSCAP_API int oscap_strcasecmp(const char *s1, const char *s2);
 * after ignoring case, found to be less than, to match, or be greater
 * than s2,  respectively.
 */
-OSCAP_API int oscap_strncasecmp(const char *s1, const char *s2, size_t n);
+int oscap_strncasecmp(const char *s1, const char *s2, size_t n);
 
 /**
- * Extract tokens from strings
- * @param str string
- * @param delim st of delimiters
- * @param saveptr Used to store position information between calls to strtok_s
- * @return token
+ * Get string describing error number
+ * @param errnum error number
+ * @param buf buffer to hold error string
+ * @param buflen size of buffer
  */
-OSCAP_API char *oscap_strtok_r(char *str, const char *delim, char **saveptr);
+char *oscap_strerror_r(int errnum, char *buf, size_t buflen);
+
+#ifdef OS_WINDOWS
+/**
+ * Convert wide character string to a C string (UTF-16 to UTF-8)
+ * It is a wrapper around Windows API WideCharToMultiByte().
+ * Caller is responsible for freein the returned string.
+ * @param wstr wide string
+ * @return C string
+ */
+char *oscap_windows_wstr_to_str(const wchar_t *wstr);
+
+/**
+* Convert C string to wide character string (UTF-8 to UTF-16)
+* It is a wrapper around Windows API MultiByteToWideChar().
+* Caller is responsible for freeing the returned string.
+* @param str C string
+* @return wide string
+*/
+wchar_t *oscap_windows_str_to_wstr(const char *str);
+
+/**
+ * Get formated message about Windows API errors.
+ * It is a wrapper around Windows API FormatMessage().
+ * Caller is responsible for freeing the returned string.
+ * @param error_code Error code returned by a Windows API call.
+ * @return Error message in a form of a C string.
+ */
+char *oscap_windows_error_message(unsigned long error_code);
+#endif
 
 #endif				/* OSCAP_UTIL_H_ */

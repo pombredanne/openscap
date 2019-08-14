@@ -29,6 +29,7 @@
 #include "oscap_source.h"
 #if defined(OVAL_PROBES_ENABLED)
 # include <oval_probe.h>
+# include "probe-table.h"
 #endif
 #include <oval_agent_api.h>
 #include <oval_session.h>
@@ -51,9 +52,6 @@ static int app_evaluate_oval(const struct oscap_action *action);
 #endif
 static int app_oval_validate(const struct oscap_action *action);
 static int app_oval_xslt(const struct oscap_action *action);
-#if defined(OVAL_PROBES_ENABLED)
-static int app_oval_list_probes(const struct oscap_action *action);
-#endif
 static int app_analyse_oval(const struct oscap_action *action);
 
 #if defined(OVAL_PROBES_ENABLED)
@@ -61,16 +59,13 @@ static bool getopt_oval_eval(int argc, char **argv, struct oscap_action *action)
 static bool getopt_oval_collect(int argc, char **argv, struct oscap_action *action);
 #endif
 static bool getopt_oval_analyse(int argc, char **argv, struct oscap_action *action);
-#if defined(OVAL_PROBES_ENABLED)
-static bool getopt_oval_list_probes(int argc, char **argv, struct oscap_action *action);
-#endif
 static bool getopt_oval_validate(int argc, char **argv, struct oscap_action *action);
 static bool getopt_oval_report(int argc, char **argv, struct oscap_action *action);
 
 
 static bool valid_inputs(const struct oscap_action *action);
 
-#define OVAL_SUBMODULES_NUM	8
+#define OVAL_SUBMODULES_NUM	7
 #define OVAL_GEN_SUBMODULES_NUM 2 /* See actual OVAL_GEN_SUBMODULES and
 				OVAL_SUBMODULES arrays initialization below. */
 static struct oscap_module* OVAL_SUBMODULES[OVAL_SUBMODULES_NUM];
@@ -83,34 +78,18 @@ struct oscap_module OSCAP_OVAL_MODULE = {
     .submodules = OVAL_SUBMODULES
 };
 
-static struct oscap_module OVAL_VALIDATE_XML = {
-    .name = "validate-xml",
-    .parent = &OSCAP_OVAL_MODULE,
-    .summary = "Validate OVAL XML content",
-    .usage = "[options] oval-file.xml",
-    .help =
-        "Options:\n"
-        "   --definitions\r\t\t\t\t - Validate OVAL Definitions\n"
-        "   --variables\r\t\t\t\t - Validate external OVAL Variables\n"
-        "   --syschar\r\t\t\t\t - Validate OVAL System Characteristics\n"
-        "   --results\r\t\t\t\t - Validate OVAL Results\n"
-        "   --schematron\r\t\t\t\t - Use schematron-based validation in addition to XML Schema\n",
-    .opt_parser = getopt_oval_validate,
-    .func = app_oval_validate
-};
-
 static struct oscap_module OVAL_VALIDATE = {
     .name = "validate",
     .parent = &OSCAP_OVAL_MODULE,
     .summary = "Validate OVAL XML content",
     .usage = "[options] oval-file.xml",
     .help =
-        "Options:\n"
-        "   --definitions\r\t\t\t\t - Validate OVAL Definitions\n"
-        "   --variables\r\t\t\t\t - Validate external OVAL Variables\n"
-        "   --syschar\r\t\t\t\t - Validate OVAL System Characteristics\n"
-        "   --results\r\t\t\t\t - Validate OVAL Results\n"
-        "   --schematron\r\t\t\t\t - Use schematron-based validation in addition to XML Schema\n",
+	"Options:\n"
+	"   --definitions                 - Validate OVAL Definitions\n"
+	"   --variables                   - Validate external OVAL Variables\n"
+	"   --syschar                     - Validate OVAL System Characteristics\n"
+	"   --results                     - Validate OVAL Results\n"
+	"   --schematron                  - Use schematron-based validation in addition to XML Schema\n",
     .opt_parser = getopt_oval_validate,
     .func = app_oval_validate
 };
@@ -122,21 +101,18 @@ static struct oscap_module OVAL_EVAL = {
     .summary = "Probe the system and evaluate definitions from OVAL Definition file",
     .usage = "[options] oval-definitions.xml",
     .help =
-        "Options:\n"
-	"   --id <definition-id>\r\t\t\t\t - ID of the definition we want to evaluate.\n"
-	"   --variables <file>\r\t\t\t\t - Provide external variables expected by OVAL Definitions.\n"
-        "   --directives <file>\r\t\t\t\t - Use OVAL Directives content to specify desired results content.\n"
-        "   --without-syschar \r\t\t\t\t - Don't provide system characteristic in result file.\n"
-        "   --results <file>\r\t\t\t\t - Write OVAL Results into file.\n"
-        "   --report <file>\r\t\t\t\t - Create human readable (HTML) report from OVAL Results.\n"
-        "   --skip-valid\r\t\t\t\t - Skip validation.\n"
-        "   --datastream-id <id> \r\t\t\t\t - ID of the datastream in the collection to use.\n"
-        "                        \r\t\t\t\t   (only applicable for source datastreams)\n"
-        "   --oval-id <id> \r\t\t\t\t - ID of the OVAL component ref in the datastream to use.\n"
-        "                  \r\t\t\t\t   (only applicable for source datastreams)\n"
-	"   --probe-root <dir>\r\t\t\t\t - Change the root directory before scanning the system.\n"
-	"   --verbose <verbosity_level>\r\t\t\t\t - Turn on verbose mode at specified verbosity level.\n"
-	"   --verbose-log-file <file>\r\t\t\t\t - Write verbose information into file.\n",
+	"Options:\n"
+	"   --id <definition-id>          - ID of the definition we want to evaluate.\n"
+	"   --variables <file>            - Provide external variables expected by OVAL Definitions.\n"
+	"   --directives <file>           - Use OVAL Directives content to specify desired results content.\n"
+	"   --without-syschar             - Don't provide system characteristic in result file.\n"
+	"   --results <file>              - Write OVAL Results into file.\n"
+	"   --report <file>               - Create human readable (HTML) report from OVAL Results.\n"
+	"   --skip-valid                  - Skip validation.\n"
+	"   --datastream-id <id>          - ID of the datastream in the collection to use.\n"
+	"                                   (only applicable for source datastreams)\n"
+	"   --oval-id <id>                - ID of the OVAL component ref in the datastream to use.\n"
+	"                                   (only applicable for source datastreams)\n",
     .opt_parser = getopt_oval_eval,
     .func = app_evaluate_oval
 };
@@ -148,12 +124,10 @@ static struct oscap_module OVAL_COLLECT = {
     .usage = "[options] oval-definitions.xml",
     .help =
 	"Options:\n"
-	"   --id <object>\r\t\t\t\t - Collect system characteristics ONLY for specified OVAL Object.\n"
-        "   --syschar <file>\r\t\t\t\t - Write OVAL System Characteristic into file.\n"
-	"   --variables <file>\r\t\t\t\t - Provide external variables expected by OVAL Definitions.\n"
-        "   --skip-valid\r\t\t\t\t - Skip validation.\n"
-	"   --verbose <verbosity_level>\r\t\t\t\t - Turn on verbose mode at specified verbosity level.\n"
-	"   --verbose-log-file <file>\r\t\t\t\t - Write verbose information into file.\n",
+	"   --id <object>                 - Collect system characteristics ONLY for specified OVAL Object.\n"
+	"   --syschar <file>              - Write OVAL System Characteristic into file.\n"
+	"   --variables <file>            - Provide external variables expected by OVAL Definitions.\n"
+	"   --skip-valid                  - Skip validation.\n",
     .opt_parser = getopt_oval_collect,
     .func = app_collect_oval
 };
@@ -166,11 +140,9 @@ static struct oscap_module OVAL_ANALYSE = {
     .usage = "[options] --results FILE oval-definitions.xml system-characteristics.xml" ,
     .help =
 	"Options:\n"
-	"   --variables <file>\r\t\t\t\t - Provide external variables expected by OVAL Definitions.\n"
-        "   --directives <file>\r\t\t\t\t - Use OVAL Directives content to specify desired results content.\n"
-        "   --skip-valid\r\t\t\t\t - Skip validation.\n"
-	"   --verbose <verbosity_level>\r\t\t\t\t - Turn on verbose mode at specified verbosity level.\n"
-	"   --verbose-log-file <file>\r\t\t\t\t - Write verbose information into file.\n",
+	"   --variables <file>            - Provide external variables expected by OVAL Definitions.\n"
+	"   --directives <file>           - Use OVAL Directives content to specify desired results content.\n"
+	"   --skip-valid                  - Skip validation.\n",
     .opt_parser = getopt_oval_analyse,
     .func = app_analyse_oval
 };
@@ -189,27 +161,12 @@ static struct oscap_module OVAL_REPORT = {
     .summary = "Generate a HTML report from OVAL results file",
     .usage = "[options] oval-file.xml",
     .help =
-        "Options:\n"
-        "   --output <file>\r\t\t\t\t - Write the HTML into file.",
+	"Options:\n"
+	"   --output <file>               - Write the HTML into file.",
     .opt_parser = getopt_oval_report,
     .user = "oval-results-report.xsl",
     .func = app_oval_xslt
 };
-
-#if defined(OVAL_PROBES_ENABLED)
-static struct oscap_module OVAL_LIST_PROBES = {
-    .name = "list-probes",
-    .parent = &OSCAP_OVAL_MODULE,
-    .summary = "List supported object types (i.e. probes)",
-    .usage = "[options]",
-    .help = "Options:\n"
-            "   --static\r\t\t\t\t - List all probes defined in the internal tables.\n"
-            "   --dynamic\r\t\t\t\t - List all probes supported on the current system (this is default behavior).\n"
-            "   --verbose\r\t\t\t\t - Be verbose.",
-    .opt_parser = getopt_oval_list_probes,
-    .func = app_oval_list_probes
-};
-#endif
 
 static struct oscap_module* OVAL_GEN_SUBMODULES[OVAL_GEN_SUBMODULES_NUM] = {
     &OVAL_REPORT,
@@ -223,11 +180,7 @@ static struct oscap_module* OVAL_SUBMODULES[OVAL_SUBMODULES_NUM] = {
 #endif
     &OVAL_ANALYSE,
     &OVAL_VALIDATE,
-    &OVAL_VALIDATE_XML,
     &OVAL_GENERATE,
-#if defined(OVAL_PROBES_ENABLED)
-    &OVAL_LIST_PROBES,
-#endif
     NULL
 };
 
@@ -250,11 +203,6 @@ int app_collect_oval(const struct oscap_action *action)
 	struct oval_probe_session	*pb_sess   = NULL;
 	struct oval_generator		*generator = NULL;
 	int ret = OSCAP_ERROR;
-
-	/* Turn on verbosity */
-	if (!oscap_set_verbose(action->verbosity_level, action->f_verbose_log, false)) {
-		goto cleanup;
-	}
 
 	/* validate inputs */
 	if (action->validate) {
@@ -372,11 +320,6 @@ int app_evaluate_oval(const struct oscap_action *action)
 	oval_result_t eval_result;
 	int ret = OSCAP_ERROR;
 
-	/* Turn on verbosity */
-	if (!oscap_set_verbose(action->verbosity_level, action->f_verbose_log, false)) {
-		goto cleanup;
-	}
-
 	/* create a new OVAL session */
 	if ((session = oval_session_new(action->f_oval)) == NULL) {
 		oscap_print_error();
@@ -403,12 +346,12 @@ int app_evaluate_oval(const struct oscap_action *action)
 
 	/* evaluation */
 	if (action->id) {
-		if ((oval_session_evaluate_id(session, action->probe_root, action->id, &eval_result)) != 0)
+		if ((oval_session_evaluate_id(session, action->id, &eval_result)) != 0)
 			goto cleanup;
 		printf("Definition %s: %s\n", action->id, oval_result_get_text(eval_result));
 	}
 	else {
-		if ((oval_session_evaluate(session, action->probe_root, app_oval_callback, NULL)) != 0)
+		if ((oval_session_evaluate(session, app_oval_callback, NULL)) != 0)
 			goto cleanup;
 	}
 
@@ -439,11 +382,6 @@ static int app_analyse_oval(const struct oscap_action *action) {
  	struct oval_syschar_model	*sys_models[2];
 	struct oval_generator		*generator = NULL;
 	int ret = OSCAP_ERROR;
-
-	/* Turn on verbosity */
-	if (!oscap_set_verbose(action->verbosity_level, action->f_verbose_log, false)) {
-		goto cleanup;
-	}
 
 	/* validate inputs */
 	if (action->validate) {
@@ -547,21 +485,6 @@ static int app_oval_xslt(const struct oscap_action *action)
     return app_xslt(action->f_oval, action->module->user, action->f_results, NULL);
 }
 
-#if defined(OVAL_PROBES_ENABLED)
-static int app_oval_list_probes(const struct oscap_action *action)
-{
-    int flags = 0;
-
-    if (action->list_dynamic)
-	flags |= OVAL_PROBEMETA_LIST_DYNAMIC;
-    if (action->verbosity >= 10)
-	flags |= OVAL_PROBEMETA_LIST_VERBOSE;
-
-    oval_probe_meta_list(stdout, flags);
-    return (0);
-}
-#endif /* OVAL_PROBES_ENABLED */
-
 enum oval_opt {
     OVAL_OPT_RESULT_FILE = 1,
     OVAL_OPT_REPORT_FILE,
@@ -571,19 +494,13 @@ enum oval_opt {
     OVAL_OPT_DIRECTIVES,
     OVAL_OPT_DATASTREAM_ID,
     OVAL_OPT_OVAL_ID,
-    OVAL_OPT_OUTPUT = 'o',
-#if defined(OVAL_PROBES_ENABLED)
-	OVAL_OPT_PROBE_ROOT,
-#endif
-	OVAL_OPT_VERBOSE,
-	OVAL_OPT_VERBOSE_LOG_FILE
+	OVAL_OPT_OUTPUT = 'o'
 };
 
 #if defined(OVAL_PROBES_ENABLED)
 bool getopt_oval_eval(int argc, char **argv, struct oscap_action *action)
 {
 	action->doctype = OSCAP_DOCUMENT_OVAL_DEFINITIONS;
-	action->probe_root = NULL;
 
 	/* Command-options */
 	struct option long_options[] = {
@@ -596,9 +513,6 @@ bool getopt_oval_eval(int argc, char **argv, struct oscap_action *action)
 		{ "datastream-id",required_argument, NULL, OVAL_OPT_DATASTREAM_ID},
 		{ "oval-id",    required_argument, NULL, OVAL_OPT_OVAL_ID},
 		{ "skip-valid",	no_argument, &action->validate, 0 },
-		{ "probe-root", required_argument, NULL, OVAL_OPT_PROBE_ROOT},
-		{ "verbose", required_argument, NULL, OVAL_OPT_VERBOSE },
-		{ "verbose-log-file", required_argument, NULL, OVAL_OPT_VERBOSE_LOG_FILE },
 		{ "fetch-remote-resources", no_argument, &action->remote_resources, 1},
 		{ 0, 0, 0, 0 }
 	};
@@ -613,19 +527,9 @@ bool getopt_oval_eval(int argc, char **argv, struct oscap_action *action)
 		case OVAL_OPT_DIRECTIVES: action->f_directives = optarg; break;
 		case OVAL_OPT_DATASTREAM_ID: action->f_datastream_id = optarg;	break;
 		case OVAL_OPT_OVAL_ID: action->f_oval_id = optarg;	break;
-		case OVAL_OPT_PROBE_ROOT: action->probe_root = optarg; break;
-		case OVAL_OPT_VERBOSE:
-			action->verbosity_level = optarg;
-			break;
-		case OVAL_OPT_VERBOSE_LOG_FILE:
-			action->f_verbose_log = optarg;
-			break;
 		case 0: break;
 		default: return oscap_module_usage(action->module, stderr, NULL);
 		}
-	}
-	if (!check_verbose_options(action)) {
-		return false;
 	}
 
 	/* We should have Definitions file here */
@@ -648,8 +552,6 @@ bool getopt_oval_collect(int argc, char **argv, struct oscap_action *action)
 		{ "variables",	required_argument, NULL, OVAL_OPT_VARIABLES    },
 		{ "syschar",	required_argument, NULL, OVAL_OPT_SYSCHAR      },
 		{ "skip-valid",	no_argument, &action->validate, 0 },
-		{ "verbose", required_argument, NULL, OVAL_OPT_VERBOSE },
-		{ "verbose-log-file", required_argument, NULL, OVAL_OPT_VERBOSE_LOG_FILE },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -659,18 +561,9 @@ bool getopt_oval_collect(int argc, char **argv, struct oscap_action *action)
 		case OVAL_OPT_ID: action->id = optarg; break;
 		case OVAL_OPT_VARIABLES: action->f_variables = optarg; break;
 		case OVAL_OPT_SYSCHAR: action->f_syschar = optarg; break;
-		case OVAL_OPT_VERBOSE:
-			action->verbosity_level = optarg;
-			break;
-		case OVAL_OPT_VERBOSE_LOG_FILE:
-			action->f_verbose_log = optarg;
-			break;
 		case 0: break;
 		default: return oscap_module_usage(action->module, stderr, NULL);
 		}
-	}
-	if (!check_verbose_options(action)) {
-		return false;
 	}
 
 	/* We should have Definitions file here */
@@ -692,8 +585,6 @@ bool getopt_oval_analyse(int argc, char **argv, struct oscap_action *action)
 		{ "variables",	required_argument, NULL, OVAL_OPT_VARIABLES    },
 		{ "directives",	required_argument, NULL, OVAL_OPT_DIRECTIVES   },
 		{ "skip-valid",	no_argument, &action->validate, 0 },
-		{ "verbose", required_argument, NULL, OVAL_OPT_VERBOSE },
-		{ "verbose-log-file", required_argument, NULL, OVAL_OPT_VERBOSE_LOG_FILE },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -703,18 +594,9 @@ bool getopt_oval_analyse(int argc, char **argv, struct oscap_action *action)
 		case OVAL_OPT_RESULT_FILE: action->f_results = optarg; break;
 		case OVAL_OPT_VARIABLES: action->f_variables = optarg; break;
 		case OVAL_OPT_DIRECTIVES: action->f_directives = optarg; break;
-		case OVAL_OPT_VERBOSE:
-			action->verbosity_level = optarg;
-			break;
-		case OVAL_OPT_VERBOSE_LOG_FILE:
-			action->f_verbose_log = optarg;
-			break;
 		case 0: break;
 		default: return oscap_module_usage(action->module, stderr, NULL);
 		}
-	}
-	if (!check_verbose_options(action)) {
-		return false;
 	}
 
 	/* We should have Definitions file here */
@@ -766,40 +648,6 @@ bool getopt_oval_report(int argc, char **argv, struct oscap_action *action)
 
 	return true;
 }
-
-#if defined(OVAL_PROBES_ENABLED)
-bool getopt_oval_list_probes(int argc, char **argv, struct oscap_action *action)
-{
-#define PROBE_LIST_STATIC  0
-#define PROBE_LIST_DYNAMIC 1
-
-        int list_type = PROBE_LIST_DYNAMIC;
-	action->doctype = OSCAP_DOCUMENT_OVAL_DEFINITIONS;
-	action->verbosity = 0;
-
-	/* Command-options */
-	struct option long_options[] = {
-        // flags
-		{ "static",	no_argument, &list_type, PROBE_LIST_STATIC  },
-		{ "dynamic",	no_argument, &list_type, PROBE_LIST_DYNAMIC },
-		{ "verbose",    no_argument, &action->verbosity, 10},
-        // end
-		{ 0, 0, 0, 0 }
-	};
-
-	int c;
-	while ((c = getopt_long(argc, argv, "", long_options, NULL)) != -1) {
-		switch (c) {
-        	case 0: break;
-		default: return oscap_module_usage(action->module, stderr, NULL);
-		}
-	}
-
-	action->list_dynamic = list_type == PROBE_LIST_DYNAMIC ? true : false;
-
-	return true;
-}
-#endif /* OVAL_PROBES_ENABLED */
 
 bool getopt_oval_validate(int argc, char **argv, struct oscap_action *action)
 {

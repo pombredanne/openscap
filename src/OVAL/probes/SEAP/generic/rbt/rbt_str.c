@@ -27,7 +27,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <assume.h>
 
 #include "rbt_common.h"
 #include "rbt_str.h"
@@ -36,7 +35,7 @@ static struct rbt_node *rbt_str_node_alloc(void)
 {
         struct rbt_node *n = NULL;
 
-#ifndef _WIN32
+#ifndef OS_WINDOWS
         if (posix_memalign((void **)(void *)(&n), sizeof(void *),
                            sizeof (struct rbt_node) + sizeof (struct rbt_str_node)) != 0)
         {
@@ -226,7 +225,9 @@ int rbt_str_del(rbt_t *rbt, const char *key, void **n)
                 return (1);
         }
 
-        assume_d(rbt_node_ptr(rbt->root) != NULL, -1);
+	if (rbt_node_ptr(rbt->root) == NULL) {
+		return -1;
+	}
 
         /*
          * Fake node
@@ -333,7 +334,10 @@ int rbt_str_del(rbt_t *rbt, const char *key, void **n)
                  * The node color of the node that will be delete is always
                  * red in case the node is not the root node.
                  */
-                assume_d(rbt_node_ptr(fake._chld[RBT_NODE_SR]) == h[0] || rbt_node_getcolor(h[0]) == RBT_NODE_CR, -1);
+		if (rbt_node_ptr(fake._chld[RBT_NODE_SR]) != h[0]
+				&& rbt_node_getcolor(h[0]) != RBT_NODE_CR) {
+			return -1;
+		}
                 if (n != NULL)
                         *n = rbt_str_node(save)->data;
 

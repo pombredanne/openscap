@@ -35,7 +35,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#ifdef _WIN32
+#include <stdint.h>
+#ifdef OS_WINDOWS
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #else
@@ -212,10 +213,14 @@ static inline int ipv4addr_parse(const char *oval_ipv4_string, uint32_t *netmask
 
 		*pfx++ = '\0';
 		cnt = sscanf(pfx, "%hhu.%hhu.%hhu.%hhu", &nm[0], &nm[1], &nm[2], &nm[3]);
-		if (cnt > 1) { /* netmask */
+		if (cnt == 4) { /* netmask */
 			*netmask_out = (nm[0] << 24) + (nm[1] << 16) + (nm[2] << 8) + nm[3];
-		} else { /* prefix */
-			*netmask_out = (~0) << (32 - nm[0]);
+		} else if (cnt == 1 && nm[0] <= 32) { /* prefix */
+			*netmask_out = (~0u) << (32u - nm[0]);
+		} else {
+			dW("Invalid prefix or netmask.");
+			free(s);
+			return -1;
 		}
 	} else {
 		*netmask_out = ~0;
@@ -262,7 +267,7 @@ static inline void ipv6addr_mask(struct in6_addr *addr, int prefix_len)
 {
 	assert(128 >= prefix_len);
 
-	uint8_t mask = (~0) << (8 - (prefix_len % 8));
+	uint8_t mask = (~0u) << (8u - (prefix_len % 8));
 
 	/* First n (prefix_len/8 - 1) bytes are left untouched. */
 	for (int i = prefix_len/8; i < 128/8; i++)

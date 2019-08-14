@@ -41,6 +41,7 @@
 #include "public/cvss_score.h"
 #include "cvss_priv.h"
 #include "common/elements.h"
+#include "oscap_helpers.h"
 
 #define CVSS_SUPPORTED "2.0"
 #define NS_VULN_STR BAD_CAST "vuln"
@@ -58,7 +59,7 @@
  *
  * raising a "Initializer must be a valid constant expression" compiler error.
  */
-#if defined(_AIX)
+#if defined(OS_AIX)
 #define NAN_INIT (0.0f/0.0f)
 
 #else  /* Platforms with non broken NAN */

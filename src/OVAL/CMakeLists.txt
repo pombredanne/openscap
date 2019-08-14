@@ -50,7 +50,6 @@ set (OVAL_SOURCES
     "oval_sys_parser.c"
     "oval_varModel.c"
     "oval_vardefMapping.c"
-    "oval_version.c"
 )
 
 if (ENABLE_PROBES)
@@ -61,19 +60,23 @@ if (ENABLE_PROBES)
 	"_oval_probe_session.h"
 	"oval_probe_handler.c"
 	"_oval_probe_handler.h"
-	"fts_sun.c"
-	"fts_sun.h"
-	"oval_probe_meta.h"
 	"probes/probe-api.c"
 	"probes/_probe-api.h"
-	"probes/fsdev.c"
-	"probes/oval_fts.c"
-	"probes/oval_fts.h"
+	"probes/probe-table.c"
 	"oval_sexp.c"
 	"oval_sexp.h"
 	"oval_probe_ext.h"
 	"oval_probe_impl.h"
-    )
+	)
+	if (UNIX)
+		list(APPEND OVAL_SOURCES
+		"fts_sun.c"
+		"fts_sun.h"
+		"probes/fsdev.c"
+		"probes/oval_fts.c"
+		"probes/oval_fts.h"
+		)
+	endif()
 
     list(APPEND OVAL_SOURCES
 	"oval_probe_ext.c"

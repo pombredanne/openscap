@@ -27,8 +27,6 @@
 #include <stddef.h>
 #include <sexp.h>
 
-#include "common/alloc.h"
-#include "common/assume.h"
 #include "../SEAP/generic/rbt/rbt.h"
 
 #include "rcache.h"
@@ -37,7 +35,7 @@ probe_rcache_t *probe_rcache_new(void)
 {
 	probe_rcache_t *cache;
 
-	cache = oscap_talloc(probe_rcache_t);
+	cache = malloc(sizeof(probe_rcache_t));
 	cache->tree = rbt_str_new();
 
 	return (cache);
@@ -61,9 +59,9 @@ int probe_rcache_sexp_add(probe_rcache_t *cache, const SEXP_t *id, SEXP_t *item)
         SEXP_t *r;
         char   *k;
 
-	assume_d(cache != NULL, -1);
-	assume_d(id    != NULL, -1);
-	assume_d(item  != NULL, -1);
+	if (cache == NULL || id == NULL || item == NULL) {
+		return -1;
+	}
 
         k = SEXP_string_cstr(id);
         r = SEXP_ref(item);

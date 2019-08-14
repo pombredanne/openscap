@@ -60,8 +60,8 @@ static struct oscap_module CVRF_EVALUATE_MODULE = {
 	.opt_parser = getopt_cvrf,
 	.func = app_cvrf_evaluate,
 	.help = "Options:\n"
-		"   --index\r\t\t\t\t - Use index file to evaluate a directory of CVRF files.\n"
-		"   --results\r\t\t\t\t - Filename to which evaluation results will be saved.\n",
+		"   --index                       - Use index file to evaluate a directory of CVRF files.\n"
+		"   --results                     - Filename to which evaluation results will be saved.\n",
 };
 
 static struct oscap_module CVRF_EXPORT_MODULE = {
@@ -72,8 +72,8 @@ static struct oscap_module CVRF_EXPORT_MODULE = {
 	.opt_parser = getopt_cvrf,
 	.func = app_cvrf_export,
 	.help = "Options:\n"
-		"   --index\r\t\t\t\t - Use index file to export a directory of CVRF files \n"
-		"   --output\r\t\t\t\t - Filename to which exported CVRF document will be saved.\n",
+		"   --index                       - Use index file to export a directory of CVRF files \n"
+		"   --output                      - Filename to which exported CVRF document will be saved.\n",
 };
 
 static struct oscap_module CVRF_VALIDATE_MODULE = {
@@ -84,7 +84,7 @@ static struct oscap_module CVRF_VALIDATE_MODULE = {
 	.opt_parser = getopt_cvrf,
 	.func = app_cvrf_validate,
 	.help = "Options:\n"
-		"   --index\r\t\t\t\t - Use index file to validate a directory of CVRF files \n",
+		"   --index                       - Use index file to validate a directory of CVRF files \n",
 };
 
 static struct oscap_module* CVRF_SUBMODULES[] = {
@@ -101,20 +101,29 @@ static int app_cvrf_evaluate(const struct oscap_action *action) {
 	// themselves
 	const char *os_name = "Red Hat Enterprise Linux Desktop Supplementary (v. 6)";
 	struct oscap_source *import_source = oscap_source_new_from_file(action->cvrf_action->f_cvrf);
+
+	int ret = oscap_source_validate(import_source, reporter, (void *) action);
+	if (ret != 0) {
+		result = OSCAP_ERROR;
+		goto cleanup;
+	}
+
 	struct oscap_source *export_source = cvrf_model_get_results_source(import_source, os_name);
-	if (export_source == NULL)
-		return -1;
+	if (export_source == NULL) {
+		result = OSCAP_ERROR;
+		goto cleanup;
+	}
 
 	if (oscap_source_save_as(export_source, action->cvrf_action->f_results) == -1) {
 		result = OSCAP_ERROR;
 		goto cleanup;
 	}
+	oscap_source_free(export_source);
 
 	cleanup:
 		if (oscap_err())
 			fprintf(stderr, "%s %s\n", OSCAP_ERR_MSG, oscap_err_desc());
 
-	oscap_source_free(export_source);
 	free(action->cvrf_action);
 	return result;
 }
@@ -153,9 +162,7 @@ static int app_cvrf_export(const struct oscap_action *action) {
 		if (oscap_err())
 			fprintf(stderr, "%s %s\n", OSCAP_ERR_MSG, oscap_err_desc());
 
-	/* TODO: Refactor, cvrf_index_parse_xml (called by oscap_source_new_from_file) frees its argument as an unexpected side-effect.
-	 * oscap_source_free(import_source);
-	 */
+	oscap_source_free(import_source);
 	free(action->cvrf_action);
 	return result;
 }

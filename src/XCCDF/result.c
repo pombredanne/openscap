@@ -27,9 +27,19 @@
 #include <math.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <io.h>
+#ifdef OS_WINDOWS
+ /* By defining WIN32_LEAN_AND_MEAN we ensure that Windows.h won't include
+  * winsock.h, which would conflict with symbols from WinSock2.h.
+  */
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <winsock2.h>
+#include <iphlpapi.h>
 #include <windows.h>
+#include <ws2def.h>
+#include <io.h>
+#include <winternl.h>
 #include <lmcons.h>
 #else
 #include <unistd.h>
@@ -41,7 +51,7 @@
 #include <sys/socket.h>
 #endif
 
-#if defined(__linux__)
+#if defined(OS_LINUX)
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <netdb.h>
@@ -55,6 +65,7 @@
 #include "oscap_text.h"
 #include "common/debug_priv.h"
 #include "source/oscap_source_priv.h"
+#include "oscap_helpers.h"
 
 #define XCCDF_NUMERIC_SIZE 32
 
@@ -160,7 +171,7 @@ static inline void _xccdf_result_fill_scanner(struct xccdf_result *result)
 static inline void _xccdf_result_fill_identity(struct xccdf_result *result)
 {
 	struct xccdf_identity *id = xccdf_identity_new();
-#if defined(_WIN32)
+#if defined(OS_WINDOWS)
 	TCHAR w32_username[UNLEN + 1];
 	DWORD w32_usernamesize = UNLEN + 1;
 #endif
@@ -170,7 +181,7 @@ static inline void _xccdf_result_fill_identity(struct xccdf_result *result)
 	xccdf_identity_set_privileged(id, 0);
 #ifdef OSCAP_UNIX
 	xccdf_identity_set_name(id, getlogin());
-#elif defined(_WIN32)
+#elif defined(OS_WINDOWS)
 	GetUserName((TCHAR *) w32_username, &w32_usernamesize); /* XXX: Check the return value? */
 	xccdf_identity_set_name(id, w32_username);
 #else
@@ -195,7 +206,7 @@ static inline void _xccdf_result_clear_metadata(struct xccdf_item *result)
 
 void xccdf_result_fill_sysinfo(struct xccdf_result *result)
 {
-#if defined(__linux__)
+#if defined(OS_LINUX)
 	struct ifaddrs *ifaddr, *ifa;
 	int fd;
 #endif
@@ -216,7 +227,7 @@ void xccdf_result_fill_sysinfo(struct xccdf_result *result)
 
 	/* store target name */
 	xccdf_result_add_target(result, target_hostname);
-#elif defined(_WIN32)
+#elif defined(OS_WINDOWS)
 	TCHAR computer_name[MAX_COMPUTERNAME_LENGTH + 1];
 	DWORD computer_name_size = MAX_COMPUTERNAME_LENGTH + 1;
 	GetComputerName(computer_name, &computer_name_size);
@@ -227,7 +238,7 @@ void xccdf_result_fill_sysinfo(struct xccdf_result *result)
 	_xccdf_result_fill_scanner(result);
 	_xccdf_result_fill_identity(result);
 
-#if defined(__linux__)
+#if defined(OS_LINUX)
 
 	/* get network interfaces */
 	if (getifaddrs(&ifaddr) == -1)
@@ -286,6 +297,117 @@ void xccdf_result_fill_sysinfo(struct xccdf_result *result)
 	close(fd);
  out1:
 	freeifaddrs(ifaddr);
+
+#elif defined(OS_WINDOWS)
+
+#define VERSION_LEN 32
+/* Microsoft recommends to start with a 15 kB buffer for GetAdaptersAddresses. */
+#define ADDRESSES_BUFFER_SIZE 15000
+#define MAX_TRIES 3
+#define MAX_IP_ADDRESS_STRING_LENGTH 128
+
+	/*
+	 * Use the MAKEWORD(lowbyte, highbyte) macro declared in Windef.h
+	 * to define the Windows Socket specification version we will use.
+	 * The current version of the Windows Sockets specification is version 2.2.
+	 * Version 2.2 is supported on all systems since Windows 95 OSR2.
+	 */
+	WORD requested_version = MAKEWORD(2, 2);
+
+	WSADATA wsa_data;
+	int err = WSAStartup(requested_version, &wsa_data);
+	if (err != 0) {
+		char *error_message = oscap_windows_error_message(err);
+		dE("Can't initialize Winsock DLL. WSAStartup failed: %s", error_message);
+		free(error_message);
+		return;
+	}
+
+	PIP_ADAPTER_ADDRESSES addresses = NULL;
+	ULONG ret_val = 0;
+	ULONG addresses_size = ADDRESSES_BUFFER_SIZE;
+	ULONG family = AF_UNSPEC; // both IPv4 and IPv6
+	ULONG flags = GAA_FLAG_INCLUDE_PREFIX;
+	int iterations = 0;
+
+	/* Try to get information about network adapters and their adresses */
+	do {
+		addresses = malloc(addresses_size);
+		ret_val = GetAdaptersAddresses(family, flags, NULL, addresses, &addresses_size);
+		if (ret_val == ERROR_BUFFER_OVERFLOW) {
+			free(addresses);
+			addresses = NULL;
+		}
+		iterations++;
+	} while (ret_val == ERROR_BUFFER_OVERFLOW && iterations < MAX_TRIES);
+
+	if (ret_val != NO_ERROR) {
+		char *error_message = oscap_windows_error_message(err);
+		dE("Can't get information about network adapters and their adresses. %s", error_message);
+		free(error_message);
+		free(addresses);
+		WSACleanup();
+		return;
+	}
+
+	/* Iterate over all network adapters */
+	PIP_ADAPTER_ADDRESSES current_address = addresses;
+	while (current_address != NULL) {
+		/* MAC address */
+		char *mac_address_str = NULL;
+		if (current_address->PhysicalAddressLength != 0) {
+			/* n bytes of MAC address will be printed as:
+			(2 * n) hexa numbers + (n - 1) delimiters + 1 terminating null byte = 3 * n */
+			const size_t mac_address_str_len = current_address->PhysicalAddressLength * 3;
+			mac_address_str = malloc(mac_address_str_len);
+
+			for (unsigned i = 0; i < current_address->PhysicalAddressLength; i++) {
+				if (i == (current_address->PhysicalAddressLength - 1)) {
+					snprintf(mac_address_str + i * 3, mac_address_str_len, "%.2X",
+						(int)current_address->PhysicalAddress[i]);
+				}
+				else {
+					snprintf(mac_address_str + i * 3, mac_address_str_len, "%.2X-",
+						(int)current_address->PhysicalAddress[i]);
+				}
+			}
+
+			/* Add the IP address to XCCDF TestResult/target-facts */
+			struct xccdf_target_fact *fact = xccdf_target_fact_new();
+			xccdf_target_fact_set_name(fact, "urn:xccdf:fact:ethernet:MAC");
+			xccdf_target_fact_set_string(fact, mac_address_str);
+			/* store mac address */
+			xccdf_result_add_target_fact(result, fact);
+			free(mac_address_str);
+		}
+
+		/* Iterate over all unicast IP addresses of the network interface */
+		PIP_ADAPTER_UNICAST_ADDRESS unicast_address = current_address->FirstUnicastAddress;
+		while (unicast_address != NULL) {
+			SOCKET_ADDRESS socket_address = unicast_address->Address;
+			WCHAR ip_address_wstr[MAX_IP_ADDRESS_STRING_LENGTH];
+			DWORD ip_address_wstr_length = MAX_IP_ADDRESS_STRING_LENGTH;
+			int rc = WSAAddressToStringW(socket_address.lpSockaddr, socket_address.iSockaddrLength, NULL, ip_address_wstr, &ip_address_wstr_length);
+			if (rc != 0) {
+				free(addresses);
+				WSACleanup();
+				return;
+			}
+
+			/* Add the IP address to XCCDF TestResult/target-address */
+			char *ip_address_str = oscap_windows_wstr_to_str(ip_address_wstr);
+			xccdf_result_add_target_address(result, ip_address_str);
+			free(ip_address_str);
+
+			unicast_address = unicast_address->Next;
+		}
+		current_address = current_address->Next;
+	}
+
+	free(addresses);
+	WSACleanup();
+	return 0;
+
 #endif
 }
 
@@ -770,21 +892,6 @@ struct oscap_source *xccdf_result_stig_viewer_export_source(struct xccdf_result 
 	return oscap_source_new_from_xmlDoc(doc, filepath);
 }
 
-int xccdf_result_export(struct xccdf_result *result, const char *file)
-{
-	__attribute__nonnull__(file);
-
-	LIBXML_TEST_VERSION;
-
-	struct oscap_source *result_source = xccdf_result_export_source(result, file);
-	if (result_source == NULL) {
-		return -1;
-	}
-	int ret = oscap_source_save_as(result_source, NULL);
-	oscap_source_free(result_source);
-	return ret;
-}
-
 void xccdf_result_to_dom(struct xccdf_result *result, xmlNode *result_node, xmlDoc *doc, xmlNode *parent, bool use_stig_rule_id)
 {
         xmlNs *ns_xccdf = NULL;
@@ -958,12 +1065,67 @@ void xccdf_result_to_dom(struct xccdf_result *result, xmlNode *result_node, xmlD
 	}
 	xccdf_setvalue_iterator_free(setvalues);
 
+	struct oscap_htable *nodes_by_rule_id = oscap_htable_new();
+
 	struct xccdf_rule_result_iterator *rule_results = xccdf_result_get_rule_results(result);
+	if (use_stig_rule_id) {
+		while (xccdf_rule_result_iterator_has_more(rule_results)) {
+			struct xccdf_rule_result *rule_result = xccdf_rule_result_iterator_next(rule_results);
+
+			const char *idref = xccdf_rule_result_get_idref(rule_result);
+			if (!idref)
+				continue;
+
+			xccdf_test_result_type_t test_res = xccdf_rule_result_get_result(rule_result);
+
+			const struct xccdf_item *item = xccdf_benchmark_get_member(associated_benchmark, XCCDF_RULE, idref);
+			if (!item)
+				continue;
+
+			struct oscap_reference_iterator *references = xccdf_item_get_references(item);
+			while (oscap_reference_iterator_has_more(references)) {
+				struct oscap_reference *ref = oscap_reference_iterator_next(references);
+				if (strcmp(oscap_reference_get_href(ref), DISA_STIG_VIEWER_HREF) == 0) {
+					const char *stig_rule_id = oscap_reference_get_title(ref);
+
+					xccdf_test_result_type_t other_res = (xccdf_test_result_type_t)oscap_htable_detach(nodes_by_rule_id, stig_rule_id);
+					xccdf_test_result_type_t wanted_res;
+					if (other_res == 0) {
+						wanted_res = test_res;
+					} else {
+						// if one test passed, and the other didn't, the other one should win
+						if (test_res == XCCDF_RESULT_PASS) {
+							wanted_res = other_res;
+						} else if (other_res == XCCDF_RESULT_PASS) {
+							wanted_res = test_res;
+						// if one had an error, that should win
+						} else if (test_res == XCCDF_RESULT_ERROR || other_res == XCCDF_RESULT_ERROR) {
+							wanted_res = XCCDF_RESULT_ERROR;
+						// next prio: failures
+						} else if (test_res == XCCDF_RESULT_FAIL || other_res == XCCDF_RESULT_FAIL) {
+							wanted_res = XCCDF_RESULT_FAIL;
+						// next prio: unknown
+						} else if (test_res == XCCDF_RESULT_UNKNOWN || other_res == XCCDF_RESULT_UNKNOWN) {
+							wanted_res = XCCDF_RESULT_UNKNOWN;
+						// otherwise, just pick the lower one (more or less arbitrarily)
+						} else {
+							wanted_res = (test_res < other_res) ? test_res : other_res;
+						}
+					}
+					oscap_htable_add(nodes_by_rule_id, stig_rule_id, (void*)wanted_res);
+				}
+			}
+			oscap_reference_iterator_free(references);
+		}
+		xccdf_rule_result_iterator_reset(rule_results);
+	}
 	while (xccdf_rule_result_iterator_has_more(rule_results)) {
 		struct xccdf_rule_result *rule_result = xccdf_rule_result_iterator_next(rule_results);
-		xccdf_rule_result_to_dom(rule_result, doc, result_node, version_info, associated_benchmark, use_stig_rule_id);
+		xccdf_rule_result_to_dom(rule_result, doc, result_node, version_info, associated_benchmark, use_stig_rule_id, nodes_by_rule_id);
 	}
 	xccdf_rule_result_iterator_free(rule_results);
+
+	oscap_htable_free0(nodes_by_rule_id);
 
 	struct xccdf_score_iterator *scores = xccdf_result_get_scores(result);
 	while (xccdf_score_iterator_has_more(scores)) {
@@ -1114,36 +1276,39 @@ xmlNode *xccdf_target_identifier_to_dom(const struct xccdf_target_identifier *ti
 		return target_idref_node;
 	}
 }
-
-xmlNode *xccdf_rule_result_to_dom(struct xccdf_rule_result *result, xmlDoc *doc, xmlNode *parent, const struct xccdf_version_info* version_info, struct xccdf_benchmark *benchmark, bool use_stig_rule_id)
+static void _xccdf_rule_result_to_dom_idref(struct xccdf_rule_result *result, xmlDoc *doc, xmlNode *parent, const struct xccdf_version_info* version_info, struct xccdf_benchmark *benchmark, const char *idref);
+void xccdf_rule_result_to_dom(struct xccdf_rule_result *result, xmlDoc *doc, xmlNode *parent, const struct xccdf_version_info* version_info, struct xccdf_benchmark *benchmark, bool use_stig_rule_id, struct oscap_htable *nodes_by_rule_id)
 {
 	const char *idref = xccdf_rule_result_get_idref(result);
 	if (use_stig_rule_id) {
 		// Don't output rules with no stig ids
 		if (!idref || !benchmark)
-			return NULL;
+			return;
 
-		struct xccdf_item *item = xccdf_benchmark_get_member(benchmark, XCCDF_RULE, idref);
+		const struct xccdf_item *item = xccdf_benchmark_get_member(benchmark, XCCDF_RULE, idref);
 		if (!item)
-			return NULL;
+			return;
 
-		const char *stig_rule_id = NULL;		
-		struct oscap_reference_iterator *references = xccdf_item_get_references(XRULE(item));
+		struct oscap_reference_iterator *references = xccdf_item_get_references(item);
 		while (oscap_reference_iterator_has_more(references)) {
 			struct oscap_reference *ref = oscap_reference_iterator_next(references);
 			if (strcmp(oscap_reference_get_href(ref), DISA_STIG_VIEWER_HREF) == 0) {
-				stig_rule_id = oscap_reference_get_title(ref);
-				break;
+				const char *stig_rule_id = oscap_reference_get_title(ref);
+
+				xccdf_test_result_type_t expected_res = (xccdf_test_result_type_t)oscap_htable_get(nodes_by_rule_id, stig_rule_id);
+				xccdf_test_result_type_t test_res = xccdf_rule_result_get_result(result);
+				if (expected_res == test_res) {
+					oscap_htable_detach(nodes_by_rule_id, stig_rule_id);
+					_xccdf_rule_result_to_dom_idref(result, doc, parent, version_info, benchmark, stig_rule_id);
+				}
 			}
 		}
 		oscap_reference_iterator_free(references);
-
-		if (!stig_rule_id)
-			return NULL;
-
-		idref = stig_rule_id;
+	} else {
+		_xccdf_rule_result_to_dom_idref(result, doc, parent, version_info, benchmark, idref);
 	}
-
+}
+static void _xccdf_rule_result_to_dom_idref(struct xccdf_rule_result *result, xmlDoc *doc, xmlNode *parent, const struct xccdf_version_info* version_info, struct xccdf_benchmark *benchmark, const char *idref) {
 	xmlNs *ns_xccdf = lookup_xccdf_ns(doc, parent, version_info);
 
 	xmlNode *result_node = xmlNewTextChild(parent, ns_xccdf, BAD_CAST "rule-result", NULL);
@@ -1236,8 +1401,6 @@ xmlNode *xccdf_rule_result_to_dom(struct xccdf_rule_result *result, xmlDoc *doc,
 		xccdf_check_to_dom(check, doc, result_node, version_info);
 	}
 	xccdf_check_iterator_free(checks);
-
-	return result_node;
 }
 
 bool xccdf_rule_result_override(struct xccdf_rule_result *rule_result, xccdf_test_result_type_t new_result, const char *waiver_time, const char *authority, struct oscap_text *remark)
@@ -1412,9 +1575,12 @@ static inline const char *_get_timestamp(void)
 
 	tm = time(NULL);
 	lt = localtime(&tm);
-	snprintf(timestamp, sizeof(timestamp), "%4d-%02d-%02dT%02d:%02d:%02d",
+	int ret = snprintf(timestamp, sizeof(timestamp), "%4d-%02d-%02dT%02d:%02d:%02d",
 		1900 + lt->tm_year, 1 + lt->tm_mon, lt->tm_mday,
 		lt->tm_hour, lt->tm_min, lt->tm_sec);
+	if (ret < 0) {
+		return NULL;
+	}
 	return timestamp;
 }
 

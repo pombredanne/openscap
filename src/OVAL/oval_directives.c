@@ -41,7 +41,6 @@
 #include "adt/oval_collection_impl.h"
 #include "oval_parser_impl.h"
 
-#include "common/assume.h"
 #include "common/util.h"
 #include "common/debug_priv.h"
 #include "common/_error.h"
@@ -139,15 +138,6 @@ int oval_directives_model_import_source(struct oval_directives_model *model, str
 	return ret;
 }
 
-int oval_directives_model_import(struct oval_directives_model * model, char *file) {
-	/* open file */
-	struct oscap_source *source = oscap_source_new_from_file(file);
-	int ret = oval_directives_model_import_source(model, source);
-        oscap_source_free(source);
-
-	return ret;
-}
-
 int oval_directives_model_export(struct oval_directives_model *model, const char *file) {
 	 __attribute__nonnull__(model);
 
@@ -240,8 +230,9 @@ bool oval_result_directives_get_reported(struct oval_result_directives *directiv
 		type = type >> 1;
 	}
 
-        assume_r(i >= 0 && i < NUMBER_OF_RESULTS,
-                 /* return */ false);
+	if (i < 0 || i >= NUMBER_OF_RESULTS) {
+		return false;
+	}
 
 	return directives->directive[i].reported;
 }
@@ -256,8 +247,9 @@ oval_result_directive_content_t oval_result_directives_get_content
 		type = type >> 1;
 	}
 
-        assume_r(i >= 0 && i < NUMBER_OF_RESULTS,
-                 /* return */ OVAL_DIRECTIVE_CONTENT_UNKNOWN);
+	if (i < 0 || i >= NUMBER_OF_RESULTS) {
+		return OVAL_DIRECTIVE_CONTENT_UNKNOWN;
+	}
 
 	return directives->directive[i].content;
 }

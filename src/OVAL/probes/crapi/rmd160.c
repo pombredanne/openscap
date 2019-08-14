@@ -28,7 +28,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <assume.h>
 #include <errno.h>
 #include <unistd.h>
 
@@ -76,7 +75,7 @@ struct crapi_rmd160_ctx {
 
 void *crapi_rmd160_init (void *dst, void *size)
 {
-        struct crapi_rmd160_ctx *ctx = oscap_talloc (struct crapi_rmd160_ctx);
+        struct crapi_rmd160_ctx *ctx = malloc(sizeof(struct crapi_rmd160_ctx));
 
         if (gcry_md_open (&ctx->ctx, GCRY_MD_RMD160, 0) != 0) {
 		free(ctx);
@@ -126,17 +125,22 @@ int crapi_rmd160_fd (int fd, void *dst, size_t *size)
         struct stat st;
         void   *buffer;
         size_t  buflen;
-        
-        assume_r (size != NULL, -1, errno = EFAULT;);
-        assume_r (dst != NULL, -1, errno = EFAULT;);
-        assume_r (*size >= gcry_md_get_algo_dlen (GCRY_MD_RMD160), -1, errno = ENOBUFS;);
-        
+
+	if (size == NULL || dst == NULL) {
+		errno = EFAULT;
+		return -1;
+	}
+	if (*size < gcry_md_get_algo_dlen(GCRY_MD_RMD160)) {
+		errno = ENOBUFS;
+		return -1;
+	}
+
         if (fstat (fd, &st) != 0)
                 return (-1);
         else {
 #if _FILE_OFFSET_BITS == 32
                 buflen = st.st_size;
-# if defined(__FreeBSD__)
+# if defined(OS_FREEBSD)
                 buffer = mmap (NULL, buflen, PROT_READ, MAP_SHARED | MAP_NOCORE, fd, 0);
 # else
                 buffer = mmap (NULL, buflen, PROT_READ, MAP_SHARED, fd, 0);        
@@ -159,7 +163,10 @@ int crapi_rmd160_fd (int fd, void *dst, size_t *size)
                         case -1:
                                 return (-1);
                         default:
-                                assume_r (ret > 0, -1, gcry_md_close (hd););
+				if (ret <= 0) {
+					gcry_md_close(hd);
+					return -1;
+				}
                                 gcry_md_write (hd, (const void *)buffer, (size_t)ret);
                         }
                 

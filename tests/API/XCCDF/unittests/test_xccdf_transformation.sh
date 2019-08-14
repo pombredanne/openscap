@@ -1,10 +1,12 @@
 #!/bin/bash
+. $builddir/tests/test_common.sh
 
 set -e
 set -o pipefail
 
 . $builddir/tests/test_common.sh
 
+function perform_test {
 # if xsltproc is not installed we will skip the test
 require xsltproc || return 255
 
@@ -20,3 +22,6 @@ $OSCAP xccdf validate $result
 assert_exists 1 '//*[namespace::*="http://checklists.nist.gov/xccdf/1.2"]'
 
 rm $result
+}
+
+perform_test

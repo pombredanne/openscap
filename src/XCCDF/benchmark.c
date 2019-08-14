@@ -32,7 +32,6 @@
 #include "xccdf_impl.h"
 #include "common/_error.h"
 #include "common/debug_priv.h"
-#include "common/assume.h"
 #include "common/elements.h"
 #include "source/public/oscap_source.h"
 #include "source/oscap_source_priv.h"
@@ -51,14 +50,6 @@ struct xccdf_backref {
 	xccdf_type_t type;	// expected item type
 	char *id;		// id
 };
-
-struct xccdf_benchmark *xccdf_benchmark_import(const char *file)
-{
-	struct oscap_source *source = oscap_source_new_from_file(file);
-	struct xccdf_benchmark *benchmark = xccdf_benchmark_import_source(source);
-	oscap_source_free(source);
-	return benchmark;
-}
 
 struct xccdf_benchmark *xccdf_benchmark_import_source(struct oscap_source *source)
 {
@@ -119,7 +110,7 @@ struct xccdf_benchmark *xccdf_benchmark_new(void)
 	// add the implied default scoring model
 	struct xccdf_model *default_model = xccdf_model_new();
 	xccdf_model_set_system(default_model, "urn:xccdf:scoring:default");
-	assume_ex(xccdf_benchmark_add_model(XBENCHMARK(bench), default_model), XBENCHMARK(bench));
+	xccdf_benchmark_add_model(XBENCHMARK(bench), default_model);
 
 	return XBENCHMARK(bench);
 }
@@ -169,14 +160,14 @@ bool xccdf_benchmark_parse(struct xccdf_item * benchmark, xmlTextReaderPtr reade
 				oscap_list_add(benchmark->sub.benchmark.rear_matter, oscap_text_new_parse(XCCDF_TEXT_HTMLSUB, reader));
 			break;
 		case XCCDFE_PLATFORM:
-			oscap_list_add(benchmark->item.platforms, xccdf_attribute_copy(reader, XCCDFA_IDREF));
+			xccdf_item_add_applicable_platform(benchmark, reader);
 			break;
 		case XCCDFE_MODEL:
 			parsed_model = xccdf_model_new_xml(reader);
 
 			// we won't add the implied default scoring model, it is already in the benchmark
 			if (strcmp(xccdf_model_get_system(parsed_model), "urn:xccdf:scoring:default") != 0)
-				assume_ex(xccdf_benchmark_add_model(XBENCHMARK(benchmark), parsed_model), false);
+				xccdf_benchmark_add_model(XBENCHMARK(benchmark), parsed_model);
 			else
 				xccdf_model_free(parsed_model);
 
@@ -211,7 +202,7 @@ bool xccdf_benchmark_parse(struct xccdf_item * benchmark, xmlTextReaderPtr reade
 			oscap_list_add(benchmark->sub.benchmark.values, xccdf_value_parse(reader, benchmark));
 			break;
 		case XCCDFE_TESTRESULT:
-			assume_ex(xccdf_benchmark_add_result(XBENCHMARK(benchmark), xccdf_result_new_parse(reader)), false);
+			xccdf_benchmark_add_result(XBENCHMARK(benchmark), xccdf_result_new_parse(reader));
 			break;
 		default:
 			if (!xccdf_item_process_element(benchmark, reader))
@@ -656,13 +647,6 @@ void xccdf_notice_free(struct xccdf_notice *notice)
 OSCAP_ACCESSOR_STRING(xccdf_notice, id)
 OSCAP_ACCESSOR_TEXT(xccdf_notice, text)
 
-OSCAP_DEPRECATED(
-void xccdf_cleanup(void)
-{
-	xmlCleanupParser();
-}
-)
-
 const char * xccdf_benchmark_supported(void)
 {
     return XCCDF_SUPPORTED;
@@ -678,7 +662,7 @@ struct xccdf_group *xccdf_benchmark_append_new_group(struct xccdf_benchmark *ben
 	if (benchmark == NULL) return NULL;
 	struct xccdf_group *group = xccdf_group_new();
 	xccdf_group_set_id(group, id);
-	assume_ex(xccdf_benchmark_add_group(benchmark, group), group);
+	xccdf_benchmark_add_group(benchmark, group);
     return group;
 }
 struct xccdf_value *xccdf_benchmark_append_new_value(struct xccdf_benchmark *benchmark, const char *id, xccdf_value_type_t type)
@@ -686,7 +670,7 @@ struct xccdf_value *xccdf_benchmark_append_new_value(struct xccdf_benchmark *ben
 	if (benchmark == NULL) return NULL;
 	struct xccdf_value *value = xccdf_value_new(type);
 	xccdf_value_set_id(value, id);
-	assume_ex(xccdf_benchmark_add_value(benchmark, value), value);
+	xccdf_benchmark_add_value(benchmark, value);
     return value;
 }
 struct xccdf_rule *xccdf_benchmark_append_new_rule(struct xccdf_benchmark *benchmark, const char *id)
@@ -694,7 +678,7 @@ struct xccdf_rule *xccdf_benchmark_append_new_rule(struct xccdf_benchmark *bench
 	if (benchmark == NULL) return NULL;
 	struct xccdf_rule *rule = xccdf_rule_new();
 	xccdf_rule_set_id(rule, id);
-	assume_ex(xccdf_benchmark_add_rule(benchmark, rule), value);
+	xccdf_benchmark_add_rule(benchmark, rule);
     return rule;
 }
 
@@ -703,8 +687,7 @@ char *xccdf_benchmark_gen_id(struct xccdf_benchmark *benchmark, xccdf_type_t typ
 	assert(prefix != NULL);
 
 	const char *fmt = "%s%03d";
-	char foo[2];
-	int length = snprintf(foo, 1, fmt, prefix, 0);
+	int length = snprintf(NULL, 0, fmt, prefix, 0);
 	if (length < 0)
 		return NULL;
 	length++;

@@ -89,10 +89,14 @@ struct cvrf_session *cvrf_session_new_from_source_model(struct oscap_source *sou
 	if (source == NULL)
 		return NULL;
 
+	struct cvrf_model *model = cvrf_model_import(source);
+	if (model == NULL) {
+		return NULL;
+	}
 	struct cvrf_session *ret = malloc(sizeof(struct cvrf_session));
 	ret->source = source;
 	ret->index = NULL;
-	ret->model = cvrf_model_import(source);
+	ret->model = model;
 	ret->os_name = NULL;
 	ret->product_ids = oscap_stringlist_new();
 	ret->def_model = oval_definition_model_new();
@@ -225,6 +229,9 @@ struct oscap_source *cvrf_model_get_results_source(struct oscap_source *import_s
 	if (import_source == NULL)
 		return NULL;
 	struct cvrf_session *session = cvrf_session_new_from_source_model(import_source);
+	if (session == NULL) {
+		return NULL;
+	}
 	cvrf_session_set_os_name(session, os_name);
 
 	if (find_all_cvrf_product_ids_from_cpe(session) != 0) {
@@ -273,26 +280,6 @@ struct oscap_source *cvrf_index_get_results_source(struct oscap_source *import_s
 	struct oscap_source *source = oscap_source_new_from_xmlDoc(doc, NULL);
 	cvrf_session_free(session);
 	return source;
-}
-
-static const char *get_rpm_name_from_cvrf_product_id(struct cvrf_session *session, const char *product_id) {
-	const char *rpm_name = NULL;
-	struct cvrf_product_tree *tree = cvrf_model_get_product_tree(session->model);
-
-	struct oscap_iterator *branches = cvrf_product_tree_get_branches(tree);
-	while (oscap_iterator_has_more(branches)) {
-		struct cvrf_branch *branch = oscap_iterator_next(branches);
-		if (cvrf_branch_get_branch_type(branch) == CVRF_BRANCH_PRODUCT_VERSION) {
-			struct cvrf_product_name *full_name = cvrf_branch_get_product_name(branch);
-
-			if (oscap_str_endswith(product_id, cvrf_product_name_get_product_id(full_name))) {
-				rpm_name = cvrf_product_name_get_cpe(full_name);
-				break;
-			}
-		}
-	}
-	oscap_iterator_free(branches);
-	return rpm_name;
 }
 
 bool cvrf_product_vulnerability_fixed(struct cvrf_vulnerability *vuln, const char *product) {

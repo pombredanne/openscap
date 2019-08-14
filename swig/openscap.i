@@ -54,7 +54,7 @@
         $1 = (time_t) PyFloat_AsDouble($input);
     else {
         PyErr_SetString(PyExc_TypeError,"Expected a large number");
-        return NULL;
+        SWIG_fail;
     }
 }
 
@@ -91,7 +91,7 @@
     $1[i] = 0;
   } else {
     PyErr_SetString(PyExc_TypeError,"not a list");
-    return NULL;
+    SWIG_fail;
   }
 }
 
@@ -108,11 +108,11 @@
 
     if (!PySequence_Check($input)) {
         PyErr_SetString(PyExc_ValueError,"Expected a sequence");
-        return NULL;
+        SWIG_fail;
     }
     if (a_size <= 0) {
         PyErr_SetString(PyExc_ValueError,"Expected not empty sequence");
-        return NULL;
+        SWIG_fail;
     }
 
     $1 = (struct cpe_name **) malloc(a_size*sizeof(struct cpe_name *));
@@ -121,12 +121,12 @@
         PyObject *obj = PySequence_GetItem($input,i);
         if (obj == NULL) {
             SWIG_exception_fail(SWIG_ArgError(res_o), "in argument '" "cpe_name" "' substitution '" "', can't access sequence");
-            return NULL; /*5956*/
+            SWIG_fail; /*5956*/
         }
         res_o = SWIG_ConvertPtr(obj, &arg, SWIGTYPE_p_cpe_name, 0 );
         if (!SWIG_IsOK(res_o)) {
             SWIG_exception_fail(SWIG_ArgError(res_o), "in argument '" "cpe_name" "' substitution invalid types");
-            return NULL;
+            SWIG_fail;
         }
         $1[i] = (struct cpe_name *) arg;
     }
@@ -140,11 +140,11 @@
 
     if (!PySequence_Check($input)) {
         PyErr_SetString(PyExc_ValueError,"Expected a sequence");
-        return NULL;
+        SWIG_fail;
     }
     if (a_size <= 0) {
         PyErr_SetString(PyExc_ValueError,"Expected not empty sequence");
-        return NULL;
+        SWIG_fail;
     }
 
     $1 = (struct oval_syschar_model **) malloc(a_size*sizeof(struct oval_syschar_model *));
@@ -153,15 +153,18 @@
         PyObject *obj = PySequence_GetItem($input,i);
         if (obj == NULL) {
             SWIG_exception_fail(SWIG_ArgError(res_o), "in argument '" "oval_syschar_model" "' substitution '" "', can't access sequence");
-            return NULL;
+            SWIG_fail;
         }
         res_o = SWIG_ConvertPtr(obj, &arg, SWIGTYPE_p_oval_syschar_model, 0 );
         if (!SWIG_IsOK(res_o)) {
             SWIG_exception_fail(SWIG_ArgError(res_o), "in argument '" "oval_syschar_model" "' substitution invalid types");
-            return NULL;
+            SWIG_fail;
         }
         $1[i] = (struct oval_syschar_model *) arg;
     }
+}
+%typemap(freearg) struct oval_syschar_model ** {
+    free($1);
 }
 #elif defined(SWIGPERL)
 /* Definitions for PERL */
@@ -182,15 +185,6 @@
 %include "../../src/common/public/oscap_reference.h"
 
 %include "../../src/DS/public/scap_ds.h"
-
-#ifdef WANT_CCE
-%module openscap
-%{
- #include "../../src/CCE/public/cce.h"
-%}
-%include "../../src/CCE/public/cce.h"
-#endif
-
 
 %module openscap
 %{
@@ -250,9 +244,7 @@
  #include "../../src/OVAL/public/oval_session.h"
  #include "../../src/OVAL/public/oval_types.h"
  #include "../../src/OVAL/public/oval_variables.h"
- #include "../../src/OVAL/public/oval_version.h"
  #include "../../src/OVAL/public/oval_probe.h"
- #include "../../src/OVAL/public/oval_probe_handler.h"
  #include "../../src/OVAL/public/oval_probe_session.h"
 %}
 %include "../../src/OVAL/public/oval_adt.h"
@@ -265,10 +257,10 @@
 %include "../../src/OVAL/public/oval_session.h"
 %include "../../src/OVAL/public/oval_types.h"
 %include "../../src/OVAL/public/oval_variables.h"
-%include "../../src/OVAL/public/oval_version.h"
+#if defined(ENABLE_PROBES)
 %include "../../src/OVAL/public/oval_probe.h"
-%include "../../src/OVAL/public/oval_probe_handler.h"
 %include "../../src/OVAL/public/oval_probe_session.h"
+#endif
 
 %module openscap
 %{
@@ -555,34 +547,6 @@ int oval_agent_eval_system_py(oval_agent_session_t * asess, PyObject * func, PyO
     new_usrdata->usr = usr;
 
     return oval_agent_eval_system(asess, agent_reporter_callback_wrapper, (void *) new_usrdata);
-}
-
-bool oscap_validate_document_py(const char *xmlfile, oscap_document_type_t doctype, const char *version, PyObject *func, PyObject *usr) {
-    struct internal_usr *new_usrdata;
-    PyEval_InitThreads();
-    Py_INCREF(func);
-    Py_INCREF(usr);
-    new_usrdata = malloc(sizeof(struct internal_usr));
-    if (new_usrdata == NULL) return false;
-
-    new_usrdata->func = func;
-    new_usrdata->usr = usr;
-
-    return oscap_validate_document(xmlfile, doctype, version, validate_callback_wrapper, (void *)new_usrdata);
-}
-
-char * oscap_text_xccdf_substitute_py(const char *text, PyObject *func, PyObject *usr) {
-    struct internal_usr *new_usrdata;
-    PyEval_InitThreads();
-    Py_INCREF(func);
-    Py_INCREF(usr);
-    new_usrdata = malloc(sizeof(struct internal_usr));
-    if (new_usrdata == NULL) return false;
-
-    new_usrdata->func = func;
-    new_usrdata->usr = usr;
-
-    return oscap_text_xccdf_substitute(text, sub_callback_wrapper, (void *)new_usrdata);
 }
 
 %}

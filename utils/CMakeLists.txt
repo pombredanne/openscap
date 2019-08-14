@@ -1,13 +1,34 @@
 if(ENABLE_OSCAP_UTIL)
 	file(GLOB UTILS_SOURCES "*.c")
+	if(HAVE_GETOPT_H)
+		list(REMOVE_ITEM UTILS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/getopt.c")
+	endif()
 	add_executable(oscap ${UTILS_SOURCES})
 	target_link_libraries(oscap openscap)
-	install(TARGETS "oscap"
-		DESTINATION ${CMAKE_INSTALL_BINDIR}
-	)
-	install(FILES "oscap.8"
-		DESTINATION "${CMAKE_INSTALL_MANDIR}/man8"
-	)
+	if(WIN32)
+		set(OSCAP_UTIL_DESTINATION ".")
+		# Install the 'oscap' utility
+		install(TARGETS "oscap"
+			DESTINATION ${OSCAP_UTIL_DESTINATION}
+		)
+		# Install all recursively dependent DLLs for oscap.exe
+		set(APPS "\${CMAKE_INSTALL_PREFIX}/oscap.exe") # the \ before $ is required by BundleUtilities
+		set(VCPKG_DLL_DIR "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
+		install(CODE "
+			include(BundleUtilities)
+			fixup_bundle(\"${APPS}\" \"\" \"${VCPKG_DLL_DIR}\")
+		")
+	else()
+		set(OSCAP_UTIL_DESTINATION ${CMAKE_INSTALL_BINDIR})
+		# Install the 'oscap' utility
+		install(TARGETS "oscap"
+			DESTINATION ${OSCAP_UTIL_DESTINATION}
+		)
+		# Install manual page
+		install(FILES "oscap.8"
+			DESTINATION "${CMAKE_INSTALL_MANDIR}/man8"
+		)
+	endif()
 endif()
 if(ENABLE_OSCAP_UTIL_CHROOT)
 	install(PROGRAMS "oscap-chroot"
@@ -47,6 +68,14 @@ if(ENABLE_OSCAP_UTIL_VM)
 		DESTINATION ${CMAKE_INSTALL_BINDIR}
 	)
 	install(FILES "oscap-vm.8"
+		DESTINATION "${CMAKE_INSTALL_MANDIR}/man8"
+	)
+endif()
+if(ENABLE_OSCAP_UTIL_PODMAN)
+	install(PROGRAMS "oscap-podman"
+		DESTINATION ${CMAKE_INSTALL_BINDIR}
+	)
+	install(FILES "oscap-podman.8"
 		DESTINATION "${CMAKE_INSTALL_MANDIR}/man8"
 	)
 endif()

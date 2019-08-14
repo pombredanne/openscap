@@ -36,13 +36,13 @@
 #include "sds_priv.h"
 
 #include "common/debug_priv.h"
-#include "common/alloc.h"
 #include "common/_error.h"
 #include "common/util.h"
 #include "common/list.h"
 #include "common/oscap_acquire.h"
 #include "source/oscap_source_priv.h"
 #include "source/public/oscap_source.h"
+#include "oscap_helpers.h"
 
 #include <sys/stat.h>
 #include <time.h>
@@ -55,7 +55,7 @@
 
 #include <string.h>
 #include <fcntl.h>
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 #include <io.h>
 #else
 #include <unistd.h>
@@ -116,7 +116,7 @@ xmlNode *containter_get_component_ref_by_id(xmlNode *container, const char *comp
 	return NULL;
 }
 
-static xmlNodePtr ds_sds_find_component_ref(xmlNodePtr datastream, const char* id)
+xmlNodePtr ds_sds_find_component_ref(xmlNodePtr datastream, const char* id)
 {
 	/* This searches for a ds:component-ref (XLink) element with a given id.
 	 * It returns a first such element in a given ds:data-stream.
@@ -136,7 +136,7 @@ static xmlNodePtr ds_sds_find_component_ref(xmlNodePtr datastream, const char* i
 	return NULL;
 }
 
-static xmlNodePtr _lookup_component_in_collection(xmlDocPtr doc, const char *component_id)
+xmlNodePtr lookup_component_in_collection(xmlDocPtr doc, const char *component_id)
 {
 	xmlNodePtr root = xmlDocGetRootElement(doc);
 	xmlNodePtr component = NULL;
@@ -187,7 +187,7 @@ static int ds_sds_dump_component_sce(const xmlNode *script_node, const char *com
 		}
 		// TODO: error checking, fprintf should return strlen((const char*)text_contents)
 		fprintf(output_file, "%s", text_contents ? (char*)text_contents : "");
-#ifndef _WIN32
+#ifndef OS_WINDOWS
 		// NB: This code is for SCE scripts
 		if (fchmod(fd, 0700) != 0) {
 			oscap_seterr(OSCAP_EFAMILY_XML, "Failed to set executable permission on script (id='%s') that was split to '%s'.", component_id, filename);
@@ -278,7 +278,7 @@ static xmlNodePtr ds_sds_get_component_root_by_id(xmlDoc *doc, const char* compo
 	if (component_id == NULL) {
 		component = (xmlNodePtr)doc;
 	} else {
-		component = _lookup_component_in_collection(doc, component_id);
+		component = lookup_component_in_collection(doc, component_id);
 		if (component == NULL)
 		{
 			oscap_seterr(OSCAP_EFAMILY_XML, "Component of given id '%s' was not found in the document.", component_id);
@@ -420,6 +420,7 @@ static int ds_sds_dump_component_by_href(struct ds_sds_session *session, char* x
 			}
 
 			ds_sds_session_remote_resources_progress(session)(true, "WARNING: Skipping '%s' file which is referenced from datastream\n", url);
+			// -2 means that remote resources were not downloaded
 			return -2;
 		}
 
@@ -452,8 +453,12 @@ int ds_sds_dump_component_ref_as(const xmlNodePtr component_ref, struct ds_sds_s
 	xmlFree(xlink_href);
 	xmlFree(cref_id);
 
-	if (ret != 0) {
-
+	if (ret == -2) {
+		// A remote component was not dumped
+		// It should be ok to continue without it
+		free(target_filename_dirname);
+		return 0;
+	} else if (ret != 0) {
 		free(target_filename_dirname);
 		return -1;
 	}
@@ -567,43 +572,6 @@ xmlNodePtr ds_sds_lookup_datastream_in_collection(xmlDocPtr doc, const char *dat
 	return datastream;
 }
 
-int ds_sds_decompose_custom(const char* input_file, const char* id, const char* target_dir,
-		const char* container_name, const char* component_id, const char* target_filename)
-{
-	struct oscap_source *ds_source = oscap_source_new_from_file(input_file);
-	struct ds_sds_session *session = ds_sds_session_new_from_source(ds_source);
-	if (session == NULL) {
-		oscap_source_free(ds_source);
-		return -1;
-	}
-	if (ds_sds_session_set_datastream_id(session, id)) {
-		ds_sds_session_free(session);
-		oscap_source_free(ds_source);
-		return -1;
-	}
-	if (ds_sds_session_set_target_dir(session, oscap_streq(target_dir, "") ? "." : target_dir)) {
-		ds_sds_session_free(session);
-		oscap_source_free(ds_source);
-		return -1;
-	}
-
-	if (ds_sds_session_register_component_with_dependencies(session, container_name, component_id, target_filename) != 0) {
-		ds_sds_session_free(session);
-		oscap_source_free(ds_source);
-		return -1;
-	}
-
-	int ret = ds_sds_session_dump_component_files(session);
-	ds_sds_session_free(session);
-	oscap_source_free(ds_source);
-	return ret;
-}
-
-int ds_sds_decompose(const char* input_file, const char* id, const char* xccdf_id, const char* target_dir, const char* xccdf_filename)
-{
-	return ds_sds_decompose_custom(input_file, id, target_dir, "checklists", xccdf_id, xccdf_filename);
-}
-
 static inline int ds_sds_compose_component_add_script_content(xmlNode *component, const char *filepath)
 {
 	FILE* f = fopen(filepath, "r");
@@ -649,7 +617,7 @@ static int ds_sds_compose_add_component_internal(xmlDocPtr doc, xmlNodePtr datas
 	}
 
 	char file_timestamp[32];
-	strcpy(file_timestamp, "0000-00-00T00:00:00");
+	strncpy(file_timestamp, "0000-00-00T00:00:00", sizeof(file_timestamp));
 
 	const char *filepath = oscap_source_get_filepath(component_source);
 	struct stat file_stat;
@@ -782,7 +750,7 @@ static int ds_sds_compose_catalog_has_uri(xmlDocPtr doc, xmlNodePtr catalog, con
 
 // takes given relative filepath and mangles it so that it's acceptable
 // as a component id
-static char* ds_sds_mangle_filepath(const char* filepath)
+char* ds_sds_mangle_filepath(const char* filepath)
 {
 	if (filepath == NULL)
 		return NULL;
@@ -1073,7 +1041,7 @@ static int ds_sds_compose_add_component_source_with_ref(xmlDocPtr doc, xmlNodePt
 		extended_component ? "e" : "", mangled_filepath);
 
 	int counter = 0;
-	while (_lookup_component_in_collection(doc, comp_id) != NULL) {
+	while (lookup_component_in_collection(doc, comp_id) != NULL) {
 		// While a component of the given ID already exists, generate a new one
 		free(comp_id);
 		comp_id = oscap_sprintf("scap_org.open-scap_%scomp_%s%03d",
@@ -1269,4 +1237,30 @@ int ds_sds_compose_from_xccdf(const char *xccdf_file, const char *target_datastr
 
 	xmlFreeDoc(doc);
 	return 0;
+}
+
+char *ds_sds_detect_version(xmlTextReader *reader)
+{
+	/* find root element */
+	while (xmlTextReaderRead(reader) == 1 && xmlTextReaderNodeType(reader) != XML_READER_TYPE_ELEMENT)
+		;
+
+	char *element_name = (char *) xmlTextReaderConstLocalName(reader);
+	if (!element_name) {
+		oscap_setxmlerr(xmlGetLastError());
+		return NULL;
+	}
+	if (strcmp(element_name, "data-stream-collection")) {
+		oscap_seterr(OSCAP_EFAMILY_OSCAP,
+			"Expected root element name for SCAP source datastream is" \
+			"'data-stream-collection' but actual root element name is '%s'.",
+			element_name);
+		return NULL;
+	}
+	char *schematron_version = (char *) xmlTextReaderGetAttribute(reader, BAD_CAST "schematron-version");
+	if (!schematron_version) {
+		oscap_setxmlerr(xmlGetLastError());
+		return NULL;
+	}
+	return schematron_version;
 }

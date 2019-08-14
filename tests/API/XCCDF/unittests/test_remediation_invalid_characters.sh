@@ -1,4 +1,5 @@
 #!/bin/bash
+. $builddir/tests/test_common.sh
 
 set -e -o pipefail
 
@@ -15,7 +16,7 @@ echo "Result file = $result"
 [ -f $stderr ]; [ ! -s $stderr ]; rm $stderr
 [ -f $result ]; [ -s $result ]
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 
 assert_exists 1 "//message[contains(text(),'<tag>')]"
 

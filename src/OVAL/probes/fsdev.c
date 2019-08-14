@@ -3,8 +3,6 @@
  * @brief  fsdev API implementation
  * @author "Daniel Kopecek" <dkopecek@redhat.com>
  *
- * @addtogroup PROBEAUXAPI
- * @{
  */
 /*
  * Copyright 2009 Red Hat Inc., Durham, North Carolina.
@@ -41,18 +39,18 @@
 #include <sys/stat.h>
 #include <errno.h>
 
-#if defined(__linux__)
+#if defined(OS_LINUX)
 # include <mntent.h>
 # include <unistd.h>
-#elif defined(__SVR4) && defined(__sun)
+#elif defined(OS_SOLARIS)
 # include <sys/mnttab.h>
 # include <sys/mntent.h>
 # include <sys/unistd.h>
-#elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__APPLE__)
+#elif defined(OS_FREEBSD) || defined(OS_APPLE)
 # include <sys/param.h>
 # include <sys/ucred.h>
 # include <sys/mount.h>
-#elif defined(_AIX)
+#elif defined(OS_AIX)
 # include <unistd.h>
 # include <mntent.h>
 # include <fshelp.h>
@@ -73,57 +71,31 @@ static int fsdev_cmp(const void *a, const void *b)
 	return memcmp(a, b, sizeof(dev_t));
 }
 
-/**
- * Compare two strings.
- */
-static int fsname_cmp(const void *a, const void *b)
-{
-	return strcmp(a, b);
-}
-
-/**
- * Search for a filesystem name in a sorted array using binary search.
- * @param fsname name
- * @param fs_arr sorted array of filesystem names
- * @param fs_cnt number of names in the array
- * @retval 1 if found
- * @retval 0 otherwise
- */
-static int match_fs(const char *fsname, const char **fs_arr, size_t fs_cnt)
-{
-	size_t w, s;
-	int cmp;
-
-	w = fs_cnt;
-	s = 0;
-
-	while (w > 0) {
-		cmp = fsname_cmp(fsname, fs_arr[s + w / 2]);
-		if (cmp > 0) {
-			s += w / 2 + 1;
-			w = w - w / 2 - 1;
-		} else if (cmp < 0) {
-			w = w / 2;
-		} else {
-			return (1);
-		}
-	}
-
-	return (0);
-}
-
-#if defined(__linux__) || defined(_AIX)
+#if defined(OS_LINUX) || defined(OS_AIX)
 
 #define DEVID_ARRAY_SIZE 16
 #define DEVID_ARRAY_ADD  8
 
-#if defined(__linux__)
-static int
-is_local_fs(struct mntent *ment)
+#if defined(OS_LINUX)
+static int is_local_fs(struct mntent *ment)
 {
 // todo: would it be usefull to provide the choice during build-time?
 #if 1
 	char *s;
+
+	/*
+	 * When type of the filesystem is autofs, it means the mtab entry
+	 * describes the autofs configuration, which means ment->mnt_fsname
+	 * is a path to the relevant autofs map, eg. /etc/auto.misc. In this
+	 * situation, the following code which analyses ment->mnt_type would
+	 * not work. When the filesystem handled by autofs is mounted, there
+	 * is another different entry in mtab which contains the real block
+	 * special device or remote filesystem in ment->mnt_fsname, and that
+	 * will be parsed in a different call of this function.
+	 */
+	if (!strcmp(ment->mnt_type, "autofs")) {
+		return 0;
+	}
 
 	s = ment->mnt_fsname;
 	/* If the fsname begins with "//", it is probably CIFS. */
@@ -154,9 +126,8 @@ is_local_fs(struct mntent *ment)
 #endif
 }
 
-#elif defined(_AIX)
-static int
-is_local_fs(struct mntent *ment)
+#elif defined(OS_AIX)
+static int is_local_fs(struct mntent *ment)
 {
 	int i;
 	struct vfs_ent *e;
@@ -183,9 +154,9 @@ is_local_fs(struct mntent *ment)
 	return 1;
 }
 
-#endif /* _AIX */
+#endif /* OS_AIX */
 
-static fsdev_t *__fsdev_init(fsdev_t * lfs, const char **fs, size_t fs_cnt)
+static fsdev_t *__fsdev_init(fsdev_t *lfs)
 {
 	int e;
 	FILE *fp;
@@ -216,12 +187,8 @@ static fsdev_t *__fsdev_init(fsdev_t * lfs, const char **fs, size_t fs_cnt)
 	i = 0;
 
 	while ((ment = getmntent(fp)) != NULL) {
-		if (fs == NULL) {
-			if (!is_local_fs(ment))
-				continue;
-		} else if (!match_fs(ment->mnt_type, fs, fs_cnt)) {
-				continue;
-		}
+		if (!is_local_fs(ment))
+			continue;
 		if (stat(ment->mnt_dir, &st) != 0)
 			continue;
 		if (i >= lfs->cnt) {
@@ -238,8 +205,8 @@ static fsdev_t *__fsdev_init(fsdev_t * lfs, const char **fs, size_t fs_cnt)
 
 	return (lfs);
 }
-#elif defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__APPLE__)
-static fsdev_t *__fsdev_init(fsdev_t * lfs, const char **fs, size_t fs_cnt)
+#elif defined(OS_FREEBSD) || defined(OS_APPLE)
+static fsdev_t *__fsdev_init(fsdev_t *lfs)
 {
 	struct statfs *mntbuf = NULL;
 	struct stat st;
@@ -248,20 +215,11 @@ static fsdev_t *__fsdev_init(fsdev_t * lfs, const char **fs, size_t fs_cnt)
 	lfs->cnt = getmntinfo(&mntbuf, (fs == NULL ? MNT_LOCAL : 0) | MNT_NOWAIT);
 	lfs->ids = malloc(sizeof(dev_t) * lfs->cnt);
 
-	if (fs == NULL) {
-		for (i = 0; i < lfs->cnt; ++i) {
-			if (stat(mntbuf[i].f_mntonname, &st) != 0)
-				continue;
+	for (i = 0; i < lfs->cnt; ++i) {
+		if (stat(mntbuf[i].f_mntonname, &st) != 0)
+			continue;
 
-			memcpy(&(lfs->ids[i]), &st.st_dev, sizeof(dev_t));
-		}
-	} else {
-		for (i = 0; i < lfs->cnt; ++i) {
-			if (!match_fs(mntbuf[i].f_fstypename, fs, fs_cnt))
-				continue;
-
-			memcpy(&(lfs->ids[i]), &st.st_dev, sizeof(dev_t));
-		}
+		memcpy(&(lfs->ids[i]), &st.st_dev, sizeof(dev_t));
 	}
 
 	if (i != lfs->cnt) {
@@ -271,12 +229,12 @@ static fsdev_t *__fsdev_init(fsdev_t * lfs, const char **fs, size_t fs_cnt)
 
 	return (lfs);
 }
-#elif defined(__SVR4) && defined(__sun)
+#elif defined(OS_SOLARIS)
 
 #define DEVID_ARRAY_SIZE 16
 #define DEVID_ARRAY_ADD  8
 
-static fsdev_t *__fsdev_init(fsdev_t * lfs, const char **fs, size_t fs_cnt)
+static fsdev_t *__fsdev_init(fsdev_t *lfs)
 {
 	int e;
 	FILE *fp;
@@ -306,31 +264,16 @@ static fsdev_t *__fsdev_init(fsdev_t * lfs, const char **fs, size_t fs_cnt)
 	lfs->cnt = DEVID_ARRAY_SIZE;
 	i = 0;
 
-	if (fs == NULL) {
-		while ((getmntent(fp, &mentbuf)) == 0) {
-                        /* TODO: Is this check reliable? */
-                        if (stat (mentbuf.mnt_special, &st) == 0 && (st.st_mode & S_IFCHR)) {
+	while ((getmntent(fp, &mentbuf)) == 0) {
+		/* TODO: Is this check reliable? */
+		if (stat(mentbuf.mnt_special, &st) == 0 && (st.st_mode & S_IFCHR)) {
 
-				if (i >= lfs->cnt) {
-					lfs->cnt += DEVID_ARRAY_ADD;
-					lfs->ids = realloc(lfs->ids, sizeof(dev_t) * lfs->cnt);
-				}
-
-				memcpy(&(lfs->ids[i++]), &st.st_dev, sizeof(dev_t));
+			if (i >= lfs->cnt) {
+				lfs->cnt += DEVID_ARRAY_ADD;
+				lfs->ids = realloc(lfs->ids, sizeof(dev_t) * lfs->cnt);
 			}
-		}
-	} else {
-		while ((getmntent(fp, &mentbuf)) == 0) {
 
-			if (match_fs(mentbuf.mnt_fstype, fs, fs_cnt)) {
-
-				if (i >= lfs->cnt) {
-					lfs->cnt += DEVID_ARRAY_ADD;
-					lfs->ids = realloc(lfs->ids, sizeof(dev_t) * lfs->cnt);
-				}
-
-				memcpy(&(lfs->ids[i++]), &st.st_dev, sizeof(dev_t));
-			}
+			memcpy(&(lfs->ids[i++]), &st.st_dev, sizeof(dev_t));
 		}
 	}
 
@@ -343,7 +286,7 @@ static fsdev_t *__fsdev_init(fsdev_t * lfs, const char **fs, size_t fs_cnt)
 }
 #endif
 
-fsdev_t *fsdev_init(const char **fs, size_t fs_cnt)
+fsdev_t *fsdev_init()
 {
 	fsdev_t *lfs;
 
@@ -352,7 +295,7 @@ fsdev_t *fsdev_init(const char **fs, size_t fs_cnt)
 	if (lfs == NULL)
 		return (NULL);
 
-	if (__fsdev_init(lfs, fs, fs_cnt) == NULL)
+	if (__fsdev_init(lfs) == NULL)
 		return (NULL);
 
         if (lfs->ids != NULL && lfs->cnt > 1)
@@ -364,52 +307,6 @@ fsdev_t *fsdev_init(const char **fs, size_t fs_cnt)
 static inline int isfschar(int c)
 {
 	return (isalpha(c) || isdigit(c) || c == '-' || c == '_');
-}
-
-fsdev_t *fsdev_strinit(const char *fs_names)
-{
-	fsdev_t *lfs;
-	char *pstr, **fs_arr;
-	size_t fs_cnt;
-	int state, e;
-
-	pstr = strdup(fs_names);
-	state = 0;
-	fs_arr = NULL;
-	fs_cnt = 0;
-
-	while (*pstr != '\0') {
-		switch (state) {
-		case 0:
-			if (isfschar(*pstr)) {
-				state = 1;
-				++fs_cnt;
-				fs_arr = realloc(fs_arr, sizeof(char *) * fs_cnt);
-				fs_arr[fs_cnt - 1] = pstr;
-			}
-
-			++pstr;
-
-			break;
-		case 1:
-			if (!isfschar(*pstr) && *pstr != '\0') {
-				state = 0;
-				*pstr = '\0';
-				++pstr;
-			}
-			break;
-		}
-	}
-
-	if (fs_arr != NULL && fs_cnt > 0)
-		qsort(fs_arr, fs_cnt, sizeof(char *), fsname_cmp);
-
-	lfs = fsdev_init((const char **)fs_arr, fs_cnt);
-	e = errno;
-	free(fs_arr);
-	errno = e;
-
-	return (lfs);
 }
 
 void fsdev_free(fsdev_t * lfs)
@@ -466,4 +363,3 @@ int fsdev_fd(fsdev_t * lfs, int fd)
 
 	return fsdev_search(lfs, &st.st_dev);
 }
-/// @}

@@ -30,6 +30,7 @@
 #include <string.h>
 #include <time.h>
 #include <math.h>
+#include <pcre.h>
 
 #include <libxml/tree.h>
 #include <libxml/xpath.h>
@@ -40,6 +41,12 @@
 #include "helpers.h"
 #include "xccdf_impl.h"
 #include "common/util.h"
+#include "oscap_helpers.h"
+
+/* According to `man 3 pcreapi`, the number passed in ovecsize should always
+ * be a multiple of three.
+ */
+#define OVECTOR_LEN 30
 
 const struct oscap_string_map XCCDF_OPERATOR_MAP[] = {
 	{XCCDF_OPERATOR_EQUALS, "equals"},
@@ -536,9 +543,16 @@ xmlNode *xccdf_status_to_dom(struct xccdf_status *status, xmlDoc *doc, xmlNode *
 	time_t date_time = xccdf_status_get_date(status);
 	if (date_time) {
 		struct tm *date = localtime(&date_time);
-		char date_str[] = "YYYY-DD-MM";
-		snprintf(date_str, sizeof(date_str), "%04d-%02d-%02d", date->tm_year + 1900, date->tm_mon + 1, date->tm_mday);
+		/* "YYYY-DD-MM" */
+		int date_len = snprintf(NULL, 0, "%04d-%02d-%02d", date->tm_year + 1900, date->tm_mon + 1, date->tm_mday);
+		if (date_len < 0) {
+			return status_node;
+		}
+		date_len++; // +1 for terminating '\0'
+		char *date_str = malloc(date_len);
+		snprintf(date_str, date_len, "%04d-%02d-%02d", date->tm_year + 1900, date->tm_mon + 1, date->tm_mday);
 		xmlNewProp(status_node, BAD_CAST "date", BAD_CAST date_str);
+		free(date_str);
 	}
 
 	return status_node;
@@ -742,6 +756,46 @@ bool xccdf_item_process_attributes(struct xccdf_item *item, xmlTextReaderPtr rea
 	return item->item.id != NULL;
 }
 
+void xccdf_item_add_applicable_platform(struct xccdf_item *item, xmlTextReaderPtr reader)
+{
+	char *platform_idref = xccdf_attribute_copy(reader, XCCDFA_IDREF);
+
+	/* Official Windows 7 CPE according to National Vulnerability Database
+	 * CPE Dictionary as of 2018-08-29 is 'cpe:/o:microsoft:windows_7'.
+	 * However, content exported from Microsoft Security Compliance Manager
+	 * as of version 4.0.0.1 in CAB archive using 'Export in SCAP 1.0' is
+	 * 'cpe:/o:microsoft:windows7'. If this pattern is matched, we will add
+	 * an underscore to workaround the situation that this XCCDF benchmark is
+	 * not applicable.
+	 */
+	const char *pcreerror = NULL;
+	int erroffset = 0;
+	pcre *regex = pcre_compile("^(cpe:/o:microsoft:windows)(7.*)", 0, &pcreerror, &erroffset, NULL);
+	int ovector[OVECTOR_LEN];
+	int rc = pcre_exec(regex, NULL, platform_idref, strlen(platform_idref), 0, 0, ovector, OVECTOR_LEN);
+	/* 1 pattern + 2 groups = 3 */
+	if (rc == 3) {
+		const int first_group_start = ovector[2];
+		const int first_group_end = ovector[3];
+		size_t first_group_len = first_group_end - first_group_start;
+		char *first_group = malloc(first_group_len + 1); // + 1 for '\0'
+		strncpy(first_group, platform_idref + first_group_start, first_group_len);
+		first_group[first_group_len] = '\0';
+		const int second_group_start = ovector[4];
+		const int second_group_end = ovector[5];
+		size_t second_group_len = second_group_end - second_group_start;
+		char *second_group = malloc(second_group_len + 1); // + 1 for '\0'
+		strncpy(second_group, platform_idref + second_group_start, second_group_len);
+		second_group[second_group_len] = '\0';
+		char *alternate_platform_idref = oscap_sprintf("%s_%s", first_group, second_group);
+		free(first_group);
+		free(second_group);
+		oscap_list_add(item->item.platforms, alternate_platform_idref);
+	}
+
+	oscap_list_add(item->item.platforms, platform_idref);
+}
+
 bool xccdf_item_process_element(struct xccdf_item * item, xmlTextReaderPtr reader)
 {
 	xccdf_element_t el = xccdf_element_get(reader);
@@ -790,7 +844,7 @@ bool xccdf_item_process_element(struct xccdf_item * item, xmlTextReaderPtr reade
         oscap_list_add(item->item.rationale, oscap_text_new_parse(XCCDF_TEXT_HTMLSUB, reader));
 		return true;
         case XCCDFE_PLATFORM:
-        oscap_list_add(item->item.platforms, xccdf_attribute_copy(reader, XCCDFA_IDREF));
+		xccdf_item_add_applicable_platform(item, reader);
                 return true;
 	case XCCDFE_QUESTION:
         oscap_list_add(item->item.question, oscap_text_new_parse(XCCDF_TEXT_PLAIN, reader));
@@ -1300,89 +1354,3 @@ const struct oscap_text_traits XCCDF_TEXT_PLAINSUB = { .can_override = true, .ca
 const struct oscap_text_traits XCCDF_TEXT_HTMLSUB  = { .html = true, .can_override = true, .can_substitute = true };
 const struct oscap_text_traits XCCDF_TEXT_NOTICE   = { .html = true };
 const struct oscap_text_traits XCCDF_TEXT_PROFNOTE = { .html = true, .can_substitute = true };
-
-
-// text substitution
-char* oscap_text_xccdf_substitute(const char *text, xccdf_substitution_func cb, void *arg)
-{
-    if (text == NULL)
-        return NULL;
-    if (cb == NULL)
-        return oscap_strdup(text);
-
-    char *result                = NULL;
-    char *result_tmp            = NULL;
-    char *input                 = NULL;
-    xmlDocPtr doc               = NULL;
-    xmlXPathContextPtr xpathCtx = NULL;
-    xmlXPathObjectPtr xpathObj  = NULL;
-    xmlNodeSetPtr nodes         = NULL;
-    const char *xpath = "//cdf:sub";
-    size_t size;
-
-    input = oscap_sprintf("<x xmlns='http://www.w3.org/1999/xhtml'>%s</x>", text);
-
-    doc = xmlParseMemory(input, strlen(input));
-    if (doc == NULL) goto cleanup;
-
-    xpathCtx = xmlXPathNewContext(doc);
-    if (xpathCtx == NULL) goto cleanup;
-
-    // FIXME: Remove hardcoded version
-    if (xmlXPathRegisterNs(xpathCtx, BAD_CAST "cdf", BAD_CAST "http://checklists.nist.gov/xccdf/1.1") != 0) goto cleanup;
-
-    xpathObj = xmlXPathEvalExpression(BAD_CAST xpath, xpathCtx);
-    if (xpathObj == NULL) goto cleanup;
-
-    nodes = xpathObj->nodesetval;
-    size = (nodes) ? nodes->nodeNr : 0;
-
-    for (size_t i = 0; i < size; ++i) {
-        xmlNodePtr cur = nodes->nodeTab[i];
-        char *sub = NULL; // text to be substituted
-
-        if (cur->type == XML_ELEMENT_NODE) {
-            if (oscap_streq((const char *) cur->name, "sub")) {
-                const char *id = (const char *) xmlGetProp(cur, BAD_CAST "idref");
-                if (id) sub = cb(XCCDF_SUBST_SUB, id, arg);
-            }
-        }
-
-        // do the substitution
-        if (sub) {
-            xmlNodePtr sub_node = xmlNewText(BAD_CAST sub);
-            xmlReplaceNode(cur, sub_node);
-            free(sub);
-        }
-    }
-
-    // get resulting string
-    xmlDocDumpMemory(doc, (xmlChar**) &result_tmp, (int*) &size);
-    if (result_tmp) {
-        result = strchr(result_tmp, '>');          // skip <?xml ... ?>
-
-        if (result) {
-            ++result;
-            result = strchr(result, '>');  // skip root element
-        }
-        else result = NULL;
-
-        if (result) {
-            ++result; // skip the '>' itself
-            char *end = strrchr(result, '<');
-            if (end) *end = '\0';
-            else result = NULL;
-        }
-
-        result = oscap_strdup(result); // duplicate selected part
-    }
-
-cleanup:
-    xmlXPathFreeObject(xpathObj);
-    xmlXPathFreeContext(xpathCtx);
-    xmlFreeDoc(doc);
-    free(input);
-    free(result_tmp);
-    return result;
-}
-

@@ -24,8 +24,14 @@
 #ifndef BFIND_H
 #define BFIND_H
 
+#include "oscap_platforms.h"
+
 #include <stddef.h>
+#ifdef OS_WINDOWS
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "../../../../common/util.h"
 

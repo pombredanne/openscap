@@ -34,14 +34,17 @@
 #include "util.h"
 #include "_error.h"
 #include "oscap.h"
+#include "oscap_helpers.h"
 
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 #include <stdlib.h>
+#include <windows.h>
 #else
 #include <libgen.h>
 #include <strings.h>
 #endif
 
+#define PATH_SEPARATOR '/'
 
 int oscap_string_to_enum(const struct oscap_string_map *map, const char *str)
 {
@@ -239,7 +242,7 @@ char *oscap_expand_ipv6(const char *input)
 
 char *oscap_realpath(const char *path, char *resolved_path)
 {
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 	return _fullpath(resolved_path, path, PATH_MAX);
 #else
 	return realpath(path, resolved_path);
@@ -248,7 +251,7 @@ char *oscap_realpath(const char *path, char *resolved_path)
 
 char *oscap_basename(char *path)
 {
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 	char fname[_MAX_FNAME];
 	char ext[_MAX_EXT];
 	_splitpath_s(path, NULL, 0, NULL, 0, fname, _MAX_FNAME, ext, _MAX_EXT);
@@ -263,20 +266,32 @@ char *oscap_basename(char *path)
 #endif
 }
 
+#ifdef OS_WINDOWS
 char *oscap_dirname(char *path)
 {
-#ifdef _WIN32
-	char dirpath[_MAX_DIR];
-	_splitpath_s(path, NULL, 0, dirpath, _MAX_DIR, NULL, 0, NULL, 0);
+	if (path == NULL || *path == '\0' || (strchr(path, '/') == NULL && strchr(path, '\\') == NULL)) {
+		return strdup(".");
+	}
+	char dir[_MAX_DIR];
+	char drive[_MAX_DRIVE];
+	char dirname[_MAX_PATH];
+	_splitpath_s(path, drive, _MAX_DRIVE, dir, _MAX_DIR, NULL, 0, NULL, 0);
+	_makepath_s(dirname, _MAX_PATH, drive, dir, NULL, NULL);
+	oscap_rtrim(dirname, '/');
+	oscap_rtrim(dirname, '\\');
+	return oscap_strdup(dirname);
+}
 #else
+char *oscap_dirname(char *path)
+{
 	char *dirpath = dirname(path);
-#endif
 	return oscap_strdup(dirpath);
 }
+#endif
 
 int oscap_strcasecmp(const char *s1, const char *s2)
 {
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 	return _stricmp(s1, s2);
 #else
 	return strcasecmp(s1, s2);
@@ -285,7 +300,7 @@ int oscap_strcasecmp(const char *s1, const char *s2)
 
 int oscap_strncasecmp(const char *s1, const char *s2, size_t n)
 {
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 	return _strnicmp(s1, s2, n);
 #else
 	return strncasecmp(s1, s2, n);
@@ -294,9 +309,85 @@ int oscap_strncasecmp(const char *s1, const char *s2, size_t n)
 
 char *oscap_strtok_r(char *str, const char *delim, char **saveptr)
 {
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 	return strtok_s(str, delim, saveptr);
 #else
 	return strtok_r(str, delim, saveptr);
 #endif
 }
+
+char *oscap_strerror_r(int errnum, char *buf, size_t buflen)
+{
+#ifdef OS_WINDOWS
+	strerror_s(buf, buflen, errnum);
+	return buf;
+#else
+	return strerror_r(errnum, buf, buflen);
+#endif
+}
+
+char *oscap_path_join(const char *path1, const char *path2)
+{
+	if (path1 == NULL) {
+		return oscap_strdup(path2);
+	}
+	if (path2 == NULL) {
+		return oscap_strdup(path1);
+	}
+	size_t path1_len = strlen(path1);
+	size_t path2_len = strlen(path2);
+	size_t path2_shift = 0;
+	while (path1_len >= 1 && path1[path1_len - 1] == PATH_SEPARATOR) {
+		path1_len--;
+	}
+	while (path2_shift < path2_len && path2[path2_shift] == PATH_SEPARATOR) {
+		path2_shift++;
+	}
+	path2_len -= path2_shift;
+	const size_t joined_path_len = path1_len + 1 + path2_len;
+	char *joined_path = malloc(joined_path_len + 1);
+	strncpy(joined_path, path1, path1_len);
+	joined_path[path1_len++] = PATH_SEPARATOR;
+	strncpy(joined_path + path1_len, path2 + path2_shift, path2_len);
+	joined_path[joined_path_len] = '\0';
+	return joined_path;
+}
+
+#ifdef OS_WINDOWS
+char *oscap_windows_wstr_to_str(const wchar_t *wstr)
+{
+	if (wstr == NULL) {
+		return NULL;
+	}
+	const int required_size = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, NULL, 0, NULL, NULL);
+	char *str = malloc(required_size);
+	WideCharToMultiByte(CP_UTF8, 0, wstr, -1, str, required_size, NULL, NULL);
+	return str;
+}
+
+wchar_t *oscap_windows_str_to_wstr(const char *str)
+{
+	if (str == NULL) {
+		return NULL;
+	}
+	const int required_size = MultiByteToWideChar(CP_UTF8, 0, str, -1, NULL, 0);
+	wchar_t *wstr = malloc(required_size * sizeof(wchar_t));
+	MultiByteToWideChar(CP_UTF8, 0, str, -1, wstr, required_size);
+	return wstr;
+}
+
+char *oscap_windows_error_message(unsigned long error_code)
+{
+	wchar_t *buffer = NULL;
+	/* According to FormatMessage documentation, if FORMAT_MESSAGE_ALLOCATE_BUFFER
+	 * flag is set, the buffer must be freed by LocalFree and must be casted to LPWSTR.
+	 */
+	FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL, error_code, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+		(LPWSTR) &buffer, 0, NULL);
+	char *error_message = oscap_windows_wstr_to_str(buffer);
+	LocalFree(buffer);
+	return error_message;
+}
+#endif

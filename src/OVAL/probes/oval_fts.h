@@ -22,8 +22,10 @@
 #ifndef OVAL_FTS_H
 #define OVAL_FTS_H
 
+#include "oscap_platforms.h"
+
 #include <sexp.h>
-#if (defined(__SVR4) && defined(__sun)) || defined(_AIX)
+#if defined(OS_SOLARIS) || defined(OS_AIX)
 #include "fts_sun.h"
 #else
 #include <fts.h>
@@ -91,6 +93,7 @@ typedef struct {
 	int filesystem;
 
 	fsdev_t *localdevs;
+	const char *prefix;
 } OVAL_FTS;
 
 #define OVAL_RECURSE_DIRECTION_NONE 0 /* default */
@@ -119,7 +122,8 @@ typedef struct {
 /*
  * OVAL FTS public API
  */
-OVAL_FTS    *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t *behaviors, SEXP_t* result);
+OVAL_FTS *oval_fts_open_prefixed(const char *prefix, SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t *behaviors, SEXP_t* result);
+OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t *behaviors, SEXP_t* result);
 OVAL_FTSENT *oval_fts_read(OVAL_FTS *ofts);
 int          oval_fts_close(OVAL_FTS *ofts);
 

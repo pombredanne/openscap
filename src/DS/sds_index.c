@@ -27,7 +27,6 @@
 #include "public/scap_ds.h"
 #include "common/list.h"
 #include "common/_error.h"
-#include "common/alloc.h"
 #include "common/elements.h"
 #include "sds_index_priv.h"
 #include "source/oscap_source_priv.h"
@@ -403,23 +402,6 @@ struct ds_sds_index* ds_sds_index_parse(xmlTextReaderPtr reader)
 
 		xmlTextReaderRead(reader);
 	}
-
-	return ret;
-}
-
-struct ds_sds_index *ds_sds_index_import(const char* file)
-{
-	struct oscap_source *source = oscap_source_new_from_file(file);
-	xmlTextReader *reader = oscap_source_get_xmlTextReader(source);
-	if (!reader) {
-		oscap_source_free(source);
-		return NULL;
-	}
-
-	while (xmlTextReaderRead(reader) == 1 && xmlTextReaderNodeType(reader) != XML_READER_TYPE_ELEMENT);
-	struct ds_sds_index* ret = ds_sds_index_parse(reader);
-	xmlFreeTextReader(reader);
-	oscap_source_free(source);
 
 	return ret;
 }

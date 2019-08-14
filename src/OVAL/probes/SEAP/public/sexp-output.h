@@ -25,9 +25,13 @@
 #define SEXP_OUTPUT_H
 
 #include <stdio.h>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 #include <sexp-types.h>
-#include <strbuf.h>
+#include "generic/strbuf.h"
 #include "oscap_export.h"
 
 #ifdef __cplusplus

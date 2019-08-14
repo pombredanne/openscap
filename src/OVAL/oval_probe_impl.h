@@ -32,7 +32,6 @@
 #ifndef OVAL_PROBE_IMPL_H
 #define OVAL_PROBE_IMPL_H
 
-#include <seap-types.h>
 #include "oval_definitions_impl.h"
 #include "oval_agent_api_impl.h"
 #include "oval_parser_impl.h"
@@ -42,15 +41,10 @@
 #include "probes/_probe-api.h"
 
 #include "public/oval_probe_session.h"
-#include "public/oval_probe_handler.h"
 #include "public/oval_probe.h"
 
 
-#define OVAL_PROBE_SCHEME "pipe"
-
-#ifndef OVAL_PROBE_DIR
-# define OVAL_PROBE_DIR    "/usr/libexec/openscap"
-#endif
+#define OVAL_PROBE_SCHEME "queue"
 
 #define OVAL_PROBE_MAXRETRY 0
 
@@ -66,7 +60,6 @@ typedef struct {
 
 void oval_probe_tblinit(void);
 const char *oval_subtype_to_str(oval_subtype_t subtype);
-oval_subtype_t oval_str_to_subtype(const char *str);
 
 int oval_probe_hint_definition(oval_probe_session_t *sess, struct oval_definition *definition, int variable_instance_hint);
 

@@ -25,7 +25,11 @@
 #endif
 
 #include <stddef.h>
+#ifdef OS_WINDOWS
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 #include <stdint.h>
 
 #include "bfind.h"

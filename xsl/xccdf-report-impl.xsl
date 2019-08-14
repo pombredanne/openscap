@@ -40,6 +40,7 @@ Authors:
 <xsl:key name="references" match="//cdf:reference" use="@href"/>
 
 <xsl:include href="xccdf-branding.xsl" />
+<xsl:include href="xccdf-references.xsl" />
 <xsl:include href="xccdf-resources.xsl" />
 <xsl:include href="xccdf-share.xsl" />
 
@@ -93,6 +94,12 @@ Authors:
                             </tr>
                         </xsl:if>
                     </xsl:if>
+                    <xsl:if test="$benchmark/cdf:version">
+                        <tr>
+                            <th>Benchmark version</th>
+                            <td><xsl:value-of select="$benchmark/cdf:version[1]/text()"/></td>
+                        </tr>
+                    </xsl:if>
                     <xsl:if test="$testresult/cdf:profile">
                         <tr>
                             <th>Profile ID</th>
@@ -127,6 +134,19 @@ Authors:
                                 </xsl:when>
                                 <xsl:otherwise>
                                     unknown user
+                                </xsl:otherwise>
+                            </xsl:choose>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Test system</th>
+                        <td>
+                            <xsl:choose>
+                                <xsl:when test="$testresult/@test-system">
+                                    <xsl:value-of select="$testresult/@test-system"/>
+                                </xsl:when>
+                                <xsl:otherwise>
+                                    unknown
                                 </xsl:otherwise>
                             </xsl:choose>
                         </td>
@@ -459,64 +479,6 @@ Authors:
     </xsl:if>
 </xsl:template>
 
-<xsl:template name="convert-reference-url-to-name">
-    <xsl:param name="href"/>
-    <xsl:choose>
-        <xsl:when test="starts-with($href, 'http://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53')">
-            <xsl:text>NIST SP 800-53</xsl:text>
-        </xsl:when>
-        <xsl:when test="starts-with($href, 'http://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-171')">
-            <xsl:text>NIST SP 800-171</xsl:text>
-        </xsl:when>
-        <xsl:when test="starts-with($href, 'http://iase.disa.mil/stigs/cci/')">
-            <xsl:text>DISA CCI</xsl:text>
-        </xsl:when>
-        <!-- SRG weblinks can be subject to change. Keep the old ones for compatibility and add any new ones -->
-        <xsl:when test="starts-with($href, 'http://iase.disa.mil/stigs/srgs/') or 
-                starts-with($href, 'http://iase.disa.mil/stigs/os/general/Pages/index.aspx') or
-                starts-with($href, 'http://iase.disa.mil/stigs/app-security/app-servers/Pages/general.aspx')">
-            <xsl:text>DISA SRG</xsl:text>
-        </xsl:when>
-        <!-- STIG weblinks can be subject to change. Keep the old ones for compatibility and add any new ones -->
-        <xsl:when test="starts-with($href, 'http://iase.disa.mil/stigs/os/') or
-                starts-with($href, 'http://iase.disa.mil/stigs/app-security/')">
-            <xsl:text>DISA STIG</xsl:text>
-        </xsl:when>
-        <xsl:when test="starts-with($href, 'https://www.pcisecuritystandards.org/')">
-            <xsl:text>PCI-DSS Requirement</xsl:text>
-        </xsl:when>
-        <xsl:when test="starts-with($href, 'https://benchmarks.cisecurity.org/')">
-            <xsl:text>CIS Recommendation</xsl:text>
-        </xsl:when>
-        <xsl:when test="starts-with($href, 'https://www.fbi.gov/file-repository/cjis-security-policy')">
-            <xsl:text>FBI CJIS</xsl:text>
-        </xsl:when>
-        <xsl:otherwise>
-            <xsl:value-of select="$href"/>
-        </xsl:otherwise>
-    </xsl:choose>
-</xsl:template>
-
-<xsl:template name="get-all-references">
-    <xsl:param name="benchmark"/>
-    <xsl:for-each select="$benchmark//cdf:reference[generate-id(.) = generate-id(key('references',@href)[1])]">
-        <xsl:sort select="@href" />
-        <xsl:if test="normalize-space(@href) and @href != 'https://github.com/OpenSCAP/scap-security-guide/wiki/Contributors'">
-            <option>
-                <xsl:variable name="reference">
-                    <xsl:call-template name="convert-reference-url-to-name">
-                        <xsl:with-param name="href" select="@href"/>
-                    </xsl:call-template>
-                </xsl:variable>
-                <xsl:attribute name="value">
-                    <xsl:value-of select="$reference"/>
-                </xsl:attribute>
-                <xsl:value-of select="$reference"/>
-            </option>
-        </xsl:if>
-    </xsl:for-each>
-</xsl:template>
-
 <xsl:template name="rule-overview">
     <xsl:param name="testresult"/>
     <xsl:param name="benchmark"/>
@@ -673,7 +635,7 @@ Authors:
                 <xsl:otherwise>arf:report with id='<xsl:value-of select="$arf_results/parent::arf:content/parent::arf:report/@id"/>'</xsl:otherwise>
             </xsl:choose>
         </xsl:variable>
-        <span class="label label-default"><abbr title="OVAL details taken from {$details_origin}">OVAL details</abbr></span>
+        <span class="label label-default"><abbr title="OVAL details taken from {$details_origin}">OVAL test results details</abbr></span>
         <div class="panel panel-default">
             <div class="panel-body">
                 <xsl:copy-of select="$details"/>
@@ -767,6 +729,7 @@ Authors:
     <xsl:if test="$result != 'notselected'">
     <div class="panel panel-default rule-detail rule-detail-{$result} rule-detail-id-{$item/@id}" id="rule-detail-{generate-id($ruleresult)}">
         <div class="keywords sr-only">
+            <xsl:comment>This allows OpenSCAP JS to search the report rules</xsl:comment>
             <xsl:call-template name="item-title">
                 <xsl:with-param name="item" select="$item"/>
                 <xsl:with-param name="testresult" select="$testresult"/>

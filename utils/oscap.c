@@ -40,6 +40,9 @@
 #include "oscap-tool.h"
 #include "check_engine_plugin.h"
 #include "oscap_source.h"
+#if defined(OVAL_PROBES_ENABLED)
+#  include "probe-table.h"
+#endif
 
 static bool getopt_root(int argc, char **argv, struct oscap_action *action);
 static int print_versions(const struct oscap_action*);
@@ -65,9 +68,9 @@ struct oscap_module OSCAP_ROOT_MODULE = {
     .summary = "OpenSCAP command-line tool",
     .help =
 		"oscap options:\n"
-		"   -h --help\r\t\t\t\t - show this help\n"
-		"   -q --quiet\r\t\t\t\t - quiet mode\n"
-		"   -V --version\r\t\t\t\t - print info about supported SCAP versions",
+		"   -h --help                     - show this help\n"
+		"   -q --quiet                    - quiet mode\n"
+		"   -V --version                  - print info about supported SCAP versions",
     .opt_parser = getopt_root,
     .submodules = OSCAP_ROOT_SUBMODULES
 };
@@ -113,7 +116,7 @@ bool getopt_root(int argc, char **argv, struct oscap_action *action)
 
 static int print_versions(const struct oscap_action *action)
 {
-	printf("OpenSCAP command line tool (oscap) %s\n" "Copyright 2009--2017 Red Hat Inc., Durham, North Carolina.\n\n",
+	printf("OpenSCAP command line tool (oscap) %s\n" "Copyright 2009--2018 Red Hat Inc., Durham, North Carolina.\n\n",
 		oscap_get_version());
 
 	printf("==== Supported specifications ====\n");
@@ -154,9 +157,6 @@ static int print_versions(const struct oscap_action *action)
 	printf("==== Paths ====\n");
 	printf("Schema files: %s\n", oscap_path_to_schemas());
 	printf("Default CPE files: %s\n", oscap_path_to_cpe());
-#if defined(OVAL_PROBES_ENABLED)
-	printf("Probes: %s\n", oval_probe_ext_getdir());
-#endif
 	printf("\n");
 
 	printf("==== Inbuilt CPE names ====\n");
@@ -192,7 +192,7 @@ static int print_versions(const struct oscap_action *action)
 	printf("==== Supported OVAL objects and associated OpenSCAP probes ====\n");
 	printf("%-14s%-28s %-28s\n", "OVAL family", "OVAL object", "OpenSCAP probe");
 	printf("%-14s%-28s %-28s\n", "----------", "----------", "----------");
-	oval_probe_meta_list(stdout, OVAL_PROBEMETA_LIST_DYNAMIC | OVAL_PROBEMETA_LIST_OTYPE);
+	probe_table_list(stdout);
 #endif
 
 	return OSCAP_OK;

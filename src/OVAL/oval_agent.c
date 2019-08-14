@@ -34,7 +34,6 @@
 
 #include <string.h>
 #include <time.h>
-#include <assume.h>
 
 #include "oval_agent_api.h"
 #include "oval_definitions_impl.h"
@@ -91,18 +90,17 @@ static const struct oval_result_to_xccdf_spec XCCDF_OVAL_RESULTS_MAP[] = {
 };
 
 oval_agent_session_t * oval_agent_new_session(struct oval_definition_model *model, const char * name) {
-	oval_agent_session_t *ag_sess;
 	struct oval_sysinfo *sysinfo;
 	struct oval_generator *generator;
 	int ret;
 
 	dI("Started new OVAL agent.", name);
 
-        /* Optimalization */
-        oval_definition_model_optimize_by_filter_propagation(model);
+	/* Optimalization */
+	oval_definition_model_optimize_by_filter_propagation(model);
 
-	ag_sess = oscap_talloc(oval_agent_session_t);
-        ag_sess->filename = oscap_strdup(name);
+	oval_agent_session_t *ag_sess = malloc(sizeof(oval_agent_session_t));
+	ag_sess->filename = oscap_strdup(name);
 	ag_sess->def_model = model;
 	ag_sess->cur_var_model = NULL;
 	ag_sess->sys_model = oval_syschar_model_new(model);
@@ -258,9 +256,13 @@ int oval_agent_reset_session(oval_agent_session_t * ag_sess) {
 
 int oval_agent_abort_session(oval_agent_session_t *ag_sess)
 {
-	assume_d(ag_sess != NULL, -1);
+	if (ag_sess == NULL) {
+		return -1;
+	}
 #if defined(OVAL_PROBES_ENABLED)
-	assume_d(ag_sess->psess != NULL, -1);
+	if (ag_sess->psess == NULL) {
+		return -1;
+	}
 	return oval_probe_session_abort(ag_sess->psess);
 #else
 	/* TODO */
@@ -576,8 +578,12 @@ oval_agent_eval_multi_check(oval_agent_session_t *sess)
 		id = oval_definition_get_id(oval_def);
 
 		// Evaluate definition.
-		assume_r(oval_agent_eval_definition(sess, id) != -1, -1);
-		assume_r(oval_agent_get_definition_result(sess, id, &oval_result) != -1, -1);
+		if (oval_agent_eval_definition(sess, id) == -1) {
+			return -1;
+		}
+		if (oval_agent_get_definition_result(sess, id, &oval_result) == -1) {
+			return -1;
+		}
 		// Get XCCDF equivalent of the oval result.
 		xccdf_result = xccdf_get_result_from_oval(oval_definition_get_class(oval_def), oval_result);
 		// AND as described in (NISTIR-7275r4): Table 12: Truth Table for AND
@@ -644,13 +650,5 @@ bool xccdf_policy_model_register_engine_oval(struct xccdf_policy_model * model, 
 
     return xccdf_policy_model_register_engine_and_query_callback(model, "http://oval.mitre.org/XMLSchema/oval-definitions-5",
 		oval_agent_eval_rule, (void *) usr, _oval_agent_list_definitions);
-}
-
-void oval_agent_export_sysinfo_to_xccdf_result(struct oval_agent_session * sess, struct xccdf_result * ritem)
-{
-	// just a delegate to maintain API and ABI stability,
-	// this has been implemented elsewhere and this function is deprecated!
-
-	xccdf_result_fill_sysinfo(ritem);
 }
 

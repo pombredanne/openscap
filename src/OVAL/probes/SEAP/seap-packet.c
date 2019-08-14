@@ -30,21 +30,16 @@
 
 #include "generic/common.h"
 #include "public/sexp-manip.h"
-#include "_sexp-parser.h"
 #include "_seap-packetq.h"
 #include "_seap-packet.h"
-#include "_seap-scheme.h"
+#include "_seap-types.h"
 #include "seap-descriptor.h"
-#include "public/seap-message.h"
-#include "public/seap-command.h"
-#include "public/seap-error.h"
-#include "public/sm_alloc.h"
+#include "sch_queue.h"
+#include "debug_priv.h"
 
 SEAP_packet_t *SEAP_packet_new (void)
 {
-        SEAP_packet_t *p;
-
-        p = sm_talloc (SEAP_packet_t);
+	SEAP_packet_t *p = malloc(sizeof(SEAP_packet_t));
         memset (p, 0, sizeof (SEAP_packet_t));
         p->type = SEAP_PACKET_INV;
 
@@ -53,7 +48,7 @@ SEAP_packet_t *SEAP_packet_new (void)
 
 void SEAP_packet_free (SEAP_packet_t *packet)
 {
-        sm_free (packet);
+	free(packet);
 }
 
 void *SEAP_packet_settype (SEAP_packet_t *packet, uint8_t type)
@@ -112,7 +107,7 @@ static int SEAP_packet_sexp2msg (SEXP_t *sexp_msg, SEAP_msg_t *seap_msg)
         msg_icnt = SEXP_list_length (sexp_msg);
 
         seap_msg->attrs_cnt = msg_icnt - 4;
-        seap_msg->attrs     = sm_alloc (sizeof (SEAP_attr_t) * seap_msg->attrs_cnt);
+	seap_msg->attrs = malloc(sizeof (SEAP_attr_t) * seap_msg->attrs_cnt);
 
         for (msg_n = 2, attr_i = 0; msg_n < msg_icnt; ++msg_n) {
 
@@ -121,7 +116,7 @@ static int SEAP_packet_sexp2msg (SEXP_t *sexp_msg, SEAP_msg_t *seap_msg)
                         dI("Unexpected error: No S-exp (attr_name) at position %u in the message (%p).",
                            msg_n, sexp_msg);
 
-                        sm_free (seap_msg->attrs);
+		free(seap_msg->attrs);
 
                         return (SEAP_EUNEXP);
                 }
@@ -134,7 +129,7 @@ static int SEAP_packet_sexp2msg (SEXP_t *sexp_msg, SEAP_msg_t *seap_msg)
                                         dI("Unexpected error: \"%s\": No attribute value at position %u in the message (%p).",
                                            "id", msg_n + 1, sexp_msg);
 
-                                        sm_free (seap_msg->attrs);
+					free(seap_msg->attrs);
 					SEXP_free(attr_name);
 
                                         return (SEAP_EUNEXP);
@@ -153,7 +148,7 @@ static int SEAP_packet_sexp2msg (SEXP_t *sexp_msg, SEAP_msg_t *seap_msg)
                                                 dI("id: invalid value or type: s_exp=%p, type=%s",
                                                    (void *)attr_val, SEXP_strtype (attr_val));
 
-                                                sm_free (seap_msg->attrs);
+						free(seap_msg->attrs);
                                                 SEXP_free(attr_val);
                                                 SEXP_free(attr_name);
 
@@ -161,7 +156,7 @@ static int SEAP_packet_sexp2msg (SEXP_t *sexp_msg, SEAP_msg_t *seap_msg)
                                         case EFAULT:
                                                 dI("id: not found");
 
-                                                sm_free (seap_msg->attrs);
+						free(seap_msg->attrs);
                                                 SEXP_free(attr_val);
                                                 SEXP_free(attr_name);
 
@@ -178,16 +173,16 @@ static int SEAP_packet_sexp2msg (SEXP_t *sexp_msg, SEAP_msg_t *seap_msg)
                                         dI("Unexpected error: \"%s\": No attribute value at position %u in the message (%p).",
                                            seap_msg->attrs[attr_i].name, msg_n + 1, sexp_msg);
 
-                                        sm_free (seap_msg->attrs[attr_i].name);
+					free(seap_msg->attrs[attr_i].name);
 
                                         for (; attr_i > 0; --attr_i) {
-                                                sm_free (seap_msg->attrs[attr_i - 1].name);
+						free(seap_msg->attrs[attr_i - 1].name);
 
                                                 if (seap_msg->attrs[attr_i - 1].value != NULL)
                                                         SEXP_free (seap_msg->attrs[attr_i - 1].value);
                                         }
 
-                                        sm_free (seap_msg->attrs);
+					free(seap_msg->attrs);
                                         SEXP_free(attr_name);
 
                                         return (SEAP_EINVAL);
@@ -211,7 +206,7 @@ static int SEAP_packet_sexp2msg (SEXP_t *sexp_msg, SEAP_msg_t *seap_msg)
         _A(attr_i >= (SEXP_list_length (sexp_msg) - 4)/2);
 
         seap_msg->attrs_cnt = attr_i;
-        seap_msg->attrs     = sm_realloc (seap_msg->attrs, sizeof (SEAP_attr_t) * seap_msg->attrs_cnt);
+	seap_msg->attrs = realloc(seap_msg->attrs, sizeof(SEAP_attr_t) * seap_msg->attrs_cnt);
         seap_msg->sexp      = SEXP_list_last (sexp_msg);
 
         return (0);
@@ -235,7 +230,9 @@ static SEXP_t *SEAP_packet_msg2sexp (SEAP_msg_t *msg)
 #endif
                               NULL);
 
-        SEXP_vfree (r0, r1, r2, NULL);
+		SEXP_free(r0);
+		SEXP_free(r1);
+		SEXP_free(r2);
 
         /* Add message attributes */
         for (i = 0; i < msg->attrs_cnt; ++i) {
@@ -391,7 +388,9 @@ static SEXP_t *SEAP_packet_cmd2sexp (SEAP_cmd_t *cmd)
                               r2 = SEXP_number_newu_16 (cmd->id),
                               NULL);
 
-        SEXP_vfree (r0, r1, r2, NULL);
+	SEXP_free(r0);
+	SEXP_free(r1);
+	SEXP_free(r2);
 
         if (cmd->flags & SEAP_CMDFLAG_REPLY) {
                 SEXP_list_add (sexp,
@@ -399,7 +398,8 @@ static SEXP_t *SEAP_packet_cmd2sexp (SEAP_cmd_t *cmd)
                 SEXP_list_add (sexp,
                                r1 = SEXP_number_newu_16 (cmd->rid));
 
-                SEXP_vfree (r0, r1, NULL);
+				SEXP_free(r0);
+				SEXP_free(r1);
         }
 
         SEXP_list_add (sexp,
@@ -432,7 +432,9 @@ static SEXP_t *SEAP_packet_cmd2sexp (SEAP_cmd_t *cmd)
         SEXP_list_add (sexp,
                        r2 = SEXP_number_newu_16 (cmd->code));
 
-        SEXP_vfree (r0, r1, r2, NULL);
+		SEXP_free(r0);
+		SEXP_free(r1);
+		SEXP_free(r2);
 
         if (cmd->args != NULL)
                 SEXP_list_add (sexp, cmd->args);
@@ -556,7 +558,12 @@ static SEXP_t *SEAP_packet_err2sexp (SEAP_err_t *err)
                               r5 = SEXP_number_newu (err->code),
                               NULL);
 
-        SEXP_vfree (r0, r1, r2, r3, r4, r5);
+		SEXP_free(r0);
+		SEXP_free(r1);
+		SEXP_free(r2);
+		SEXP_free(r3);
+		SEXP_free(r4);
+		SEXP_free(r5);
 
         if (err->data != NULL)
                 SEXP_list_add (sexp, err->data);
@@ -594,12 +601,6 @@ int SEAP_packet_recv (SEAP_CTX_t *ctx, int sd, SEAP_packet_t **packet)
         SEAP_desc_t *dsc;
         SEXP_t      *sexp_buffer;
         SEXP_t      *sexp_packet;
-        void        *data_buffer;
-        size_t       data_buflen;
-        ssize_t      data_length;
-
-        SEXP_psetup_t *psetup;
-        SEXP_pstate_t *pstate;
 
         SEXP_t     *psym_sexp;
         char        psym_cstr_b[16+1];
@@ -628,14 +629,7 @@ int SEAP_packet_recv (SEAP_CTX_t *ctx, int sd, SEAP_packet_t **packet)
          * parsing of data can begin.
          */
 
-eloop_start:
-
         for (;;) {
-                if (SCH_SELECT(dsc->scheme, dsc, SEAP_IO_EVREAD, 0, 0) != 0)
-                        return (-1);
-
-                dD("return from select");
-
                 switch (DESC_TRYRLOCK (dsc)) {
                 case  1:
                         goto eloop_exit;
@@ -664,113 +658,9 @@ eloop_start:
         }
 eloop_exit:
 
-        /*
-         * Receive loop
-         * The read mutex is locked during execution of this loop and
-         * the execution stops if the received data forms a valid
-         * S-expression.
-         */
-
-        pstate = NULL;
-        psetup = SEXP_psetup_new ();
-
-        /*
-         * All buffer passed to SEXP_parse will be freed by
-         * SEXP_pstate_free (i.e. after successful parsing)
-         */
-        SEXP_psetup_setflags(psetup, SEXP_PFLAG_FREEBUF);
-
-        for (;;) {
-                data_buffer = sm_alloc (SEAP_RECVBUF_SIZE);
-                data_buflen = SEAP_RECVBUF_SIZE;
-                data_length = SCH_RECV(dsc->scheme, dsc, data_buffer, data_buflen, 0);
-
-                if (data_length < 0) {
-                        protect_errno {
-                                dI("FAIL: recv failed: dsc=%p, errno=%u, %s.", dsc, errno, strerror (errno));
-
-                                sm_free (data_buffer);
-                                SEXP_psetup_free (psetup);
-
-                                if (pstate != NULL)
-                                        SEXP_pstate_free (pstate);
-                        }
-                        return (-1);
-                } else if (data_length == 0) {
-                        dI("zero bytes received -> EOF");
-                        sm_free (data_buffer);
-                        SEXP_psetup_free (psetup);
-
-                        if (pstate != NULL) {
-                                dI("FAIL: incomplete S-exp received");
-                                errno = ENETRESET;
-                                return (-1);
-                        } else {
-                                errno = ECONNABORTED;
-                                return (-1);
-                        }
-                }
-
-                _A(data_length > 0);
-
-                if (data_buflen != (size_t)(data_length)) {
-                        data_buffer = sm_realloc (data_buffer, data_length);
-			data_buflen = data_length;
-		}
-
-                sexp_buffer = SEXP_parse (psetup, data_buffer, data_length, &pstate);
-
-                if (sexp_buffer != NULL) {
-                        _A(pstate == NULL);
-
-                        DESC_RUNLOCK(dsc);
-
-                        if (SEXP_list_length (sexp_buffer) > 0) {
-                                break;
-                        } else {
-                                SEXP_list_free (sexp_buffer);
-                                SEXP_psetup_free (psetup);
-                                dI("eloop_restart");
-                                goto eloop_start;
-                        }
-                } else {
-			if (pstate == NULL || SEXP_pstate_errorp(pstate)) {
-				dI("FAIL: S-exp parsing error, buffer: length: %ld, content:\n%.*s",
-				   data_length, data_length, data_buffer);
-
-				SEXP_psetup_free(psetup);
-				SEXP_pstate_free(pstate);
-
-				errno = EILSEQ;
-
-				return (-1);
-			}
-		}
-
-                if (SCH_SELECT(dsc->scheme, dsc, SEAP_IO_EVREAD, ctx->recv_timeout, 0) != 0) {
-                        switch (errno) {
-                        case ETIMEDOUT:
-                                protect_errno {
-                                        dI("FAIL: recv failed (timeout): dsc=%p, time=%hu, errno=%u, %s.",
-                                           dsc, ctx->recv_timeout, errno, strerror (errno));
-                                }
-                                /* FALLTHROUGH */
-                        default:
-                                protect_errno {
-                                        dI("FAIL: recv failed: dsc=%p, errno=%u, %s.",
-                                           dsc, errno, strerror (errno));
-
-                                        SEXP_psetup_free (psetup);
-                                        SEXP_pstate_free (pstate);
-                                }
-                                SEXP_free(sexp_buffer);
-                                return (-1);
-                        }
-                }
-        }
-
-        SEXP_psetup_free (psetup);
+	sexp_buffer = sch_queue_recvsexp(dsc);
 	SEXP_VALIDATE(sexp_buffer);
+
 	(*packet) = NULL;
 
         while((sexp_packet = SEXP_list_pop (sexp_buffer)) != NULL) {
@@ -971,10 +861,10 @@ int SEAP_packet_send (SEAP_CTX_t *ctx, int sd, SEAP_packet_t *packet)
                 return (-1);
         }
 
-        if (DESC_WLOCK (dsc)) {
+	if (DESC_WLOCK(dsc) == 1) {
                 ret = 0;
 
-                if (SCH_SENDSEXP(dsc->scheme, dsc, packet_sexp, 0) < 0) {
+		if (sch_queue_sendsexp(dsc, packet_sexp, 0) < 0) {
                         ret = -1;
 
                         protect_errno {
@@ -982,8 +872,15 @@ int SEAP_packet_send (SEAP_CTX_t *ctx, int sd, SEAP_packet_t *packet)
                         }
                 }
 
-                DESC_WUNLOCK(dsc);
-        }
+		if (DESC_WUNLOCK(dsc) != 1) {
+			dE("DESC_WUNLOCK failed to unlock a mutex: %s", strerror(errno));
+			ret = -1;
+		}
+	} else {
+		dE("DESC_WLOCK failed to lock a mutex: %s", strerror(errno));
+		ret = -1;
+	}
+
 
         protect_errno {
                 SEXP_free (packet_sexp);

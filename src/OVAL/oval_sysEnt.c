@@ -77,7 +77,7 @@ struct oval_sysent *oval_sysent_clone(struct oval_syschar_model *new_model, stru
 
 	char *old_value = oval_sysent_get_value(old_item);
 	if (old_value) {
-		oval_sysent_set_value(new_item, oscap_strdup(old_value));
+		oval_sysent_set_value(new_item, old_value);
 	}
 
 	char *old_name = oval_sysent_get_name(old_item);
@@ -309,7 +309,7 @@ void oval_sysent_to_dom(struct oval_sysent *sysent, xmlDoc * doc, xmlNode * pare
 
 	rf_itr = oval_sysent_get_record_fields(sysent);
 	if (oval_record_field_iterator_has_more(rf_itr)) {
-		xmlNsPtr field_ns = xmlSearchNsByHref(doc, xmlDocGetRootElement(doc), OVAL_SYSCHAR_NAMESPACE);
+		xmlNsPtr field_ns = xmlSearchNsByHref(doc, sysent_tag, OVAL_SYSCHAR_NAMESPACE);
 		if (field_ns == NULL) {
 			field_ns = xmlNewNs(xmlDocGetRootElement(doc), OVAL_SYSCHAR_NAMESPACE, NULL);
 		}

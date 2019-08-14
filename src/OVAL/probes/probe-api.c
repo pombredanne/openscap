@@ -35,18 +35,25 @@
 
 #include <stdarg.h>
 #include <string.h>
+#include <stdbool.h>
 #include <errno.h>
+#ifdef OS_WINDOWS
+#include <winsock2.h>
+#include <in6addr.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h> /* inet_pton() in probe_ent_from_cstr() */
 #include <netinet/in.h>
 #include <sys/socket.h>
+#endif
 
 #include "debug_priv.h"
 #include "_probe-api.h"
-#include "assume.h"
 #include "oval_probe_impl.h"
 #include "probe/entcmp.h"
 #include "probe/probe.h"
 #include "SEAP/generic/strto.h"
+#include "oscap_helpers.h"
 
 extern probe_rcache_t  *OSCAP_GSYM(pcache);
 extern probe_ncache_t  *OSCAP_GSYM(ncache);
@@ -121,7 +128,8 @@ SEXP_t *probe_item_new(const char *name, SEXP_t * attrs)
 	 * Objects have the same structure as items.
 	 */
 	itm = probe_obj_new(name, attrs);
-	SEXP_vfree(sid, attrs, NULL);
+	SEXP_free(sid);
+	SEXP_free(attrs);
 
 	return itm;
 }
@@ -259,7 +267,6 @@ bool probe_item_filtered(const SEXP_t *item, const SEXP_t *filters)
 			}
 
 			if (SEXP_list_length(elm_res) > 0) {
-				free(elm_name);
 				r0 = probe_ent_getattrval(felm, "entity_check");
 
 				if (r0 == NULL)
@@ -270,13 +277,13 @@ bool probe_item_filtered(const SEXP_t *item, const SEXP_t *filters)
 				SEXP_free(r0);
 
 				ores = probe_ent_result_bychk(elm_res, ochk);
-				SEXP_free(elm_res);
 			} else {
-				SEXP_free(elm_res);
 				ores = OVAL_RESULT_FALSE;
 			}
 			SEXP_list_add(ste_res, r0 = SEXP_number_newi_32(ores));
 			SEXP_free(r0);
+			SEXP_free(elm_res);
+			free(elm_name);
 		}
 
 		r0 = probe_ent_getattrval(ste, "operator");
@@ -285,7 +292,9 @@ bool probe_item_filtered(const SEXP_t *item, const SEXP_t *filters)
 		else
 			oopr = SEXP_number_geti_32(r0);
 		ores = probe_ent_result_byopr(ste_res, oopr);
-		SEXP_vfree(ste, ste_res, r0, NULL);
+		SEXP_free(ste);
+		SEXP_free(ste_res);
+		SEXP_free(r0);
 
 		if ((ores == OVAL_RESULT_TRUE && ofact == OVAL_FILTER_ACTION_EXCLUDE)
 		    || (ores == OVAL_RESULT_FALSE && ofact == OVAL_FILTER_ACTION_INCLUDE)) {
@@ -470,17 +479,6 @@ int probe_obj_getentvals(const SEXP_t * obj, const char *name, uint32_t n, SEXP_
 	return (ret);
 }
 
-oval_version_t probe_obj_get_schema_version(const SEXP_t *obj)
-{
-	oval_schema_version_t version = probe_obj_get_platform_schema_version(obj);
-	// oval_schema_version_to_cstr result has to be freed despite being
-	// declared as const char* :-(
-	char *version_str = (char*)oval_schema_version_to_cstr(version);
-	oval_version_t old_version_format = oval_version_from_cstr(version_str);
-	free(version_str);
-	return old_version_format;
-}
-
 oval_schema_version_t probe_obj_get_platform_schema_version(const SEXP_t *obj)
 {
 	SEXP_t *sexp_ver;
@@ -631,7 +629,10 @@ SEXP_t *probe_cobj_new(oval_syschar_collection_flag_t flag, SEXP_t *msg_list, SE
 			     item_list,
                              mask_list,
 			     NULL);
-	SEXP_vfree(msg_list, item_list, mask_list, r0, NULL);
+	SEXP_free(msg_list);
+	SEXP_free(item_list);
+	SEXP_free(mask_list);
+	SEXP_free(r0);
 
 	return cobj;
 }
@@ -666,7 +667,8 @@ int probe_cobj_add_item(SEXP_t *cobj, const SEXP_t *item)
 	lst = SEXP_listref_nth(cobj, 3);
 	oitem = probe_item_optimize(item);
 	SEXP_list_add(lst, oitem);
-	SEXP_vfree(lst, oitem, NULL);
+	SEXP_free(lst);
+	SEXP_free(oitem);
 
 	return 0;
 }
@@ -926,7 +928,8 @@ SEXP_t *probe_msg_creat(oval_message_level_t level, char *message)
 	lvl = SEXP_number_newu(level);
 	str = SEXP_string_newf("%s", message);
 	msg = SEXP_list_new(lvl, str, NULL);
-	SEXP_vfree(lvl, str, NULL);
+	SEXP_free(lvl);
+	SEXP_free(str);
 
 	return msg;
 }
@@ -934,22 +937,37 @@ SEXP_t *probe_msg_creat(oval_message_level_t level, char *message)
 SEXP_t *probe_msg_creatf(oval_message_level_t level, const char *fmt, ...)
 {
 	va_list alist;
-	int len;
-	char *cstr;
+	int len = 0;
 	SEXP_t *lvl, *str, *msg;
+	char *cstr = NULL;
 
 	va_start(alist, fmt);
-	len = vasprintf(&cstr, fmt, alist);
+	len = vsnprintf(cstr, len, fmt, alist);
 	va_end(alist);
-	if (len < 0)
+
+	if (len < 0) {
 		return NULL;
+	}
+
+	len++;
+	cstr = malloc(len);
+
+	va_start(alist, fmt);
+	len = vsnprintf(cstr, len, fmt, alist);
+	va_end(alist);
+
+	if (len < 0) {
+		free(cstr);
+		return NULL;
+	}
 
 	dI("%s", cstr);
 	str = SEXP_string_new(cstr, len);
 	free(cstr);
 	lvl = SEXP_number_newu(level);
 	msg = SEXP_list_new(lvl, str, NULL);
-	SEXP_vfree(lvl, str, NULL);
+	SEXP_free(lvl);
+	SEXP_free(str);
 
 	return msg;
 }
@@ -1237,21 +1255,21 @@ char *probe_ent_getname(const SEXP_t * ent)
 		return (NULL);
 	}
 
-	switch (SEXP_typeof(ent_name)) {
-	case SEXP_TYPE_LIST:
-		{
-			SEXP_t *tmp;
+	SEXP_type_t sexp_type = SEXP_typeof(ent_name);
+	if (sexp_type == SEXP_TYPE_LIST) {
+		SEXP_t *tmp;
 
-			tmp = SEXP_list_first(ent_name);
+		tmp = SEXP_list_first(ent_name);
+		SEXP_free(ent_name);
+		ent_name = tmp;
+
+		if (!SEXP_stringp(ent_name)) {
 			SEXP_free(ent_name);
-			ent_name = tmp;
-
-			if (!SEXP_stringp(ent_name)) {
-				errno = EINVAL;
-				break;
-			}
+			errno = EINVAL;
+			return NULL;
 		}
-	case SEXP_TYPE_STRING:
+	}
+	if (sexp_type == SEXP_TYPE_LIST || sexp_type == SEXP_TYPE_STRING) {
 		if (SEXP_string_length(ent_name) > 0)
 			name_str = SEXP_string_cstr(ent_name);
 		else
@@ -1281,21 +1299,21 @@ size_t probe_ent_getname_r(const SEXP_t * ent, char *buffer, size_t buflen)
 		return (0);
 	}
 
-	switch (SEXP_typeof(ent_name)) {
-	case SEXP_TYPE_LIST:
-		{
-			SEXP_t *tmp;
+	SEXP_type_t sexp_type = SEXP_typeof(ent_name);
+	if (sexp_type == SEXP_TYPE_LIST) {
+		SEXP_t *tmp;
 
-			tmp = SEXP_list_first(ent_name);
+		tmp = SEXP_list_first(ent_name);
+		SEXP_free(ent_name);
+		ent_name = tmp;
+
+		if (!SEXP_stringp(ent_name)) {
 			SEXP_free(ent_name);
-			ent_name = tmp;
-
-			if (!SEXP_stringp(ent_name)) {
-				errno = EINVAL;
-				break;
-			}
+			errno = EINVAL;
+			return name_len;
 		}
-	case SEXP_TYPE_STRING:
+	}
+	if (sexp_type == SEXP_TYPE_LIST || sexp_type == SEXP_TYPE_STRING) {
 		if (SEXP_string_length(ent_name) > 0)
 			name_len = SEXP_string_cstr_r(ent_name, buffer, buflen);
 		else
@@ -1390,14 +1408,20 @@ static SEXP_t *probe_item_optimize(const SEXP_t *item)
 	return SEXP_ref(item);
 }
 
+/**
+ * The order of (value_name, value_type, *value) argument tuples passed as
+ * e.g. 3rd to 5th arguments matters. If you change ordering of those tuples,
+ * it will have consequences.
+ */
 SEXP_t *probe_item_create(oval_subtype_t item_subtype, probe_elmatr_t *item_attributes[],
                           /* const char *value_name, oval_datatype_t value_type, void *value, */ ...)
 {
         va_list ap;
 	SEXP_t *item, *name_sexp, *value_sexp = NULL, *entity;
         SEXP_t value_sexp_mem, entity_mem;
-	const char *value_name, *subtype_name;
-        char item_name[64];
+	const char *value_name, *subtype_name, *family_name;
+	oval_family_t family;
+	char item_name[128];
         oval_datatype_t value_type;
 
         char   *value_str, **value_stra;
@@ -1415,14 +1439,9 @@ SEXP_t *probe_item_create(oval_subtype_t item_subtype, probe_elmatr_t *item_attr
                 return (NULL);
         }
 
-        if (strlen(subtype_name) + strlen("_item") < sizeof item_name) {
-                strcpy(item_name, subtype_name);
-                strcat(item_name, "_item");
-                item_name[sizeof item_name - 1] = '\0';
-        } else {
-                dE("item name too long: no buffer space available");
-                return (NULL);
-        }
+	family = oval_subtype_get_family(item_subtype);
+	family_name = oval_family_get_text(family);
+	snprintf(item_name, sizeof(item_name), "%s:%s_item", family_name, subtype_name);
 
 	va_start(ap, item_attributes);
 
@@ -1532,10 +1551,9 @@ SEXP_t *probe_item_create(oval_subtype_t item_subtype, probe_elmatr_t *item_attr
                                 return (NULL);
                         }
 
-                        assume_d(item       != NULL, NULL);
-                        assume_d(entity     != NULL, NULL);
-                        assume_d(name_sexp  != NULL, NULL);
-
+			if (item == NULL || entity == NULL || name_sexp == NULL) {
+				return NULL;
+			}
                         SEXP_list_add(item, entity);
                         SEXP_free_r(&entity_mem);
 
@@ -1666,11 +1684,11 @@ SEXP_t *probe_entval_from_cstr(oval_datatype_t type,
 			}
 			break;
 		case 4:
-			if (strncasecmp(value, "true", 4) == 0)
+			if (oscap_strncasecmp(value, "true", 4) == 0)
 				ent_val = SEXP_number_newb(true);
 			break;
 		case 5:
-			if (strncasecmp(value, "false", 5) == 0)
+			if (oscap_strncasecmp(value, "false", 5) == 0)
 				ent_val = SEXP_number_newb(false);
 			break;
 		}
@@ -1780,12 +1798,5 @@ SEXP_t *probe_obj_getmask(SEXP_t *obj)
 
     SEXP_free(objents);
     return (mask);
-}
-
-/* Empty implementation of probe_main is used in libopenscap.so shared library
- * to avoid undefined symbol errors. Probes have their own implementation. */
-int probe_main(probe_ctx *ctx, void *arg)
-{
-	return 0;
 }
 /// @}

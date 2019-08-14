@@ -67,29 +67,6 @@ struct cpe_dict_model *cpe_dict_model_import_source(struct oscap_source *source)
 	return dict;
 }
 
-struct cpe_dict_model *cpe_dict_model_import(const char *file)
-{
-	__attribute__nonnull__(file);
-
-	struct oscap_source *source = oscap_source_new_from_file(file);
-	struct cpe_dict_model *dict = cpe_dict_model_import_source(source);
-	oscap_source_free(source);
-	return dict;
-}
-
-bool cpe_dict_model_set_origin_file(struct cpe_dict_model* dict, const char* origin_file)
-{
-	free(dict->origin_file);
-	dict->origin_file = oscap_strdup(origin_file);
-
-	return true;
-}
-
-const char* cpe_dict_model_get_origin_file(const struct cpe_dict_model* dict)
-{
-	return dict->origin_file;
-}
-
 void cpe_dict_model_export(const struct cpe_dict_model *dict, const char *file)
 {
 
@@ -131,22 +108,6 @@ bool cpe_name_match_dict(struct cpe_name * cpe, struct cpe_dict_model * dict)
 	return ret;
 }
 
-bool cpe_name_match_dict_str(const char *cpestr, struct cpe_dict_model * dict)
-{
-	__attribute__nonnull__(cpestr);
-	__attribute__nonnull__(dict);
-
-	bool ret;
-	if (cpestr == NULL)
-		return false;
-	struct cpe_name *cpe = cpe_name_new(cpestr);
-	if (cpe == NULL)
-		return false;
-	ret = cpe_name_match_dict(cpe, dict);
-	cpe_name_free(cpe);
-	return ret;
-}
-
 bool cpe_name_applicable_dict(struct cpe_name *cpe, struct cpe_dict_model *dict, cpe_check_fn cb, void* usr)
 {
 	// FIXME: We could match faster by matching per component and storing all
@@ -169,11 +130,9 @@ bool cpe_name_applicable_dict(struct cpe_name *cpe, struct cpe_dict_model *dict,
 		struct cpe_item* item = cpe_item_iterator_next(items);
 		struct cpe_name* name = cpe_item_get_name(item);
 
-		if (cpe_name_match_one(cpe, name)) {
-			if (cpe_item_is_applicable(item, cb, usr)) {
-				ret = true;
-				break;
-			}
+		if (cpe_name_match_one(cpe, name) && cpe_item_is_applicable(item, cb, usr)) {
+			ret = true;
+			break;
 		}
 	}
 	cpe_item_iterator_free(items);
@@ -252,18 +211,5 @@ char *cpe_dict_detect_version_priv(xmlTextReader *reader)
 			version = oscap_strdup("2.3");
 		}
 	}
-	return version;
-}
-
-char * cpe_dict_detect_version(const char* file)
-{
-	char *version = NULL;
-	struct oscap_source *source = oscap_source_new_from_file(file);
-	xmlTextReaderPtr reader = oscap_source_get_xmlTextReader(source);
-	if (reader != NULL) {
-		version = cpe_dict_detect_version_priv(reader);
-	}
-	xmlFreeTextReader(reader);
-	oscap_source_free(source);
 	return version;
 }

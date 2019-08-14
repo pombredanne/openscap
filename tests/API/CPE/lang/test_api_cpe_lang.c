@@ -51,6 +51,8 @@ int main (int argc, char *argv[])
 	struct oscap_text *title = NULL;
 	int ret_val = 0, i;
 
+	struct oscap_source *source = oscap_source_new_from_file(argv[2]);
+
 	if (argc == 2 && !strcmp(argv[1], "--help")) {
 		print_usage(argv[0], stdout);
 		ret_val = 0;
@@ -59,8 +61,10 @@ int main (int argc, char *argv[])
 	// Print complete content.
 	else if (argc == 4 && !strcmp(argv[1], "--get-all")) {
 
-		if ((lang_model = cpe_lang_model_import(argv[2])) == NULL)
+		if ((lang_model = cpe_lang_model_import_source(source)) == NULL) {
+			oscap_source_free(source);
 			return 1;
+		}
 
 		//printf("%s:", cpe_lang_model_get_ns_href(lang_model));
 		//printf("%s\n", cpe_lang_model_get_ns_prefix(lang_model));
@@ -75,11 +79,15 @@ int main (int argc, char *argv[])
 	// Print platform of given key only.
 	else if (argc == 5 && !strcmp(argv[1], "--get-key")) {
 
-		if ((lang_model = cpe_lang_model_import(argv[2])) == NULL)
+		if ((lang_model = cpe_lang_model_import_source(source)) == NULL) {
+			oscap_source_free(source);
 			return 1;
+		}
 
-		if ((platform = cpe_lang_model_get_item(lang_model, argv[4])) == NULL)
+		if ((platform = cpe_lang_model_get_item(lang_model, argv[4])) == NULL) {
+			oscap_source_free(source);
 			return 2;
+		}
 
 		print_platform(platform);
 
@@ -88,15 +96,21 @@ int main (int argc, char *argv[])
 
 	// Set ns_prefix, ns_href, add new platforms.
 	else if (argc >= 6 && !strcmp(argv[1], "--set-all")) {
-		if ((lang_model = cpe_lang_model_import(argv[2])) == NULL)
+		if ((lang_model = cpe_lang_model_import_source(source)) == NULL) {
+			oscap_source_free(source);
 			return 1;
+		}
 
 		for (i = 6; i < argc; i++) {
-			if ((new_platform =  cpe_platform_new()) == NULL)
+			if ((new_platform =  cpe_platform_new()) == NULL) {
+				oscap_source_free(source);
 				return 1;
+			}
 			cpe_platform_set_id(new_platform, argv[i]);
-			if (!cpe_lang_model_add_platform(lang_model, new_platform))
+			if (!cpe_lang_model_add_platform(lang_model, new_platform)) {
+				oscap_source_free(source);
 				return 2;
+			}
 		}
 
 		cpe_lang_model_export(lang_model, argv[2]);
@@ -105,11 +119,15 @@ int main (int argc, char *argv[])
 
 	// Set id, change titles of platform of given key.
 	else if (argc >= 6 && !strcmp(argv[1], "--set-key")) {
-		if ((lang_model = cpe_lang_model_import(argv[2])) == NULL)
+		if ((lang_model = cpe_lang_model_import_source(source)) == NULL) {
+			oscap_source_free(source);
 			return 1;
+		}
 
-		if ((platform = cpe_lang_model_get_item(lang_model, argv[4])) == NULL)
+		if ((platform = cpe_lang_model_get_item(lang_model, argv[4])) == NULL) {
+			oscap_source_free(source);
 			return 2;
+		}
 
 		if (strcmp(argv[5], "-"))
 			cpe_platform_set_id(platform, argv[5]);
@@ -129,12 +147,16 @@ int main (int argc, char *argv[])
 
 	// Create new content with new platforms.
 	else if (argc >= 6 && !strcmp(argv[1], "--set-new")) {
-		if ((lang_model = cpe_lang_model_new()) == NULL)
+		if ((lang_model = cpe_lang_model_new()) == NULL) {
+			oscap_source_free(source);
 			return 1;
+		}
 
 		for (i = 6; i < argc; i++) {
-			if ((new_platform =  cpe_platform_new()) == NULL)
+			if ((new_platform =  cpe_platform_new()) == NULL) {
+				oscap_source_free(source);
 				return 1;
+			}
 			cpe_platform_set_id(new_platform, argv[i]);
 			/*
 			   struct cpe_testexpr *expr = cpe_testexpr_new();
@@ -142,8 +164,10 @@ int main (int argc, char *argv[])
 			   cpe_testexpr_set_name(expr, cpe_name_new("cpe:/a:nevim"));
 			   cpe_platform_set_expr(new_platform, expr);
 			   */
-			if (!cpe_lang_model_add_platform(lang_model, new_platform))
+			if (!cpe_lang_model_add_platform(lang_model, new_platform)) {
+				oscap_source_free(source);
 				return 2;
+			}
 		}
 
 		cpe_lang_model_export(lang_model, argv[2]);
@@ -153,67 +177,43 @@ int main (int argc, char *argv[])
 	// Sanity checks.
 	else if (argc == 2 && !strcmp(argv[1], "--smoke-test")) {
 
-		if ((lang_model = cpe_lang_model_new()) == NULL)
+		if ((lang_model = cpe_lang_model_new()) == NULL) {
+			oscap_source_free(source);
 			return 1;
-		else
+		} else {
 			cpe_lang_model_free(lang_model);
+		}
 
-		if ((new_platform =  cpe_platform_new()) == NULL)
+		if ((new_platform =  cpe_platform_new()) == NULL) {
+			oscap_source_free(source);
 			return 1;
+		}
 		else
 			cpe_platform_free(new_platform);
 
-		if ((testexpr = cpe_testexpr_new()) == NULL)
+		if ((testexpr = cpe_testexpr_new()) == NULL) {
+			oscap_source_free(source);
 			return 1;
+		}
 		else
 			cpe_testexpr_free(testexpr);
 	}
 
 	else if (argc == 6 && !strcmp(argv[1], "--export-all")) {
-		if ((lang_model = cpe_lang_model_import(argv[2])) == NULL)
+		if ((lang_model = cpe_lang_model_import_source(source)) == NULL) {
+			oscap_source_free(source);
 			return 1;
+		}
 
 		cpe_lang_model_export(lang_model, argv[4]);
 		cpe_lang_model_free(lang_model);
-	}
-	else if (argc == 6 && !strcmp(argv[1], "--match-cpe")) {
-		if ((lang_model = cpe_lang_model_import(argv[2])) == NULL)
-			return 1;
-
-		struct cpe_name *name1 = NULL;
-		struct cpe_name *name2 = NULL;
-		char * uri = NULL;
-
-		// make cpe_name
-		name1 = cpe_name_new(argv[4]);
-		name2 = cpe_name_new(argv[5]);
-		if ( (uri = cpe_name_get_as_str(name1)) == NULL ) return 1;
-		if ( (uri = cpe_name_get_as_str(name2)) == NULL ) return 1;
-		// actually we need array of cpe_name-s
-		struct cpe_name ** names = (struct cpe_name **) malloc(2*sizeof(struct cpe_name *)); // <-- just for clear what I'm doing
-		names[0] = name1;
-		names[1] = name2;
-
-		// let's get platform cpe's to match
-		platform_it = cpe_lang_model_get_platforms(lang_model);
-		platform = cpe_platform_iterator_next(platform_it); // we just need first one (no more there)
-		cpe_platform_iterator_free(platform_it);
-
-		ret_val = !cpe_platform_match_cpe(names, 2, platform);
-
-		cpe_name_free(name1);
-		cpe_name_free(name2);
-		free(names);
-
-		cpe_lang_model_free(lang_model);
-
-		return ret_val;
 	}
 	else {
 		print_usage(argv[0], stderr);
 		ret_val = 1;
 	}
 
+	oscap_source_free(source);
 	oscap_cleanup();
 
 	return ret_val;
@@ -230,16 +230,16 @@ void print_usage(const char *program_name, FILE * out)
 		"  %s --set-all CPE_LANG_XML ENCODING NS_PREFIX NS_HREF (PLATFORM_ID)*\n"
 		"  %s --set-key CPE_LANG_XML ENCODING KEY ID (TITLE)*\n"
 		"  %s --set-new CPE_LANG_XML ENCODING NS_PREFIX NS_HREF (PLATFORM_ID)*\n"
-		"  %s --match-cpe CPE_LANG_XML ENCODING CPE_NAME1 CPE_NAME2\n"
 		"  %s --smoke-test\n",
 		program_name, program_name, program_name, program_name,
-		program_name, program_name, program_name, program_name);
+		program_name, program_name, program_name);
 }
 
 // Print expression in prefix form.
 int print_expr_prefix_form(const struct cpe_testexpr *expr)
 {
 	//const struct cpe_testexpr *sub;
+	char *name = NULL;
 
 	putchar('(');
 
@@ -259,7 +259,9 @@ int print_expr_prefix_form(const struct cpe_testexpr *expr)
 		    );
 		break;
 	case CPE_LANG_OPER_MATCH:
-		printf("%s", cpe_name_get_as_str(cpe_testexpr_get_meta_cpe(expr)));
+		name = cpe_name_get_as_str(cpe_testexpr_get_meta_cpe(expr));
+		printf("%s", name);
+		free(name);
 		break;
 	default:
 		return 1;

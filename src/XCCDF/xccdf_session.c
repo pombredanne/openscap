@@ -25,7 +25,7 @@
 #endif
 
 #include <sys/stat.h>
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 #include <io.h>
 #else
 #include <unistd.h>
@@ -37,7 +37,6 @@
 #include <OVAL/public/oval_agent_api.h>
 #include <OVAL/public/oval_agent_xccdf_api.h>
 #include "common/oscap_acquire.h"
-#include <common/alloc.h>
 #include "common/util.h"
 #include "common/list.h"
 #include "common/oscapxml.h"
@@ -58,6 +57,7 @@
 #include "item.h"
 #include "public/xccdf_session.h"
 #include "XCCDF_POLICY/public/check_engine_plugin.h"
+#include "oscap_helpers.h"
 
 struct oval_content_resource {
 	char *href;					///< Coresponds with xccdf:check-content-ref/\@href.
@@ -238,7 +238,7 @@ static struct oscap_source* xccdf_session_create_arf_source(struct xccdf_session
 		sds_source = oscap_source_new_from_xmlDoc(sds_doc, NULL);
 	}
 
-	session->oval.arf_report = ds_rds_create_source(sds_source, session->xccdf.result_source, session->oval.result_sources, session->oval.results_mapping, session->oval.arf_report_mapping, session->export.arf_file);
+	session->oval.arf_report = ds_rds_create_source(sds_source, session->tailoring.user_file, session->xccdf.result_source, session->oval.result_sources, session->oval.results_mapping, session->oval.arf_report_mapping, session->export.arf_file);
 	if (!xccdf_session_is_sds(session)) {
 		oscap_source_free(sds_source);
 	}
@@ -399,11 +399,6 @@ void xccdf_session_set_oval_variables_export(struct xccdf_session *session, bool
 void xccdf_session_set_check_engine_plugins_results_export(struct xccdf_session *session, bool to_export_results)
 {
 	session->export.check_engine_plugins_results = to_export_results;
-}
-
-void xccdf_session_set_sce_results_export(struct xccdf_session *session, bool to_export_sce_results)
-{
-	xccdf_session_set_check_engine_plugins_results_export(session, to_export_sce_results);
 }
 
 bool xccdf_session_set_arf_export(struct xccdf_session *session, const char *arf_file)
@@ -864,7 +859,7 @@ void xccdf_session_set_custom_oval_files(struct xccdf_session *session, char **o
 
 	for (int i = 0; oval_filenames[i];) {
 		resources[i] = malloc(sizeof(struct oval_content_resource));
-		resources[i]->href = oscap_strdup(oscap_basename(oval_filenames[i]));
+		resources[i]->href = oscap_basename(oval_filenames[i]);
 		resources[i]->source = oscap_source_new_from_file(oval_filenames[i]);
 		resources[i]->source_owned = true;
 		i++;
@@ -1138,11 +1133,6 @@ static void xccdf_session_unload_check_engine_plugins(struct xccdf_session *sess
 	session->check_engine_plugins = oscap_list_new();
 }
 
-int xccdf_session_load_sce(struct xccdf_session *session)
-{
-	return xccdf_session_load_check_engine_plugins(session);
-}
-
 int xccdf_session_load_tailoring(struct xccdf_session *session)
 {
 	bool from_sds = false;
@@ -1285,7 +1275,7 @@ static int _build_xccdf_result_source(struct xccdf_session *session)
 
 	/* Build oscap_source of XCCDF TestResult only when needed */
 	if (session->export.xccdf_file != NULL || session->export.report_file != NULL || session->export.arf_file != NULL || session->export.xccdf_stig_viewer_file != NULL) {
-		const struct xccdf_benchmark *benchmark = xccdf_policy_model_get_benchmark(session->xccdf.policy_model);
+		struct xccdf_benchmark *benchmark = xccdf_policy_model_get_benchmark(session->xccdf.policy_model);
 
 		if (session->xccdf.result == NULL) {
 			// Attempt to export session before evaluation
@@ -1335,18 +1325,13 @@ int xccdf_session_export_xccdf(struct xccdf_session *session)
 	if (session->export.report_file == NULL)
 		return 0;
 
-	struct oscap_source* results = session->xccdf.result_source;
-	struct oscap_source* arf = NULL;
-	if (session->export.oval_results) {
-		arf = xccdf_session_create_arf_source(session);
-		if (arf == NULL) {
-			return 1;
-		}
-		results = arf;
+	struct oscap_source* arf = xccdf_session_create_arf_source(session);
+	if (arf == NULL) {
+		return 1;
 	}
 
 	/* generate report */
-	_xccdf_gen_report(results,
+	_xccdf_gen_report(arf,
 			xccdf_result_get_id(session->xccdf.result),
 			session->export.report_file,
 			"",
@@ -1540,21 +1525,19 @@ static int _build_oval_result_sources(struct xccdf_session *session)
 
 int xccdf_session_export_oval(struct xccdf_session *session)
 {
-	if (session->export.oval_results || session->export.arf_file != NULL) {
-		if (_build_oval_result_sources(session) != 0) {
+	if (_build_oval_result_sources(session) != 0) {
+		return 1;
+	}
+	struct oscap_htable_iterator *hit = oscap_htable_iterator_new(session->oval.result_sources);
+	while (oscap_htable_iterator_has_more(hit)) {
+		struct oscap_source *source = oscap_htable_iterator_next_value(hit);
+		if (oscap_source_save_as(source, NULL) != 0) {
+			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not save file: %s", oscap_source_readable_origin(source));
+			oscap_htable_iterator_free(hit);
 			return 1;
 		}
-		struct oscap_htable_iterator *hit = oscap_htable_iterator_new(session->oval.result_sources);
-		while (oscap_htable_iterator_has_more(hit)) {
-			struct oscap_source *source = oscap_htable_iterator_next_value(hit);
-			if (oscap_source_save_as(source, NULL) != 0) {
-				oscap_seterr(OSCAP_EFAMILY_OSCAP, "Could not save file: %s", oscap_source_readable_origin(source));
-				oscap_htable_iterator_free(hit);
-				return 1;
-			}
-		}
-		oscap_htable_iterator_free(hit);
 	}
+	oscap_htable_iterator_free(hit);
 
 	/* Export variables */
 	if (session->export.oval_variables && session->oval.agents != NULL) {
@@ -1615,11 +1598,6 @@ int xccdf_session_export_check_engine_plugins(struct xccdf_session *session)
 	oscap_iterator_free(it);
 
 	return ret;
-}
-
-int xccdf_session_export_sce(struct xccdf_session *session)
-{
-	return xccdf_session_export_check_engine_plugins(session);
 }
 
 int xccdf_session_export_arf(struct xccdf_session *session)

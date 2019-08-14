@@ -29,7 +29,7 @@
 #include <libxslt/xsltutils.h>
 #include <libexslt/exslt.h>
 #include <string.h>
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 #include <io.h>
 #else
 #include <unistd.h>
@@ -41,6 +41,7 @@
 #include "oscap_source.h"
 #include "source/oscap_source_priv.h"
 #include "source/xslt_priv.h"
+#include "oscap_helpers.h"
 
 #define XCCDF11_NS "http://checklists.nist.gov/xccdf/1.1"
 #define XCCDF12_NS "http://checklists.nist.gov/xccdf/1.2"

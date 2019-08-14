@@ -4,8 +4,6 @@
 #include <errno.h>
 #include "_seap-packet.h"
 #include "_seap-packetq.h"
-#include "sm_alloc.h"
-#include "common/assume.h"
 
 int SEAP_packetq_init(SEAP_packetq_t *queue)
 {
@@ -35,9 +33,7 @@ void SEAP_packetq_free(SEAP_packetq_t *queue)
 
 struct SEAP_packetq_item *SEAP_packetq_item_new(void)
 {
-	struct SEAP_packetq_item *i;
-
-	i = sm_talloc(struct SEAP_packetq_item);
+	struct SEAP_packetq_item *i = malloc(sizeof(struct SEAP_packetq_item));
 
 	i->next   = NULL;
 	i->prev   = NULL;
@@ -55,7 +51,7 @@ void SEAP_packetq_item_free(struct SEAP_packetq_item *i, bool freepacket)
 	i->next   = NULL;
 	i->packet = NULL;
 
-	sm_free(i);
+	free(i);
 }
 
 int SEAP_packetq_get(SEAP_packetq_t *queue, SEAP_packet_t **packet_dst)
@@ -69,15 +65,23 @@ int SEAP_packetq_get(SEAP_packetq_t *queue, SEAP_packet_t **packet_dst)
 		return (-1);
 
 	if (queue->first == NULL) {
-		assume_d(queue->last == NULL, -1);
-		assume_d(queue->count == 0, -1);
+		if (queue->last != NULL) {
+			return -1;
+		}
+		if (queue->count != 0) {
+			return -1;
+		}
 
 		count = -1;
 		goto __unlock_and_return;
 	}
 
-	assume_d(queue->last != NULL, -1);
-	assume_d(queue->count > 0, -1);
+	if (queue->last == NULL) {
+		return -1;
+	}
+	if (queue->count <= 0) {
+		return -1;
+	}
 
 	save = queue->first->next;
 	(*packet_dst) = queue->first->packet;
@@ -112,8 +116,12 @@ int SEAP_packetq_put(SEAP_packetq_t *queue, SEAP_packet_t *packet)
 		queue->first->packet = packet;
 		queue->last  = queue->first;
 	} else {
-		assume_d(queue->last != NULL, -1); /* XXX: unlock */
-		assume_d(queue->last->next == NULL, -1);
+		if (queue->last == NULL) {
+			return -1; /* XXX: unlock */
+		}
+		if (queue->last->next != NULL) {
+			return -1;
+		}
 
 		queue->last->next = SEAP_packetq_item_new();
 		queue->last->next->packet = packet;

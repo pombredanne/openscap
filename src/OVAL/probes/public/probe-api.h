@@ -41,13 +41,13 @@
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
  *
- * This library is distributed in the hope that it will be useful, 
+ * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software 
+ * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  * Authors:
@@ -58,7 +58,6 @@
 #ifndef PROBE_API_H
 #define PROBE_API_H
 
-#include <seap.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -67,19 +66,13 @@
 #include <oval_system_characteristics.h>
 #include <oval_results.h>
 #include <oval_types.h>
+#include "sexp-types.h"
 #include "oscap_export.h"
 
 /*
  * items
  */
 
-/**
- * Build a new item according to the specified format.
- * @param fmt the desired format
- */
-OSCAP_API SEXP_t *probe_item_build(const char *fmt, ...);
-
-/* SEXP_t *probe_item_creat (const char *name, SEXP_t *attrs, ...); */
 /**
  * Create a new item consisting of a name, optional attributes argument and an arbitrary number of entities.
  * Every entity is a triple:
@@ -141,13 +134,6 @@ OSCAP_API int probe_itement_setstatus(SEXP_t * obj, const char *name, uint32_t n
 struct id_desc_t;
 
 /**
- * Get a new unique id (within a probe) for an item.
- * @param id_desc pointer to a structure holding the global id context
- * @return a new id
- */
-OSCAP_API SEXP_t *probe_item_newid(struct id_desc_t *id_desc);
-
-/**
  * Reset the item id generator.
  * @param id_desc pointer to a structure holding the global id context
  */
@@ -171,12 +157,6 @@ OSCAP_API SEXP_t *probe_attr_creat(const char *name, const SEXP_t * val, ...);
 /*
  * objects
  */
-
-/**
- * Build a new object according to the specified format.
- * @param fmt the desired format
- */
-OSCAP_API SEXP_t *probe_obj_build(const char *fmt, ...);
 
 /**
  * Create a new object consisting of a name, optional attributes argument and an arbitrary number of entities.
@@ -247,15 +227,6 @@ OSCAP_API bool probe_obj_attrexists(const SEXP_t * obj, const char *name);
  * @param status the new status
  */
 OSCAP_API int probe_obj_setstatus(SEXP_t * obj, oval_syschar_status_t status);
-
-/**
- * Set status of an object's entity.
- * @param obj the object to be modified
- * @param name the name of the entity
- * @param n select the n-th occurence of an entity with the specified name
- * @param status the new status
- */
-OSCAP_API int probe_objent_setstatus(SEXP_t * obj, const char *name, uint32_t n, oval_syschar_status_t status);
 
 /**
  * Get the name of an object.
@@ -469,19 +440,9 @@ OSCAP_API void probe_tfc54behaviors_canonicalize(SEXP_t **behaviors);
 #define PROBECMD_OBJ_EVAL  2 /**< Object eval command code */
 #define PROBECMD_RESET     3 /**< Reset command code */
 
-
-OSCAP_API void probe_offline_mode(void);
-OSCAP_API void probe_preload(void);
-OSCAP_API void *probe_init(void) __attribute__ ((unused));
-OSCAP_API void probe_fini(void *) __attribute__ ((unused));
-
 typedef struct probe_ctx probe_ctx;
 
-OSCAP_API int probe_main(probe_ctx *, void *) __attribute__ ((nonnull(1)));
-
 OSCAP_API bool probe_item_filtered(const SEXP_t *item, const SEXP_t *filters);
-
-OSCAP_API int probe_result_additem(SEXP_t *result, SEXP_t *item);
 
 /**
  * Collect generated item (i.e. add it to the collected object)
@@ -573,7 +534,6 @@ OSCAP_API int probe_item_add_msg(SEXP_t *item, oval_message_level_t msglvl, char
 OSCAP_API SEXP_t *probe_entval_from_cstr(oval_datatype_t type, const char *value, size_t vallen);
 OSCAP_API SEXP_t *probe_ent_from_cstr(const char *name, oval_datatype_t type, const char *value, size_t vallen);
 
-OSCAP_API OSCAP_DEPRECATED(oval_version_t probe_obj_get_schema_version(const SEXP_t *obj));
 OSCAP_API oval_schema_version_t probe_obj_get_platform_schema_version(const SEXP_t *obj);
 
 /**

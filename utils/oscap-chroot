@@ -39,7 +39,6 @@ function usage()
     echo "  --tailoring-id"
     echo "  --cpe (external OVAL dependencies are not supported yet!)"
     echo "  --oval-results"
-    echo "  --sce-results"
     echo "  --check-engine-results"
     echo "  --results"
     echo "  --results-arf"
@@ -62,7 +61,6 @@ function usage()
     echo "  --skip-valid"
     echo "  --datastream-id"
     echo "  --oval-id"
-    echo "  --probe-root"
     echo
     echo "$ oscap-chroot CHROOT_PATH oval collect [options] INPUT_CONTENT"
     echo

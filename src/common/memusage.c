@@ -34,16 +34,16 @@
 
 #include "debug_priv.h"
 #include "memusage.h"
-#include "assume.h"
 #include "bfind.h"
 
-#if defined(__linux__)
+#if defined(OS_LINUX)
 static int read_common_sizet(void *szp, char *strval)
 {
 	char *end;
 
-	assume_d(szp    != NULL, -1);
-	assume_d(strval != NULL, -1);
+	if (szp == NULL || strval == NULL) {
+		return -1;
+	}
 
 	end = strchr(strval, ' ');
 
@@ -172,13 +172,13 @@ struct stat_parser __proc_stat_ptable[] = {
 	stat_sizet_field("VmStk",  struct proc_memusage, mu_stack),
 };
 
-#endif /* __linux__ */
+#endif /* OS_LINUX */
 
 int oscap_sys_memusage(struct sys_memusage *mu)
 {
 	if (mu == NULL)
 		return -1;
-#if defined(__linux__)
+#if defined(OS_LINUX)
 	if (read_status(MEMUSAGE_LINUX_SYS_STATUS,
 	                mu, __sys_stat_ptable,
 	                (sizeof __sys_stat_ptable)/sizeof(struct stat_parser)) != 0)
@@ -198,7 +198,7 @@ int oscap_proc_memusage(struct proc_memusage *mu)
 {
 	if (mu == NULL)
 		return -1;
-#if defined(__linux__)
+#if defined(OS_LINUX)
 	if (read_status(MEMUSAGE_LINUX_PROC_STATUS,
 	                mu,  __proc_stat_ptable,
 	                (sizeof __proc_stat_ptable)/sizeof(struct stat_parser)) != 0)

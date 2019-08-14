@@ -1,4 +1,7 @@
 #!/bin/bash
+. $builddir/tests/test_common.sh
+
+touch not_executable
 
 set -e
 set -o pipefail
@@ -14,7 +17,7 @@ echo "Stderr file = $stderr"
 echo "Result file = $result"
 [ -f $stderr ]; [ ! -s $stderr ]
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 
 assert_exists 8 '//rule-result'
 assert_exists 8 '//rule-result/result'
@@ -90,3 +93,5 @@ $OSCAP xccdf validate $split/${mangle}${name}.xccdf.xml 2> $stderr
 [ -f $stderr ]; [ ! -s $stderr ]; rm $stderr
 rm $split/${mangle}${name}.xccdf.xml
 rmdir $split
+
+rm not_executable

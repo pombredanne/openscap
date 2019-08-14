@@ -68,6 +68,19 @@
                          </criteria>
                   </criteria>
             </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.rhel:def:8" version="1">
+                  <metadata>
+                        <title>Red Hat Enterprise Linux 8</title>
+                        <affected family="unix">
+                              <platform>Red Hat Enterprise Linux 8</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:redhat:enterprise_linux:8" source="CPE"/>
+                        <description>The operating system installed on the system is Red Hat Enterprise Linux 8</description>
+                  </metadata>
+                  <criteria>
+                        <criterion comment="Red Hat Enterprise Linux 8 is installed" test_ref="oval:org.open-scap.cpe.rhel:tst:8"/>
+                  </criteria>
+            </definition>
             <definition class="inventory" id="oval:org.open-scap.cpe.ol:def:5" version="1">
                   <metadata>
                         <title>Oracle Linux 5</title>
@@ -105,6 +118,19 @@
                   </metadata>
                   <criteria>
                         <criterion comment="Oracle Linux 7 is installed" test_ref="oval:org.open-scap.cpe.ol:tst:7"/>
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.ol:def:8" version="1">
+                  <metadata>
+                        <title>Oracle Linux 8</title>
+                        <affected family="unix">
+                              <platform>Oracle Linux 8</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:oracle:linux:8" source="CPE"/>
+                        <description>The operating system installed on the system is Oracle Linux 8</description>
+                  </metadata>
+                  <criteria>
+                        <criterion comment="Oracle Linux 8 is installed" test_ref="oval:org.open-scap.cpe.ol:tst:8"/>
                   </criteria>
             </definition>
             <definition class="inventory" id="oval:org.open-scap.cpe.rhel:def:1005" version="1">
@@ -354,6 +380,46 @@
                         <criterion comment="Fedora 28 is installed" test_ref="oval:org.open-scap.cpe.fedora:tst:28"/>
                   </criteria>
             </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.fedora:def:29" version="1">
+                  <metadata>
+                        <title>Fedora 29</title>
+                        <affected family="unix">
+                            <platform>Fedora 29</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:fedoraproject:fedora:29" source="CPE"/>
+                        <description>The operating system installed on the system is Fedora 29</description>
+                  </metadata>
+                  <criteria>
+                        <criterion comment="Fedora 29 is installed" test_ref="oval:org.open-scap.cpe.fedora:tst:29"/>
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.fedora:def:30" version="1">
+                  <metadata>
+                        <title>Fedora 30</title>
+                        <affected family="unix">
+                            <platform>Fedora 30</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:fedoraproject:fedora:30" source="CPE"/>
+                        <description>The operating system installed on the system is Fedora 30</description>
+                  </metadata>
+                  <criteria>
+                        <criterion comment="Fedora 30 is installed" test_ref="oval:org.open-scap.cpe.fedora:tst:30"/>
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.fedora:def:31" version="1">
+                  <metadata>
+                        <title>Fedora 31</title>
+                        <affected family="unix">
+                            <platform>Fedora 31</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:fedoraproject:fedora:31" source="CPE"/>
+                        <description>The operating system installed on the system is Fedora 31</description>
+                  </metadata>
+                  <criteria>
+                        <criterion comment="Fedora 31 is installed" test_ref="oval:org.open-scap.cpe.fedora:tst:31"/>
+                  </criteria>
+            </definition>
+
 
             <definition class="inventory" id="oval:org.open-scap.cpe.sle:def:1" version="1">
                   <metadata>
@@ -506,28 +572,56 @@
             </definition>
             <definition class="inventory" id="oval:org.open-scap.cpe.opensuse:def:421" version="1">
                   <metadata>
-                        <title>openSUSE 42.1</title>
+                        <title>openSUSE Leap 42.1</title>
                         <affected family="unix">
-                            <platform>openSUSE 42.1</platform>
+                            <platform>openSUSE Leap 42.1</platform>
                         </affected>
                         <reference ref_id="cpe:/o:novell:leap:42.1" source="CPE"/>
-                        <description>The operating system installed on the system is openSUSE 42.1</description>
+                        <reference ref_id="cpe:/o:opensuse:leap:42.1" source="CPE"/>
+                        <description>The operating system installed on the system is openSUSE Leap 42.1</description>
                   </metadata>
                   <criteria>
-                        <criterion comment="openSUSE 42.1 is installed" test_ref="oval:org.open-scap.cpe.opensuse:tst:421"/>
+                        <criterion comment="openSUSE Leap 42.1 is installed" test_ref="oval:org.open-scap.cpe.opensuse:tst:421"/>
                   </criteria>
             </definition>
             <definition class="inventory" id="oval:org.open-scap.cpe.opensuse:def:422" version="1">
                   <metadata>
-                        <title>openSUSE 42.2</title>
+                        <title>openSUSE Leap 42.2</title>
                         <affected family="unix">
-                            <platform>openSUSE 42.2</platform>
+                            <platform>openSUSE Leap 42.2</platform>
                         </affected>
                         <reference ref_id="cpe:/o:novell:leap:42.2" source="CPE"/>
-                        <description>The operating system installed on the system is openSUSE 42.2</description>
+                        <reference ref_id="cpe:/o:opensuse:leap:42.2" source="CPE"/>
+                        <description>The operating system installed on the system is openSUSE Leap 42.2</description>
                   </metadata>
                   <criteria>
-                        <criterion comment="openSUSE 42.2 is installed" test_ref="oval:org.open-scap.cpe.opensuse:tst:422"/>
+                        <criterion comment="openSUSE Leap 42.2 is installed" test_ref="oval:org.open-scap.cpe.opensuse:tst:422"/>
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.opensuse:def:423" version="1">
+                  <metadata>
+                        <title>openSUSE Leap 42.3</title>
+                        <affected family="unix">
+                            <platform>openSUSE Leap 42.3</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:opensuse:leap:42.3" source="CPE"/>
+                        <description>The operating system installed on the system is openSUSE Leap 42.3</description>
+                  </metadata>
+                  <criteria>
+                        <criterion comment="openSUSE Leap 42.3 is installed" test_ref="oval:org.open-scap.cpe.opensuse:tst:423"/>
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.opensuse:def:150" version="1">
+                  <metadata>
+                        <title>openSUSE Leap 15.0</title>
+                        <affected family="unix">
+                            <platform>openSUSE Leap 15.0</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:opensuse:leap:15.0" source="CPE"/>
+                        <description>The operating system installed on the system is openSUSE Leap 15.0</description>
+                  </metadata>
+                  <criteria>
+                        <criterion comment="openSUSE Leap 15.0 is installed" test_ref="oval:org.open-scap.cpe.opensuse:tst:150"/>
                   </criteria>
             </definition>
             <definition class="inventory" id="oval:org.open-scap.cpe.wrlinux:def:1" version="1" >
@@ -557,6 +651,97 @@
                         <criterion comment="Wind River Linux version is 8." test_ref="oval:org.open-scap.cpe.wrlinux:tst:8" />
                   </criteria>
             </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.windows:def:7" version="1">
+                  <metadata>
+                        <title>Microsoft Windows 7</title>
+                        <affected family="windows">
+                              <platform>Microsoft Windows 7</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:microsoft:windows_7" source="CPE"/>
+                        <description>The operating system installed on the system is Microsoft Windows 7</description>
+                  </metadata>
+                  <criteria operator="OR">
+                        <criterion comment="Microsoft Windows 7 is installed" test_ref="oval:org.open-scap.cpe.windows:tst:7" />
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.windows:def:8" version="1">
+                  <metadata>
+                        <title>Microsoft Windows 8</title>
+                        <affected family="windows">
+                              <platform>Microsoft Windows 8</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:microsoft:windows_8" source="CPE"/>
+                        <description>The operating system installed on the system is Microsoft Windows 8</description>
+                  </metadata>
+                  <criteria operator="OR">
+                        <criterion comment="Microsoft Windows 8 is installed" test_ref="oval:org.open-scap.cpe.windows:tst:8" />
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.windows:def:81" version="1">
+                  <metadata>
+                        <title>Microsoft Windows 8.1</title>
+                        <affected family="windows">
+                              <platform>Microsoft Windows 8.1</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:microsoft:windows_8.1" source="CPE"/>
+                        <description>The operating system installed on the system is Microsoft Windows 8.1</description>
+                  </metadata>
+                  <criteria operator="OR">
+                        <criterion comment="Microsoft Windows 8.1 is installed" test_ref="oval:org.open-scap.cpe.windows:tst:81" />
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.windows:def:10" version="1">
+                  <metadata>
+                        <title>Microsoft Windows 10</title>
+                        <affected family="windows">
+                              <platform>Microsoft Windows 10</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:microsoft:windows_10" source="CPE"/>
+                        <description>The operating system installed on the system is Microsoft Windows 10</description>
+                  </metadata>
+                  <criteria operator="OR">
+                        <criterion comment="Microsoft Windows 10 is installed" test_ref="oval:org.open-scap.cpe.windows:tst:10" />
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.windows:def:2008" version="1">
+                  <metadata>
+                        <title>Microsoft Windows Server 2008</title>
+                        <affected family="windows">
+                              <platform>Microsoft Windows Server 2008</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:microsoft:windows_server_2008" source="CPE"/>
+                        <description>The operating system installed on the system is Microsoft Windows Server 2008</description>
+                  </metadata>
+                  <criteria operator="OR">
+                        <criterion comment="Microsoft Windows Server 2008 is installed" test_ref="oval:org.open-scap.cpe.windows:tst:2008" />
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.windows:def:2012" version="1">
+                  <metadata>
+                        <title>Microsoft Windows Server 2012</title>
+                        <affected family="windows">
+                              <platform>Microsoft Windows Server 2012</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:microsoft:windows_server_2012" source="CPE"/>
+                        <description>The operating system installed on the system is Microsoft Windows Server 2012</description>
+                  </metadata>
+                  <criteria operator="OR">
+                        <criterion comment="Microsoft Windows Server 2012 is installed" test_ref="oval:org.open-scap.cpe.windows:tst:2012" />
+                  </criteria>
+            </definition>
+            <definition class="inventory" id="oval:org.open-scap.cpe.windows:def:2016" version="1">
+                  <metadata>
+                        <title>Microsoft Windows Server 2016</title>
+                        <affected family="windows">
+                              <platform>Microsoft Windows Server 2016</platform>
+                        </affected>
+                        <reference ref_id="cpe:/o:microsoft:windows_server_2016" source="CPE"/>
+                        <description>The operating system installed on the system is Microsoft Windows Server 2016</description>
+                  </metadata>
+                  <criteria operator="OR">
+                        <criterion comment="Microsoft Windows Server 2016 is installed" test_ref="oval:org.open-scap.cpe.windows:tst:2016" />
+                  </criteria>
+            </definition>
       </definitions>
       <tests>
             <rpmverifyfile_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.rhel:tst:2" version="1" check="at least one" comment="/etc/redhat-release is provided by redhat-release package"
@@ -579,6 +764,11 @@
                   <object object_ref="oval:org.open-scap.cpe.redhat-release:obj:3"/>
                   <state state_ref="oval:org.open-scap.cpe.rhel:ste:7"/>
             </rpmverifyfile_test>
+            <rpmverifyfile_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.rhel:tst:8" version="1" check="at least one" comment="redhat-release is version 8"
+                  xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <object object_ref="oval:org.open-scap.cpe.redhat-release:obj:3"/>
+                  <state state_ref="oval:org.open-scap.cpe.rhel:ste:8"/>
+            </rpmverifyfile_test>
             <rpminfo_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.ol:tst:5" version="1" check="at least one" comment="oraclelinux-release is version 5"
                   xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <object object_ref="oval:org.open-scap.cpe.oraclelinux-release:obj:1"/>
@@ -593,6 +783,11 @@
                   xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <object object_ref="oval:org.open-scap.cpe.oraclelinux-release:obj:1"/>
                   <state state_ref="oval:org.open-scap.cpe.ol:ste:7"/>
+            </rpminfo_test>
+            <rpminfo_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.ol:tst:8" version="1" check="at least one" comment="oraclelinux-release is version 8"
+                  xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <object object_ref="oval:org.open-scap.cpe.oraclelinux-release:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.ol:ste:8"/>
             </rpminfo_test>
             <rpmverifyfile_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.rhel:tst:1005" version="1" check="at least one" comment="centos-release is version 5"
                   xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
@@ -689,6 +884,21 @@
                   <object object_ref="oval:org.open-scap.cpe.fedora-release:obj:2"/>
                   <state state_ref="oval:org.open-scap.cpe.fedora:ste:28"/>
             </rpminfo_test>
+            <rpminfo_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.fedora:tst:29" version="1" check="at least one" comment="fedora-release is version Fedora 29"
+                  xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <object object_ref="oval:org.open-scap.cpe.fedora-release:obj:2"/>
+                  <state state_ref="oval:org.open-scap.cpe.fedora:ste:29"/>
+            </rpminfo_test>
+            <rpminfo_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.fedora:tst:30" version="1" check="at least one" comment="fedora-release is version Fedora 30"
+                  xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <object object_ref="oval:org.open-scap.cpe.fedora-release:obj:2"/>
+                  <state state_ref="oval:org.open-scap.cpe.fedora:ste:30"/>
+            </rpminfo_test>
+            <rpminfo_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.fedora:tst:31" version="1" check="at least one" comment="fedora-release is version Fedora 31"
+                  xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <object object_ref="oval:org.open-scap.cpe.fedora-release:obj:2"/>
+                  <state state_ref="oval:org.open-scap.cpe.fedora:ste:31"/>
+            </rpminfo_test>
             <rpminfo_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.sles:tst:1" version="1" check="at least one" comment="/etc/sles-release is provided by sles-release package"
                   xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <object object_ref="oval:org.open-scap.cpe.sles-release:obj:1"/>
@@ -760,6 +970,16 @@
                   <object object_ref="oval:org.open-scap.cpe.openSUSE-release:obj:1"/>
                   <state state_ref="oval:org.open-scap.cpe.opensuse:ste:422"/>
             </rpminfo_test>
+            <rpminfo_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.opensuse:tst:423" version="2" check="at least one" comment="openSUSE-release is version 42.3"
+                  xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <object object_ref="oval:org.open-scap.cpe.openSUSE-release:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.opensuse:ste:423"/>
+            </rpminfo_test>
+            <rpminfo_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.opensuse:tst:150" version="2" check="at least one" comment="openSUSE-release is version 15.0"
+                  xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <object object_ref="oval:org.open-scap.cpe.openSUSE-release:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.opensuse:ste:150"/>
+            </rpminfo_test>
             <family_test check_existence="at_least_one_exists" id="oval:org.open-scap.cpe.wrlinux:tst:1" version="1" check="only one"
                   comment="Installed operating system is part of the Unix family."
                   xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#independent">
@@ -793,6 +1013,34 @@
                   <object object_ref="oval:org.open-scap.cpe.rhevh:obj:2" />
                   <state state_ref="oval:org.open-scap.cpe.rhevh:ste:2" />
             </textfilecontent54_test>
+            <registry_test id="oval:org.open-scap.cpe.windows:tst:7" version="1" comment="Windows 7 is installed" check_existence="at_least_one_exists" check="at least one" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <object object_ref="oval:org.open-scap.cpe.windows:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.windows:ste:7"/>
+            </registry_test>
+            <registry_test id="oval:org.open-scap.cpe.windows:tst:8" version="1" comment="Windows 8 is installed" check_existence="at_least_one_exists" check="at least one" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <object object_ref="oval:org.open-scap.cpe.windows:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.windows:ste:8"/>
+            </registry_test>
+            <registry_test id="oval:org.open-scap.cpe.windows:tst:81" version="1" comment="Windows 8.1 is installed" check_existence="at_least_one_exists" check="at least one" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <object object_ref="oval:org.open-scap.cpe.windows:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.windows:ste:81"/>
+            </registry_test>
+            <registry_test id="oval:org.open-scap.cpe.windows:tst:10" version="1" comment="Windows 10 is installed" check_existence="at_least_one_exists" check="at least one" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <object object_ref="oval:org.open-scap.cpe.windows:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.windows:ste:10"/>
+            </registry_test>
+            <registry_test id="oval:org.open-scap.cpe.windows:tst:2008" version="1" comment="Windows Server 2008 is installed" check_existence="at_least_one_exists" check="at least one" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <object object_ref="oval:org.open-scap.cpe.windows:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.windows:ste:2008"/>
+            </registry_test>
+            <registry_test id="oval:org.open-scap.cpe.windows:tst:2012" version="1" comment="Windows Server 2012 is installed" check_existence="at_least_one_exists" check="at least one" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <object object_ref="oval:org.open-scap.cpe.windows:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.windows:ste:2012"/>
+            </registry_test>
+            <registry_test id="oval:org.open-scap.cpe.windows:tst:2016" version="1" comment="Windows Server 2016 is installed" check_existence="at_least_one_exists" check="at least one" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <object object_ref="oval:org.open-scap.cpe.windows:obj:1"/>
+                  <state state_ref="oval:org.open-scap.cpe.windows:ste:2016"/>
+            </registry_test>
       </tests>
       <objects>
             <family_object id="oval:org.open-scap.cpe.unix:obj:1" version="1"  xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#independent"/>
@@ -800,7 +1048,7 @@
                   <lin-def:name>redhat-release</lin-def:name>
             </lin-def:rpminfo_object>
             <lin-def:rpminfo_object id="oval:org.open-scap.cpe.fedora-release:obj:2" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
-                  <lin-def:name>fedora-release</lin-def:name>
+                  <lin-def:name operation="pattern match">^fedora-release.*</lin-def:name>
             </lin-def:rpminfo_object>
             <lin-def:rpmverifyfile_object id="oval:org.open-scap.cpe.redhat-release:obj:3" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <!-- Sadly, OVAL cannot do the right query (rpm -q -whatprovides system-release). Let's check the filename instead. -->
@@ -846,6 +1094,11 @@
             <rpminfo_object id="oval:org.open-scap.cpe.oraclelinux-release:obj:1" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <name>oraclelinux-release</name>
             </rpminfo_object>
+            <registry_object id="oval:org.open-scap.cpe.windows:obj:1" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows" >
+                  <hive>HKEY_LOCAL_MACHINE</hive>
+                  <key>SOFTWARE\Microsoft\Windows NT\CurrentVersion</key>
+                  <name>ProductName</name>
+            </registry_object>
       </objects>
       <states>
             <family_state id="oval:org.open-scap.cpe.unix:ste:1" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#independent">
@@ -864,6 +1117,10 @@
             <rpmverifyfile_state id="oval:org.open-scap.cpe.rhel:ste:7" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <name operation="pattern match">^redhat-release</name>
                   <version operation="pattern match">^7[^\d]</version>
+            </rpmverifyfile_state>
+            <rpmverifyfile_state id="oval:org.open-scap.cpe.rhel:ste:8" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <name operation="pattern match">^redhat-release</name>
+                  <version operation="pattern match">^8[^\d]</version>
             </rpmverifyfile_state>
             <rpmverifyfile_state id="oval:org.open-scap.cpe.rhel:ste:1005" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <name operation="pattern match">^centos-release</name>
@@ -900,6 +1157,10 @@
             <rpminfo_state id="oval:org.open-scap.cpe.ol:ste:7" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <name operation="pattern match">^oraclelinux-release</name>
                   <version operation="pattern match">^7</version>
+            </rpminfo_state>
+            <rpminfo_state id="oval:org.open-scap.cpe.ol:ste:8" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <name operation="pattern match">^oraclelinux-release</name>
+                  <version operation="pattern match">^8</version>
             </rpminfo_state>
             <rpminfo_state id="oval:org.open-scap.cpe.fedora:ste:16" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <version operation="pattern match">^16$</version>
@@ -939,6 +1200,15 @@
             </rpminfo_state>
             <rpminfo_state id="oval:org.open-scap.cpe.fedora:ste:28" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <version operation="pattern match">^28$</version>
+            </rpminfo_state>
+            <rpminfo_state id="oval:org.open-scap.cpe.fedora:ste:29" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <version operation="pattern match">^29$</version>
+            </rpminfo_state>
+            <rpminfo_state id="oval:org.open-scap.cpe.fedora:ste:30" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <version operation="pattern match">^30$</version>
+            </rpminfo_state>
+            <rpminfo_state id="oval:org.open-scap.cpe.fedora:ste:31" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <version operation="pattern match">^31$</version>
             </rpminfo_state>
             <rpminfo_state id="oval:org.open-scap.cpe.sles:ste:1" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <name operation="pattern match">^sles-release</name>
@@ -982,6 +1252,12 @@
             <rpminfo_state id="oval:org.open-scap.cpe.opensuse:ste:422" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
                   <version operation="pattern match">^42.2$</version>
             </rpminfo_state>
+            <rpminfo_state id="oval:org.open-scap.cpe.opensuse:ste:423" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <version operation="pattern match">^42.3$</version>
+            </rpminfo_state>
+            <rpminfo_state id="oval:org.open-scap.cpe.opensuse:ste:150" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#linux">
+                  <version operation="pattern match">^15.0$</version>
+            </rpminfo_state>
             <textfilecontent54_state
                             id="oval:org.open-scap.cpe.wrlinux-release:ste:8"
                             comment="Check the /etc/wrlinux-release file for VERSION 8 specification."
@@ -993,5 +1269,26 @@
             <textfilecontent54_state id="oval:org.open-scap.cpe.rhevh:ste:2" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#independent">
                   <subexpression operation="pattern match">7</subexpression>
             </textfilecontent54_state>
+            <registry_state id="oval:org.open-scap.cpe.windows:ste:7" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <value operation="pattern match">^Windows 7.*$</value>
+            </registry_state>
+            <registry_state id="oval:org.open-scap.cpe.windows:ste:8" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <value operation="pattern match">^Windows 8.*$</value>
+            </registry_state>
+            <registry_state id="oval:org.open-scap.cpe.windows:ste:81" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <value operation="pattern match">^Windows 8\.1.*$</value>
+            </registry_state>
+            <registry_state id="oval:org.open-scap.cpe.windows:ste:10" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <value operation="pattern match">^Windows 10.*$</value>
+            </registry_state>
+            <registry_state id="oval:org.open-scap.cpe.windows:ste:2008" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <value operation="pattern match">^.*2008.*$</value>
+            </registry_state>
+            <registry_state id="oval:org.open-scap.cpe.windows:ste:2012" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <value operation="pattern match">^.*2012.*$</value>
+            </registry_state>
+            <registry_state id="oval:org.open-scap.cpe.windows:ste:2016" version="1" xmlns="http://oval.mitre.org/XMLSchema/oval-definitions-5#windows">
+                  <value operation="pattern match">^.*2016.*$</value>
+            </registry_state>
       </states>
 </oval_definitions>

@@ -29,7 +29,6 @@
 #include "item.h"
 #include "helpers.h"
 #include "xccdf_impl.h"
-#include "common/alloc.h"
 #include "common/_error.h"
 #include "common/debug_priv.h"
 #include "common/elements.h"
@@ -218,15 +217,6 @@ struct xccdf_tailoring *xccdf_tailoring_import_source(struct oscap_source *sourc
 	if (!tailoring) { // parsing fatal error
 		oscap_seterr(OSCAP_EFAMILY_XML, "Failed to parse tailoring from '%s'.", oscap_source_readable_origin(source));
 	}
-	return tailoring;
-}
-
-struct xccdf_tailoring *xccdf_tailoring_import(const char *file, struct xccdf_benchmark *benchmark)
-{
-	struct oscap_source *source = oscap_source_new_from_file(file);
-
-	struct xccdf_tailoring *tailoring = xccdf_tailoring_import_source(source, benchmark);
-	oscap_source_free(source);
 	return tailoring;
 }
 

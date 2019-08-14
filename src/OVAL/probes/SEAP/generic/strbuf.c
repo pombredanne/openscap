@@ -31,8 +31,14 @@
 #include <assert.h>
 #include <sys/types.h>
 #include <limits.h>
+#ifdef HAVE_UIO_H
 #include <sys/uio.h>
+#endif
+#ifdef OS_WINDOWS
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "common/debug_priv.h"
 #include "strbuf.h"
@@ -158,29 +164,10 @@ int strbuf_addf (strbuf_t *buf, char *str, size_t len)
                 return (ret);
 }
 
-int strbuf_add0 (strbuf_t *buf, const char *str)
-{
-        return __strbuf_add (buf, (char *)str, strlen (str));
-}
-
 int strbuf_addc (strbuf_t *buf, char ch)
 {
         /* XXX: direct? */
         return __strbuf_add (buf, &ch, 1);
-}
-
-int strbuf_add0f (strbuf_t *buf, char *str)
-{
-        int ret;
-
-        ret = __strbuf_add (buf, str, strlen (str));
-
-        if (ret == 0) {
-                free (str);
-                return (0);
-        }
-
-        return (ret);
 }
 
 int strbuf_trunc (strbuf_t *buf, size_t len)
@@ -198,7 +185,7 @@ char *strbuf_cstr (strbuf_t *buf)
         struct strblk *cur;
         char  *stroff, *strbeg;
 
-        strbeg = malloc (sizeof (char) * buf->size);
+	strbeg = malloc(buf->size + 1); /* +1 for terminating '\0' */
         stroff = strbeg;
 
         if (strbeg == NULL)
@@ -211,6 +198,7 @@ char *strbuf_cstr (strbuf_t *buf)
                 stroff += cur->size;
                 cur = cur->next;
         }
+	strbeg[buf->size] = '\0';
 
         return (strbeg);
 }
@@ -276,6 +264,8 @@ size_t strbuf_fwrite (FILE *fp, strbuf_t *buf)
         return (size);
 }
 
+#ifdef HAVE_UIO_H
+
 ssize_t strbuf_write (strbuf_t *buf, int fd)
 {
         struct strblk *cur;
@@ -339,3 +329,23 @@ ssize_t strbuf_write (strbuf_t *buf, int fd)
 
         return (rsize);
 }
+
+#else
+
+ssize_t strbuf_write (strbuf_t *buf, int fd)
+{
+	struct strblk *cur;
+	size_t size;
+
+	cur = buf->beg;
+	size = 0;
+
+	while (cur != NULL) {
+		size += write(fd, cur->data, cur->next == NULL ? buf->blkoff : cur->size);
+		cur = cur->next;
+	}
+
+	return (size);
+}
+
+#endif

@@ -29,7 +29,6 @@
 #include <config.h>
 #endif
 
-#include "common/alloc.h"
 #include "common/_error.h"
 #include "common/util.h"
 #include "common/list.h"
@@ -37,6 +36,7 @@
 #include "common/oscap_string.h"
 #include "common/debug_priv.h"
 #include "sce_engine_api.h"
+#include "oscap_helpers.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -47,7 +47,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <sys/types.h>
-#if defined(__linux__)
+#if defined(OS_LINUX)
 #include <sys/prctl.h>
 #endif
 #include <limits.h>
@@ -346,6 +346,15 @@ static void _pipe_try_read_into_string(int fd, struct oscap_string *string, bool
 	}
 }
 
+
+static void free_env_values(char **env_values, size_t index_of_first_env_value_not_compiled_in, size_t real_env_values_count) {
+	for (size_t i = index_of_first_env_value_not_compiled_in; i < real_env_values_count; i++) {
+		free(env_values[i]);
+	}
+	free(env_values);
+}
+
+
 xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const char *rule_id, const char *id, const char *href,
 		struct xccdf_value_binding_iterator *value_binding_it,
 		struct xccdf_check_import_iterator *check_import_it,
@@ -390,6 +399,7 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 	// bound values in KEY=VALUE form, ready to be passed as environment variables
 	char ** env_values = malloc(10 * sizeof(char * ));
 	size_t env_value_count = 10;
+	const size_t index_of_first_env_value_not_compiled_in = 10;
 
 	env_values[0] = "PATH=/bin:/sbin:/usr/bin:/usr/sbin";
 
@@ -488,12 +498,7 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 	if (pipe(stdout_pipefd) == -1 || pipe(stderr_pipefd) == -1)
 	{
 		perror("pipe");
-		// the first 9 values (0 to 8) are compiled in
-		for (size_t i = 9; i < env_value_count; ++i)
-		{
-			free(env_values[i]);
-		}
-		free(env_values);
+		free_env_values(env_values, index_of_first_env_value_not_compiled_in, env_value_count);
 		return XCCDF_RESULT_ERROR;
 	}
 
@@ -507,9 +512,9 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 
 		if (fork_result == 0)
 		{
-		    // we won't read from the pipes, so close the reading fd
-		    close(stdout_pipefd[0]);
-		    close(stderr_pipefd[0]);
+			// we won't read from the pipes, so close the reading fd
+			close(stdout_pipefd[0]);
+			close(stderr_pipefd[0]);
 
 			// forward stdout and stderr to our custom opened pipes
 			dup2(stdout_pipefd[1], fileno(stdout));
@@ -533,6 +538,8 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 			// we are the child process
 			execve(tmp_href, argvp, env_values);
 
+			free_env_values(env_values, index_of_first_env_value_not_compiled_in, env_value_count);
+
 			// no need to check the return value of execve, if it returned at all we are in trouble
 			printf("Unexpected error when executing script '%s'. Error message follows.\n", href);
 			perror("execve");
@@ -550,6 +557,7 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 			if (flag_stdout == -1) {
 				oscap_seterr(OSCAP_EFAMILY_SCE, "Failed to obtain status of stdout pipe: %s",
 						strerror(errno));
+				free_env_values(env_values, index_of_first_env_value_not_compiled_in, env_value_count);
 				return XCCDF_RESULT_ERROR;
 			}
 			int retval = fcntl(stdout_pipefd[0], F_SETFL, flag_stdout | O_NONBLOCK);
@@ -557,6 +565,7 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 				oscap_seterr(OSCAP_EFAMILY_SCE,
 						"Failed to set nonblocking flag on stdout pipe: %s",
 						strerror(errno));
+				free_env_values(env_values, index_of_first_env_value_not_compiled_in, env_value_count);
 				return XCCDF_RESULT_ERROR;
 			}
 
@@ -565,6 +574,7 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 				oscap_seterr(OSCAP_EFAMILY_SCE,
 						"Failed to obtain status of stderr pipe: %s",
 						strerror(errno));
+				free_env_values(env_values, index_of_first_env_value_not_compiled_in, env_value_count);
 				return XCCDF_RESULT_ERROR;
 			}
 			retval = fcntl(stderr_pipefd[0], F_SETFL, flag_stderr | O_NONBLOCK);
@@ -572,6 +582,7 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 				oscap_seterr(OSCAP_EFAMILY_SCE,
 						"Failed to set nonblocking flag on stderr pipe: %s",
 						strerror(errno));
+				free_env_values(env_values, index_of_first_env_value_not_compiled_in, env_value_count);
 				return XCCDF_RESULT_ERROR;
 			}
 
@@ -632,12 +643,7 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 				sce_session_add_check_result(session, check_result);
 			}
 
-			// the first 10 values (0 to 9) are compiled in
-			for (size_t i = 10; i < env_value_count; ++i)
-			{
-				free(env_values[i]);
-			}
-			free(env_values);
+			free_env_values(env_values, index_of_first_env_value_not_compiled_in, env_value_count);
 
 			// lets interpret the check imports passed to us
 			xccdf_check_import_iterator_reset(check_import_it);
@@ -665,12 +671,7 @@ xccdf_test_result_type_t sce_engine_eval_rule(struct xccdf_policy *policy, const
 	}
 	else
 	{
-		// the first 9 values (0 to 8) are compiled in
-		for (size_t i = 9; i < env_value_count; ++i)
-		{
-			free(env_values[i]);
-		}
-		free(env_values);
+		free_env_values(env_values, index_of_first_env_value_not_compiled_in, env_value_count);
 
 		close(stdout_pipefd[0]);
 		close(stdout_pipefd[1]);

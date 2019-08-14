@@ -29,19 +29,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#include <sys/uio.h>
+#ifdef OS_WINDOWS
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 #include <errno.h>
 #include <assert.h>
 
 #include "generic/common.h"
-#include "public/strbuf.h"
-#include "public/sm_alloc.h"
+#include "generic/strbuf.h"
 #include "_sexp-types.h"
 #include "_sexp-output.h"
 #include "_sexp-value.h"
 #include "_sexp-datatype.h"
 #include "_sexp-rawptr.h"
+#include "debug_priv.h"
 
 #define SEXP_SBPRINTF_BUFSZ 1024
 

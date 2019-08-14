@@ -49,6 +49,7 @@
 
 #include "source/oscap_source_priv.h"
 #include "source/public/oscap_source.h"
+#include "oscap_helpers.h"
 
 
 /***************************************************************************
@@ -431,6 +432,8 @@ OSCAP_IGETINS_GEN(cvrf_remediation, cvrf_vulnerability, remediations, remediatio
 OSCAP_ITERATOR_REMOVE_F(cvrf_remediation)
 OSCAP_IGETINS_GEN(cvrf_threat, cvrf_vulnerability, threats, threat)
 OSCAP_ITERATOR_REMOVE_F(cvrf_threat)
+OSCAP_IGETINS_GEN(cvrf_vulnerability_cwe, cvrf_vulnerability, cwes, cwe)
+OSCAP_ITERATOR_REMOVE_F(cvrf_vulnerability_cwe)
 
 struct oscap_iterator *cvrf_vulnerability_get_references(struct cvrf_vulnerability *vuln) {
 	return oscap_iterator_new(vuln->references);
@@ -512,7 +515,6 @@ struct cvrf_vulnerability *cvrf_vulnerability_clone(const struct cvrf_vulnerabil
 }
 
 int cvrf_vulnerability_filter_by_product(struct cvrf_vulnerability *vuln, const char *prod) {
-	struct oscap_stringlist *filtered_ids = oscap_stringlist_new();
 	int ret = 0;
 
 	struct cvrf_product_status_iterator *statuses = cvrf_vulnerability_get_product_statuses(vuln);
@@ -520,6 +522,7 @@ int cvrf_vulnerability_filter_by_product(struct cvrf_vulnerability *vuln, const 
 		struct cvrf_product_status *stat = cvrf_product_status_iterator_next(statuses);
 
 		struct oscap_string_iterator *products = cvrf_product_status_get_ids(stat);
+		struct oscap_stringlist *filtered_ids = oscap_stringlist_new();
 		while (oscap_string_iterator_has_more(products)) {
 			const char *product_id = oscap_string_iterator_next(products);
 			if (oscap_str_startswith(product_id, prod))
@@ -1656,7 +1659,9 @@ struct cvrf_score_set *cvrf_score_set_parse(xmlTextReaderPtr reader) {
 		if (xmlStrcmp(xmlTextReaderConstLocalName(reader), TAG_VECTOR) == 0) {
 			score_set->vector = oscap_element_string_copy(reader);
 		} else if (xmlStrcmp(xmlTextReaderConstLocalName(reader), TAG_PRODUCT_ID) == 0) {
-			oscap_stringlist_add_string(score_set->product_ids, oscap_element_string_copy(reader));
+			char *product_id = oscap_element_string_copy(reader);
+			oscap_stringlist_add_string(score_set->product_ids, product_id);
+			free(product_id);
 		} else if (xmlStrcmp(xmlTextReaderConstLocalName(reader), TAG_BASE_SCORE) == 0) {
 			cvrf_score_set_add_metric(score_set, CVSS_BASE, oscap_element_string_copy(reader));
 		} else if (xmlStrcmp(xmlTextReaderConstLocalName(reader), TAG_ENVIRONMENTAL_SCORE) == 0) {
@@ -1681,9 +1686,6 @@ xmlNode *cvrf_score_set_to_dom(const struct cvrf_score_set *score_set) {
 	cvrf_element_add_child("Vector", score_set->vector, score_node);
 	cvrf_element_add_stringlist(score_set->product_ids, "ProductID", score_node);
 
-	free(base);
-	free(temporal);
-	free(environmental);
 	return score_node;
 }
 
@@ -1983,6 +1985,7 @@ struct cvrf_product_tree *cvrf_product_tree_parse(xmlTextReaderPtr reader) {
 	struct cvrf_product_tree *tree = cvrf_product_tree_new();
 	if (xmlTextReaderIsEmptyElement(reader) == 1) {
 		cvrf_set_parsing_error("ProductTree");
+		cvrf_product_tree_free(tree);
 		return NULL;
 	}
 	xmlTextReaderNextElementWE(reader, TAG_PRODUCT_TREE);
@@ -2088,6 +2091,7 @@ struct cvrf_note *cvrf_note_parse(xmlTextReaderPtr reader) {
 	struct cvrf_note *note = cvrf_note_new();
 	if (xmlTextReaderIsEmptyElement(reader) == 1) {
 		cvrf_set_parsing_error("Note");
+		cvrf_note_free(note);
 		return NULL;
 	}
 
@@ -2146,6 +2150,7 @@ struct cvrf_doc_tracking *cvrf_doc_tracking_parse(xmlTextReaderPtr reader) {
 	struct cvrf_doc_tracking *tracking = cvrf_doc_tracking_new();
 	if (xmlTextReaderIsEmptyElement(reader) == 1) {
 		cvrf_set_parsing_error("DocumentTracking");
+		cvrf_doc_tracking_free(tracking);
 		return NULL;
 	}
 
@@ -2217,6 +2222,7 @@ struct cvrf_doc_publisher *cvrf_doc_publisher_parse(xmlTextReaderPtr reader) {
 	publisher->type = cvrf_doc_publisher_type_parse(reader);
 	if (publisher->type == CVRF_DOC_PUBLISHER_UNKNOWN && xmlTextReaderIsEmptyElement(reader) == 1) {
 		cvrf_set_parsing_error("DocumentPublisher");
+		cvrf_doc_publisher_free(publisher);
 		return NULL;
 	}
 	publisher->vendor_id = (char *)xmlTextReaderGetAttribute(reader, ATTR_VENDOR_ID);
@@ -2332,7 +2338,6 @@ struct cvrf_index *cvrf_index_parse_xml(struct oscap_source *index_source) {
 	}
 	struct cvrf_index *index = cvrf_index_new();
 	cvrf_index_set_index_file(index, oscap_source_readable_origin(index_source));
-	oscap_source_free(index_source);
 	return index;
 }
 

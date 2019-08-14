@@ -1,4 +1,5 @@
 #!/bin/bash
+. $builddir/tests/test_common.sh
 
 set -e
 set -o pipefail
@@ -18,7 +19,7 @@ echo "Result file = $result"
 grep '^Result.*notchecked$' $stdout
 rm $stdout
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 
 assert_exists 1 '//Rule[@id="xccdf_moc.elpmaxe.www_rule_1"]/check[@multi-check="true"]'
 assert_exists 2 '//check-content-ref[not(@name)]'

@@ -33,7 +33,7 @@
 #ifdef HAVE_FLOCK
 # include <sys/file.h>
 #endif
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 #include <io.h>
 #else
 #include <unistd.h>
@@ -57,10 +57,10 @@
 # define PATH_SEPARATOR '/'
 #endif
 
-#if defined(_WIN32)
+#if defined(OS_WINDOWS)
 # include <windows.h>
 # define GET_PROGRAM_NAME get_program_name()
-#elif defined(__APPLE__)
+#elif defined(OS_APPLE)
 # define GET_PROGRAM_NAME getprogname()
 #else
 # define GET_PROGRAM_NAME program_invocation_short_name
@@ -91,7 +91,7 @@ oscap_verbosity_levels __debuglog_level = DBG_UNKNOWN;
 
 #define THREAD_NAME_LEN 16
 
-#if defined(_WIN32)
+#if defined(OS_WINDOWS)
 static char * get_program_name()
 {
         char path[PATH_MAX + 1];
@@ -129,7 +129,7 @@ oscap_verbosity_levels oscap_verbosity_level_from_cstr(const char *level_name)
 	return oscap_string_to_enum(OSCAP_VERBOSITY_LEVELS, level_name);
 }
 
-bool oscap_set_verbose(const char *verbosity_level, const char *filename, bool is_probe)
+bool oscap_set_verbose(const char *verbosity_level, const char *filename)
 {
 	if (verbosity_level == NULL) {
 		verbosity_level = "WARNING";
@@ -138,32 +138,25 @@ bool oscap_set_verbose(const char *verbosity_level, const char *filename, bool i
 	if (__debuglog_level == DBG_UNKNOWN) {
 		return false;
 	}
-	if (!is_probe) {
-		setenv("OSCAP_PROBE_VERBOSITY_LEVEL", verbosity_level, 1);
-	}
 	if (filename == NULL) {
 		__debuglog_fp = stderr;
 		return true;
 	}
 	int fd;
-	if (is_probe) {
-		fd = open(filename, O_APPEND | O_WRONLY);
-	} else {
-		setenv("OSCAP_PROBE_VERBOSE_LOG_FILE", filename, 1);
-		/* Open a file. If the file doesn't exist, create it.
-		 * If the file exists, erase its content.
-		 * File is opened in "append" mode.
-		 * Append mode is necessary when more processes write to same file.
-		 * Every process using the log file must open it in append mode,
-		 * because otherwise some data may be missing on output.
-		 */
-#ifdef _WIN32
-		fd = open(filename, O_APPEND | O_CREAT | O_TRUNC | O_WRONLY, S_IREAD | S_IWRITE);
+	/* Open a file. If the file doesn't exist, create it.
+	 * If the file exists, erase its content.
+	 * File is opened in "append" mode.
+	 * Append mode is necessary when more processes write to same file.
+	 * Every process using the log file must open it in append mode,
+	 * because otherwise some data may be missing on output.
+	 */
+#ifdef OS_WINDOWS
+	fd = open(filename, O_APPEND | O_CREAT | O_TRUNC | O_WRONLY, S_IREAD | S_IWRITE);
 #else
-		fd = open(filename, O_APPEND | O_CREAT | O_TRUNC | O_WRONLY,
-			S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+	fd = open(filename, O_APPEND | O_CREAT | O_TRUNC | O_WRONLY,
+		S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 #endif
-	}
+
 	if (fd == -1) {
 		oscap_seterr(OSCAP_EFAMILY_OSCAP, "Failed to open file %s: %s.", filename, strerror(errno));
 		return false;
@@ -195,14 +188,6 @@ static void debug_message_start(int level, int indent)
 	char  l;
 
 	__LOCK_FP;
-#if (defined(__SVR4) && defined (__sun)) || defined(_AIX)
-	if (lockf(fileno(__debuglog_fp), F_LOCK, 0L) == -1) {
-#else
-	if (flock(fileno(__debuglog_fp), LOCK_EX) == -1) {
-#endif
-		__UNLOCK_FP;
-		return;
-	}
 
 	switch (level) {
 	case DBG_E:
@@ -237,10 +222,15 @@ static void debug_message_devel_metadata(const char *file, const char *fn, size_
 #else
 	snprintf(thread_name, THREAD_NAME_LEN, "unknown");
 #endif
+#if !defined(__MINGW32__) && defined(OS_WINDOWS)
+	unsigned long long tid = pthread_getw32threadid_np(thread);
+#else
 	/* XXX: non-portable usage of pthread_t */
+	unsigned long long tid = (unsigned long long) thread;
+#endif
 	fprintf(__debuglog_fp, " [%s(%ld):%s(%llx):%s:%zu:%s]",
 		GET_PROGRAM_NAME, (long) getpid(), thread_name,
-		(unsigned long long) thread, f, line, fn);
+		tid, f, line, fn);
 #else
 	fprintf(__debuglog_fp, " [%ld:%s:%zu:%s]", (long) getpid(),
 		f, line, fn);
@@ -250,15 +240,6 @@ static void debug_message_devel_metadata(const char *file, const char *fn, size_
 static void debug_message_end()
 {
 	fputc('\n', __debuglog_fp);
-#if (defined(__SVR4) && defined (__sun)) || defined(_AIX)
-	if (lockf(fileno(__debuglog_fp), F_ULOCK, 0L) == -1) {
-#else
-	if (flock(fileno(__debuglog_fp), LOCK_UN) == -1) {
-#endif
-		/* __UNLOCK_FP; */
-		abort();
-	}
-
 	__UNLOCK_FP;
 	return;
 }

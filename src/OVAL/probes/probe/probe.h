@@ -22,13 +22,19 @@
 #ifndef PROBE_H
 #define PROBE_H
 
+#include "oscap_platforms.h"
+
 #include <sys/types.h>
+#ifdef OS_WINDOWS
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 #include <stdint.h>
 #include <stddef.h>
 #include <stdarg.h>
 #include <pthread.h>
-#include <seap.h>
+#include "_seap.h"
 #include "ncache.h"
 #include "rcache.h"
 #include "icache.h"
@@ -63,6 +69,13 @@ typedef struct {
 
 	probe_option_t *option; /**< probe option handlers */
 	size_t          optcnt; /**< number of defined options */
+	bool offline_mode;
+	int supported_offline_mode;
+	int selected_offline_mode;
+	oval_subtype_t subtype;
+
+	int real_root_fd;
+	int real_cwd_fd;
 } probe_t;
 
 struct probe_ctx {
@@ -70,6 +83,7 @@ struct probe_ctx {
         SEXP_t         *probe_out; /**< collected object */
         SEXP_t         *filters;   /**< object filters (OVAL 5.8 and higher) */
         probe_icache_t *icache;    /**< item cache */
+	int offline_mode;
 };
 
 typedef enum {
@@ -81,8 +95,5 @@ typedef enum {
 } probe_offline_flags;
 
 extern pthread_barrier_t OSCAP_GSYM(th_barrier);
-extern probe_offline_flags OSCAP_GSYM(offline_mode);
-extern probe_offline_flags OSCAP_GSYM(offline_mode_supported);
-extern int OSCAP_GSYM(offline_mode_cobjflag);
 
 #endif /* PROBE_H */

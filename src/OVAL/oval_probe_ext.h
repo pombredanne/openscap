@@ -22,7 +22,7 @@
 #ifndef OVAL_PROBE_EXT_H
 #define OVAL_PROBE_EXT_H
 
-#include <seap.h>
+#include "_seap.h"
 #include <pthread.h>
 #include <stdbool.h>
 #include "oval_probe_impl.h"
@@ -41,23 +41,12 @@ typedef struct {
 	SEAP_CTX_t *ctx;
 } oval_pdtbl_t;
 
-struct oval_pdsc {
-        oval_subtype_t type;
-        const char    *name;
-        const char    *file;
-};
-
-typedef struct oval_pdsc oval_pdsc_t;
-
 struct oval_pext {
         pthread_mutex_t lock;
         bool            do_init;
 
         SEAP_CTX_t   *sctx;
-        oval_pdsc_t  *pdsc;
-        size_t        pdsc_cnt;
         oval_pdtbl_t *pdtbl;
-        char         *probe_dir;
 
         void *sess_ptr;
         struct oval_syschar_model **model;
@@ -74,7 +63,5 @@ int oval_probe_ext_abort(SEAP_CTX_t *ctx, oval_pd_t *pd, oval_pext_t *pext);
 
 int oval_probe_ext_handler(oval_subtype_t type, void *ptr, int act, ...);
 int oval_probe_sys_handler(oval_subtype_t type, void *ptr, int act, ...);
-
-extern const oval_pdsc_t OSCAP_GSYM(default_pdsc)[];
 
 #endif /* OVAL_PROBE_EXT_H */

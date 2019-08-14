@@ -24,7 +24,7 @@
 #include <config.h>
 #endif
 
-#include <seap.h>
+#include "_seap.h"
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -32,23 +32,25 @@
 
 #include "probe-api.h"
 #include "common/debug_priv.h"
-#include "common/assume.h"
 #include "entcmp.h"
 
 #include "worker.h"
+#include "probe-table.h"
+#include "probe.h"
 
 extern bool  OSCAP_GSYM(varref_handling);
 extern void *OSCAP_GSYM(probe_arg);
 
 void *probe_worker_runfn(void *arg)
 {
+	dD("probe_worker_runfn has started");
 	probe_pwpair_t *pair = (probe_pwpair_t *)arg;
 
 	SEXP_t *probe_res, *obj, *oid;
 	int     probe_ret;
 
 #if defined(HAVE_PTHREAD_SETNAME_NP)
-# if defined(__APPLE__)
+# if defined(OS_APPLE)
 	pthread_setname_np("probe_worker");
 # else
 	pthread_setname_np(pthread_self(), "probe_worker");
@@ -74,6 +76,7 @@ void *probe_worker_runfn(void *arg)
                 SEXP_free(probe_res);
                 free(pair);
 
+		dD("probe_worker_runfn has finished");
                 return (NULL);
 	} else {
                 SEXP_t *items;
@@ -93,8 +96,8 @@ void *probe_worker_runfn(void *arg)
 			/* TODO */
 			abort();
 		}
-
-		SEXP_vfree(obj, oid, NULL);
+		SEXP_free(obj);
+		SEXP_free(oid);
 	}
 
 	if (probe_ret != 0) {
@@ -138,15 +141,18 @@ void *probe_worker_runfn(void *arg)
 	free(pair);
 	pthread_detach(pthread_self());
 
+	dD("probe_worker_runfn has finished");
 	return (NULL);
 }
 
 probe_worker_t *probe_worker_new(void)
 {
-	probe_worker_t *pth = oscap_talloc(probe_worker_t);
+	probe_worker_t *pth = malloc(sizeof(probe_worker_t));
 
 	pth->sid = 0;
+#ifndef OS_WINDOWS
 	pth->tid = 0;
+#endif
 	pth->msg_handler = NULL;
 	pth->msg = NULL;
 
@@ -173,13 +179,12 @@ static int probe_varref_create_ctx(const SEXP_t *probe_in, SEXP_t *varrefs, stru
 	SEXP_t *ent_name, *ent, *varref, *val_lst;
 	SEXP_t *r0, *r1, *r2, *r3;
 	SEXP_t *vid, *vidx_name, *vidx_val;
-	struct probe_varref_ctx *ctx;
 
 	/* varref_cnt = SEXP_number_getu_32(r0 = SEXP_list_nth(varrefs, 2)); */
 	ent_cnt = SEXP_number_getu_32(r1 = SEXP_list_nth(varrefs, 3));
 	SEXP_free(r1);
 
-	ctx = oscap_talloc (struct probe_varref_ctx);
+	struct probe_varref_ctx *ctx = malloc(sizeof(struct probe_varref_ctx));
 	ctx->pi2 = SEXP_softref((SEXP_t *)probe_in);
 	ctx->ent_cnt = ent_cnt;
 	ctx->ent_lst = malloc(ent_cnt * sizeof (ctx->ent_lst[0]));
@@ -202,7 +207,10 @@ static int probe_varref_create_ctx(const SEXP_t *probe_in, SEXP_t *varrefs, stru
 		SEXP_free(r0);
 		r0 = SEXP_list_rest(r1);
 		ent_name = SEXP_list_join(r3, r0);
-		SEXP_vfree(r0, r1, r2, r3, NULL);
+		SEXP_free(r0);
+		SEXP_free(r1);
+		SEXP_free(r2);
+		SEXP_free(r3);
 
 		SEXP_sublist_foreach(varref, varrefs, 4, SEXP_LIST_END) {
 			r0 = SEXP_list_first(varref);
@@ -217,7 +225,10 @@ static int probe_varref_create_ctx(const SEXP_t *probe_in, SEXP_t *varrefs, stru
 			char *var_id = SEXP_string_cstr(vid);
 			dE("Unexpected error: variable id \"%s\" not found in varrefs.", var_id);
 			free(var_id);
-			SEXP_vfree(vid, ent_name, vidx_name, vidx_val, NULL);
+			SEXP_free(vid);
+			SEXP_free(ent_name);
+			SEXP_free(vidx_name);
+			SEXP_free(vidx_val);
 			probe_varref_destroy_ctx(ctx);
 			return -1;
 		}
@@ -227,13 +238,16 @@ static int probe_varref_create_ctx(const SEXP_t *probe_in, SEXP_t *varrefs, stru
 		r0 = SEXP_list_nth(varref, 2);
 		val_cnt = SEXP_number_getu_32(r0);
 		val_lst = SEXP_list_nth(varref, 3);
-		SEXP_vfree(varref, r0, NULL);
+		SEXP_free(varref);
+		SEXP_free(r0);
 
 		ent = SEXP_list_new(ent_name, val_lst, NULL);
-		SEXP_vfree(ent_name, val_lst, NULL);
+		SEXP_free(ent_name);
+		SEXP_free(val_lst);
 
 		r0 = SEXP_list_replace(ctx->pi2, i + 2, ent);
-		SEXP_vfree(r0, ent, NULL);
+		SEXP_free(r0);
+		SEXP_free(ent);
 
 		r0 = SEXP_listref_nth(ctx->pi2, i + 2);
 		ctx->ent_lst[i].ent_name_sref = SEXP_listref_first(r0);
@@ -242,7 +256,8 @@ static int probe_varref_create_ctx(const SEXP_t *probe_in, SEXP_t *varrefs, stru
 		ctx->ent_lst[i].next_val_idx = 0;
 	}
 
-	SEXP_vfree(vidx_name, vidx_val, NULL);
+	SEXP_free(vidx_name);
+	SEXP_free(vidx_val);
 
 	*octx = ctx;
 
@@ -297,7 +312,10 @@ static int probe_varref_iterate_ctx(struct probe_varref_ctx *ctx)
 		ent_name_sref = ent->ent_name_sref;
 	}
 	r1 = SEXP_list_replace(ent_name_sref, 3, r2 = SEXP_number_newu(*next_val_idx));
-	SEXP_vfree(r0, r1, r2, NULL);
+
+	SEXP_free(r0);
+	SEXP_free(r1);
+	SEXP_free(r2);
 
 	return 1;
 }
@@ -377,8 +395,13 @@ static SEXP_t *probe_obj_eval(probe_t *probe, SEXP_t *id)
 	res = SEAP_cmd_exec(probe->SEAP_ctx, probe->sd, 0, PROBECMD_OBJ_EVAL, id, SEAP_CMDTYPE_SYNC, NULL, NULL);
 
 	rid = SEXP_list_first(res);
-	assume_r(SEXP_string_cmp(id, rid) == 0, NULL);
-	SEXP_vfree(res, rid, NULL);
+	if (SEXP_string_cmp(id, rid) != 0) {
+		SEXP_free(res);
+		SEXP_free(rid);
+		return NULL;
+	}
+	SEXP_free(res);
+	SEXP_free(rid);
 
 	return probe_rcache_sexp_get(probe->rcache, id);
 }
@@ -409,13 +432,18 @@ static SEXP_t *probe_prepare_filters(probe_t *probe, SEXP_t *obj)
 			r1  = probe_ste_fetch(probe, r0);
 			ste = SEXP_list_first(r1);
 
-			SEXP_vfree(r0, r1, NULL);
+			SEXP_free(r0);
+			SEXP_free(r1);
 		}
-		SEXP_vfree(of, ste_id, NULL);
+		SEXP_free(of);
+		SEXP_free(ste_id);
 
 		f = SEXP_list_new(act, ste, NULL);
 		SEXP_list_add(filters, f);
-		SEXP_vfree(act, ste, f, NULL);
+
+		SEXP_free(act);
+		SEXP_free(ste);
+		SEXP_free(f);
 	}
 
 	return filters;
@@ -543,8 +571,12 @@ static SEXP_t *probe_set_combine(SEXP_t *cobj0, SEXP_t *cobj1, oval_setobject_op
 
 	res_cobj = probe_cobj_new(res_flag, NULL, res, res_mask);
 
-        SEXP_vfree(set0, set1, res, res_mask);
-        SEXP_vfree(cobj0_mask, cobj1_mask);
+	SEXP_free(set0);
+	SEXP_free(set1);
+	SEXP_free(res);
+	SEXP_free(res_mask);
+	SEXP_free(cobj0_mask);
+	SEXP_free(cobj1_mask);
 
 	// todo: variables
 
@@ -584,7 +616,12 @@ static SEXP_t *probe_set_apply_filters(SEXP_t *cobj, SEXP_t *filters)
                                                       "Supplied item has an invalid status: %d.", item_status);
 				r1 = SEXP_list_new(r0, NULL);
 				cobj = probe_cobj_new(SYSCHAR_FLAG_ERROR, r1, NULL, NULL);
-				SEXP_vfree(items, item, result_items, r0, r1, NULL);
+				SEXP_free(items);
+				SEXP_free(item);
+				SEXP_free(result_items);
+				SEXP_free(r0);
+				SEXP_free(r1);
+				SEXP_free(mask);
 				return cobj;
 			}
 		default:
@@ -605,7 +642,9 @@ static SEXP_t *probe_set_apply_filters(SEXP_t *cobj, SEXP_t *filters)
 		flag = SYSCHAR_FLAG_DOES_NOT_EXIST;
 
 	cobj = probe_cobj_new(flag, NULL, result_items, mask);
-	SEXP_vfree(items, result_items, mask);
+	SEXP_free(items);
+	SEXP_free(result_items);
+	SEXP_free(mask);
 
 	return cobj;
 }
@@ -644,7 +683,8 @@ static SEXP_t *probe_set_eval(probe_t *probe, SEXP_t *set, size_t depth)
 		r0 = probe_msg_creatf(OVAL_MESSAGE_LEVEL_ERROR, fmt, (size_t) MAX_EVAL_DEPTH);
 		r1 = SEXP_list_new(r0, NULL);
 		result = probe_cobj_new(SYSCHAR_FLAG_ERROR, r1, NULL, NULL);
-		SEXP_vfree(r0, r1, NULL);
+		SEXP_free(r0);
+		SEXP_free(r1);
 		return result;
 	}
 
@@ -804,7 +844,8 @@ static SEXP_t *probe_set_eval(probe_t *probe, SEXP_t *set, size_t depth)
 					"%s: Can't get unavailable filters.", __FUNCTION__);
 		goto eval_fail;
 	}
-	SEXP_vfree(filters_req, result, NULL);
+	SEXP_free(filters_req);
+	SEXP_free(result);
 
 	SEXP_list_foreach(member, filters_u) {
 		SEXP_t *id, *act, *ste;
@@ -814,7 +855,11 @@ static SEXP_t *probe_set_eval(probe_t *probe, SEXP_t *set, size_t depth)
 		ste = probe_rcache_sexp_get(probe->rcache, id);
 		r0 = SEXP_list_new(act, ste, NULL);
 		SEXP_list_add(filters_a, r0);
-		SEXP_vfree(act, id, ste, r0, NULL);
+
+		SEXP_free(act);
+		SEXP_free(id);
+		SEXP_free(ste);
+		SEXP_free(r0);
 	}
 
 	SEXP_free(filters_u);
@@ -888,7 +933,8 @@ static SEXP_t *probe_set_eval(probe_t *probe, SEXP_t *set, size_t depth)
 
         r1 = SEXP_list_new(Omsg, NULL);
 	result = probe_cobj_new(SYSCHAR_FLAG_ERROR, r1, NULL, NULL);
-	SEXP_vfree(Omsg, r1, NULL);
+	SEXP_free(Omsg);
+	SEXP_free(r1);
 	return result;
 }
 
@@ -926,6 +972,8 @@ SEXP_t *probe_worker(probe_t *probe, SEAP_msg_t *msg_in, int *ret)
                 struct probe_ctx pctx;
 		SEXP_t *varrefs, *mask;
 
+		pctx.offline_mode = probe->selected_offline_mode;
+
 		/* simple object */
                 pctx.icache  = probe->icache;
 		pctx.filters = probe_prepare_filters(probe, probe_in);
@@ -935,6 +983,10 @@ SEXP_t *probe_worker(probe_t *probe, SEAP_msg_t *msg_in, int *ret)
 			varrefs = probe_obj_getent(probe_in, "varrefs", 1);
                 else
                         varrefs = NULL;
+
+		oval_subtype_t subtype = probe->subtype;
+		probe_main_function_t probe_main_function = probe_table_get_main_function(subtype);
+		const char *subtype_str = oval_subtype_get_text(subtype);
 
 		if (varrefs == NULL || !OSCAP_GSYM(varref_handling)) {
                         /*
@@ -953,7 +1005,12 @@ SEXP_t *probe_worker(probe_t *probe, SEAP_msg_t *msg_in, int *ret)
                          */
 			int __unused_oldstate;
 			pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &__unused_oldstate);
-			*ret = probe_main(&pctx, probe->probe_arg);
+
+
+
+			dI("I will run %s_probe_main:", subtype_str);
+			*ret = probe_main_function(&pctx, probe->probe_arg);
+
 			pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &__unused_oldstate);
 
                         /*
@@ -972,7 +1029,10 @@ SEXP_t *probe_worker(probe_t *probe, SEAP_msg_t *msg_in, int *ret)
 			dD("handling varrefs in object");
 
 			if (probe_varref_create_ctx(probe_in, varrefs, &ctx) != 0) {
-				SEXP_vfree(varrefs, pctx.filters, probe_in, mask, NULL);
+				SEXP_free(varrefs);
+				SEXP_free(pctx.filters);
+				SEXP_free(probe_in);
+				SEXP_free(mask);
 				*ret = PROBE_EUNKNOWN;
 				return (NULL);
 			}
@@ -991,7 +1051,8 @@ SEXP_t *probe_worker(probe_t *probe, SEAP_msg_t *msg_in, int *ret)
                                 /*
                                  * Run the main function of the probe implementation
                                  */
-				*ret = probe_main(&pctx, probe->probe_arg);
+			dI("I will run %s_probe_main:", subtype_str);
+			*ret = probe_main_function(&pctx, probe->probe_arg);
 
                                 /*
                                  * Synchronize
@@ -1001,7 +1062,8 @@ SEXP_t *probe_worker(probe_t *probe, SEAP_msg_t *msg_in, int *ret)
 				probe_cobj_compute_flag(cobj);
 				r0 = probe_out;
 				probe_out = probe_set_combine(r0, cobj, OVAL_SET_OPERATION_UNION);
-				SEXP_vfree(cobj, r0, NULL);
+				SEXP_free(cobj);
+				SEXP_free(r0);
 			} while (*ret == 0
 				 && probe_varref_iterate_ctx(ctx));
 
@@ -1013,6 +1075,41 @@ SEXP_t *probe_worker(probe_t *probe, SEAP_msg_t *msg_in, int *ret)
 	}
 
 	SEXP_free(probe_in);
+
+#ifndef OS_WINDOWS
+	/* Revert chroot */
+	if (probe->real_root_fd != -1) {
+		if (fchdir(probe->real_root_fd) != 0) {
+			dE("fchdir failed: %s", strerror(errno));
+			close(probe->real_root_fd);
+			close(probe->real_cwd_fd);
+			probe->real_root_fd = -1;
+			probe->real_cwd_fd = -1;
+			SEXP_free(probe_out);
+			return NULL;
+		}
+		close(probe->real_root_fd);
+		probe->real_root_fd = -1;
+		dI("Leaving chroot mode");
+		if (chroot(".") == -1) {
+			dE("chroot(\".\") failed: %s", strerror(errno));
+			close(probe->real_cwd_fd);
+			probe->real_cwd_fd = -1;
+			SEXP_free(probe_out);
+			return NULL;
+		}
+		if (fchdir(probe->real_cwd_fd) != 0) {
+			dE("fchdir failed: %s", strerror(errno));
+			close(probe->real_cwd_fd);
+			probe->real_cwd_fd = -1;
+			SEXP_free(probe_out);
+			return NULL;
+		}
+		close(probe->real_cwd_fd);
+		probe->real_cwd_fd = -1;
+	}
+#endif
+
 	SEXP_VALIDATE(probe_out);
 
 	return (probe_out);

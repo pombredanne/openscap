@@ -1,4 +1,5 @@
 #!/bin/bash
+. $builddir/tests/test_common.sh
 
 set -e
 set -o pipefail
@@ -16,7 +17,7 @@ echo "Result file = $result"
 [ "WARNING: Skipping $srcdir/_non_existent_.oval.xml file which is referenced from XCCDF content" == "`cat $stderr`" ]
 rm $stderr
 
-$OSCAP xccdf validate-xml $result
+$OSCAP xccdf validate $result
 
 assert_exists 2 '//complex-check'
 assert_exists 2 '//complex-check[@operator="AND"]'

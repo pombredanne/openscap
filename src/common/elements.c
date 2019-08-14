@@ -30,7 +30,7 @@
 
 #include <string.h>
 #include <fcntl.h>
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 #include <io.h>
 #else
 #include <unistd.h>
@@ -43,6 +43,7 @@
 #include "_error.h"
 #include "debug_priv.h"
 #include "elements.h"
+#include "oscap_helpers.h"
 
 
 const struct oscap_string_map OSCAP_BOOL_MAP[] = {
@@ -226,7 +227,7 @@ int oscap_xml_save_filename(const char *filename, xmlDocPtr doc)
 		xmlCode = xmlSaveFormatFileEnc(filename, doc, "UTF-8", 1);
 	}
 	else {
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 		int fd = open(filename, O_CREAT|O_TRUNC|O_WRONLY, S_IREAD|S_IWRITE);
 #else
 		int fd = open(filename, O_CREAT|O_TRUNC|O_WRONLY,

@@ -91,7 +91,7 @@ struct oval_syschar_model *oval_syschar_model_new(struct oval_definition_model *
 	return newmodel;
 }
 
-typedef void (*_oval_clone_func) (void *, struct oval_syschar_model *);
+typedef void *(*_oval_clone_func) (void *, struct oval_syschar_model *);
 
 static void _oval_syschar_model_clone(struct oval_string_map *oldmap,
 				      struct oval_syschar_model *newmodel, _oval_clone_func cloner)
@@ -263,19 +263,6 @@ int oval_syschar_model_import_source(struct oval_syschar_model *model, struct os
 	xmlFreeTextReader(context.reader);
 	return ret;
 }
-
-/* -1 error; 0 OK; 1 warning */
-int oval_syschar_model_import(struct oval_syschar_model *model, const char *file)
-{
-	__attribute__nonnull__(model);
-
-	struct oscap_source *source = oscap_source_new_from_file(file);
-	int ret = oval_syschar_model_import_source(model, source);
-	oscap_source_free(source);
-
-	return ret;
-}
-
 
 int oval_syschar_model_bind_variable_model(struct oval_syschar_model *sysmodel, struct oval_variable_model *varmodel)
 {

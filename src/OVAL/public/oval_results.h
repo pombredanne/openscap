@@ -132,17 +132,6 @@ OSCAP_API struct oval_results_model *oval_results_model_new(struct oval_definiti
 OSCAP_API int oval_results_model_import_source(struct oval_results_model *model, struct oscap_source *source);
 
 /**
- * Import the content from the file into an oval_result_model.
- * If imported content specifies a model entity that is already registered within the model its content is overwritten.
- * @param model the oval_results_model
- * @param file filename
- * @return -1 if an error occurred
- * @memberof oval_results_model
- * @deprecated This function has been deprecated and it may be dropped from later
- * OpenSCAP releases. Please use oval_results_model_import_source instead.
- */
-OSCAP_API OSCAP_DEPRECATED(int oval_results_model_import(struct oval_results_model *model, const char *file));
-/**
  * Copy an oval_results_model.
  * @return A copy of the specified @ref oval_results_model.
  * @memberof oval_results_model
@@ -241,7 +230,7 @@ OSCAP_API struct oval_result_system *oval_result_system_new(struct oval_results_
  * @return A copy of the specified @ref oval_result_system.
  * @memberof oval_result_system
  */
-struct oval_result_system *oval_result_system_clone(struct oval_results_model *new_model,
+OSCAP_API struct oval_result_system *oval_result_system_clone(struct oval_results_model *new_model,
 						    struct oval_result_system *old_system);
 /**
  * @memberof oval_result_system
@@ -630,7 +619,7 @@ OSCAP_API void oval_result_item_iterator_free(struct oval_result_item_iterator *
 /**
  * @memberof oval_result_criteria_node
  */
-struct oval_result_criteria_node *oval_result_criteria_node_new(struct oval_result_system *,
+OSCAP_API struct oval_result_criteria_node *oval_result_criteria_node_new(struct oval_result_system *,
 								oval_criteria_node_type_t,
 								int, int, ...);
 /**

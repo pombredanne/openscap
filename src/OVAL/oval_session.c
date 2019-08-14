@@ -24,17 +24,16 @@
 #include <config.h>
 #endif
 
-#ifdef _WIN32
+#ifdef OS_WINDOWS
 #include <io.h>
 #else
 #include <unistd.h>
 #endif
 #include <string.h>
-#if defined(__linux__)
+#if defined(OS_LINUX)
 #include <linux/limits.h>
 #endif
 
-#include "common/alloc.h"
 #include "common/debug_priv.h"
 #include "common/util.h"
 #include "common/_error.h"
@@ -44,6 +43,7 @@
 #include "public/oval_session.h"
 #include "../DS/public/ds_sds_session.h"
 #include "oscap_source.h"
+#include "oscap_helpers.h"
 
 
 static const char *oscap_productname = "cpe:/a:open-scap:oscap";
@@ -335,18 +335,9 @@ static int oval_session_setup_agent(struct oval_session *session)
 	return 0;
 }
 
-int oval_session_evaluate_id(struct oval_session *session, char *probe_root, const char *id, oval_result_t *result)
+int oval_session_evaluate_id(struct oval_session *session, const char *id, oval_result_t *result)
 {
 	__attribute__nonnull__(session);
-
-#if defined(OVAL_PROBES_ENABLED)
-	if (probe_root) {
-		if (setenv("OSCAP_PROBE_ROOT", probe_root, 1) != 0) {
-			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Failed to set the OSCAP_PROBE_ROOT environment variable.");
-			return 1;
-		}
-	}
-#endif
 
 	if (id == NULL) {
 		oscap_seterr(OSCAP_EFAMILY_OVAL, "No OVAL Definion id set.");
@@ -369,19 +360,9 @@ int oval_session_evaluate_id(struct oval_session *session, char *probe_root, con
 	return 0;
 }
 
-int oval_session_evaluate(struct oval_session *session, char *probe_root, agent_reporter fn, void *arg)
+int oval_session_evaluate(struct oval_session *session, agent_reporter fn, void *arg)
 {
 	__attribute__nonnull__(session);
-
-#if defined(OVAL_PROBES_ENABLED)
-	if (probe_root) {
-		if (setenv("OSCAP_PROBE_ROOT", probe_root, 1) != 0) {
-			oscap_seterr(OSCAP_EFAMILY_OSCAP, "Failed to set the OSCAP_PROBE_ROOT environment variable.");
-			return 1;
-		}
-		dI("OSCAP_PROBE_ROOT environment variable set to '%s'.", probe_root);
-	}
-#endif
 
 	if (oval_session_setup_agent(session) != 0) {
 		return 1;

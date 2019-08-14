@@ -27,8 +27,6 @@
 #include <string.h>
 #include <errno.h>
 
-#include "common/assume.h"
-#include "public/sm_alloc.h"
 #include "_sexp-datatype.h"
 #include "_sexp-rawptr.h"
 
@@ -41,9 +39,7 @@ SEXP_datatypeTbl_t g_datatypes = { NULL };
 
 SEXP_datatypeTbl_t *SEXP_datatypeTbl_new ()
 {
-        SEXP_datatypeTbl_t *t;
-
-        t = sm_talloc (SEXP_datatypeTbl_t);
+	SEXP_datatypeTbl_t *t = malloc(sizeof(SEXP_datatypeTbl_t));
         SEXP_datatypeTbl_init(t);
 
         return(t);
@@ -52,13 +48,15 @@ SEXP_datatypeTbl_t *SEXP_datatypeTbl_new ()
 void SEXP_datatypeTbl_free(SEXP_datatypeTbl_t *t)
 {
         rbt_str_free(t->tree);
-        sm_free(t);
+	free(t);
         return;
 }
 
 int SEXP_datatypeTbl_init (SEXP_datatypeTbl_t *t)
 {
-        assume_d(t != NULL, -1);
+	if (t == NULL) {
+		return -1;
+	}
         t->tree = rbt_str_new();
         return(0);
 }
@@ -92,58 +90,31 @@ void SEXP_datatypeGlobalTbl_free(void)
 SEXP_datatypePtr_t *SEXP_datatype_get (SEXP_datatypeTbl_t *t, const char *k)
 {
         struct rbt_str_node *n = NULL;
-        SEXP_datatype_t *d;
 
-        assume_d(t != NULL, NULL);
-        assume_d(k != NULL, NULL);
+	if (t == NULL || k == NULL) {
+		return NULL;
+	}
 
         SEXP_datatype_once();
 
         if (rbt_str_getnode(t->tree, k, &n) != 0)
                 return(NULL);
 
-        d = (SEXP_datatype_t *)(n->data);
-
-        if (d != NULL) {
-                if (d->dt_flg & SEXP_DTFLG_LOCALDATA) {
-                        struct SEXP_datatype_extptr *eptr = NULL;
-
-                        /* See comment in SEXP_datatype_add */
-                        if (posix_memalign((void **)(void *)(&eptr), SEXP_DATATYPEPTR_ALIGN,
-                                           sizeof(struct SEXP_datatype_extptr)) != 0)
-                        {
-                                return(NULL);
-                        }
-
-                        eptr->n = n;
-                        eptr->l = NULL;
-
-                        return(SEXP_datatypePtr_t *)((uintptr_t)(eptr)|1);
-                }
-        }
-
         return((SEXP_datatypePtr_t *)n);
 }
 
-SEXP_datatypePtr_t *SEXP_datatype_add(SEXP_datatypeTbl_t *t, char *n, SEXP_datatype_t *d, void *l)
+SEXP_datatypePtr_t *SEXP_datatype_add(SEXP_datatypeTbl_t *t, char *n)
 {
         void *r;
         struct rbt_str_node *node = NULL;
 
-        assume_d(t != NULL, NULL);
-        assume_d(n != NULL, NULL);
+	if (t == NULL || n == NULL) {
+		return NULL;
+	}
 
         SEXP_datatype_once();
 
-        /*
-         * Check whether flags & passed values are meaningful
-         */
-        if (l != NULL && (d->dt_flg & SEXP_DTFLG_LOCALDATA) == 0) {
-                errno = EINVAL;
-                return(NULL);
-        }
-
-        if (rbt_str_add(t->tree, n, d) != 0)
+	if (rbt_str_add(t->tree, n, NULL) != 0)
                 return(NULL);
         /*
          * XXX: consider adding a version of rbt_str_add that returns
@@ -153,36 +124,7 @@ SEXP_datatypePtr_t *SEXP_datatype_add(SEXP_datatypeTbl_t *t, char *n, SEXP_datat
         if (rbt_str_getnode(t->tree, n, &node) != 0)
                 return(NULL);
 
-        if (d != NULL) {
-                /*
-                 * If DTFLG_LOCALDATA is set, allocate a new extended pointer
-                 * and return it with `l' set as the local data pointer.
-                 */
-                if (d->dt_flg & SEXP_DTFLG_LOCALDATA) {
-                        struct SEXP_datatype_extptr *eptr = NULL;
-
-                        /*
-                         * Ensure that we can use the lowest bit for the extended
-                         * pointer flag. In the case we are returning the "normal"
-                         * pointer, the memory is already aligned because it's a
-                         * pointer into a red-black tree node + 2*sizeof(void *)
-                         * offset. The red-black tree implmentation allocates nodes
-                         * aligned to sizeof(void *) bytes.
-                         */
-                        if (posix_memalign((void **)(void *)(&eptr), SEXP_DATATYPEPTR_ALIGN,
-                                           sizeof(struct SEXP_datatype_extptr)) != 0)
-                        {
-                                return(NULL);
-                        }
-
-                        eptr->n = node;
-                        eptr->l = l;
-
-                        r = (void *)((uintptr_t)(eptr)|1);
-                } else
-                        r = node;
-        } else
-                r = node;
+	r = node;
 
         return((SEXP_datatypePtr_t *)r);
 }
@@ -210,9 +152,7 @@ const char *SEXP_datatype_name(SEXP_datatypePtr_t *p)
 
 SEXP_datatype_t *SEXP_datatype_new(void)
 {
-        SEXP_datatype_t *d;
-
-        d = sm_talloc(SEXP_datatype_t);
+	SEXP_datatype_t *d = malloc(sizeof(SEXP_datatype_t));
         d->dt_flg = 0;
 
         return(d);
@@ -220,8 +160,10 @@ SEXP_datatype_t *SEXP_datatype_new(void)
 
 int SEXP_datatype_setflag(SEXP_datatype_t **dp, uint16_t flag, ...)
 {
-        assume_r( dp != NULL, -1, errno = EFAULT;);
-        assume_r(*dp != NULL, -1, errno = EFAULT;);
+	if (dp == NULL || *dp == NULL) {
+		errno = EFAULT;
+		return -1;
+	}
 
         switch(flag) {
         case SEXP_DTFLG_LOCALDATA:
@@ -236,8 +178,10 @@ int SEXP_datatype_setflag(SEXP_datatype_t **dp, uint16_t flag, ...)
 
 int SEXP_datatype_unsetflag(SEXP_datatype_t **dp, uint16_t flag)
 {
-        assume_r( dp != NULL, -1, errno = EFAULT;);
-        assume_r(*dp != NULL, -1, errno = EFAULT;);
+	if (dp == NULL || *dp == NULL) {
+		errno = EFAULT;
+		return -1;
+	}
 
         switch(flag) {
         case SEXP_DTFLG_LOCALDATA:

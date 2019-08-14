@@ -32,22 +32,20 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <errno.h>
-#include <assume.h>
 #include <pcre.h>
-#include <libgen.h>
 
+#include "oscap_helpers.h"
 #include "fsdev.h"
 #include "_probe-api.h"
 #include "probe/entcmp.h"
-#include "alloc.h"
 #include "debug_priv.h"
 #include "oval_fts.h"
-#if defined(__SVR4) && defined(__sun)
+#if defined(OS_SOLARIS)
 #include "fts_sun.h"
 #include <sys/mntent.h>
 #include <libzonecfg.h>
 #include <sys/avl.h>
-#elif defined(_AIX)
+#elif defined(OS_AIX)
 #include "fts_sun.h"
 #else
 #include <fts.h>
@@ -57,10 +55,7 @@
 
 static OVAL_FTS *OVAL_FTS_new()
 {
-	OVAL_FTS *ofts;
-
-	ofts = oscap_talloc(OVAL_FTS);
-	memset(ofts, 0, sizeof(*ofts));
+	OVAL_FTS *ofts = calloc(1, sizeof(OVAL_FTS));
 
 	ofts->max_depth  = -1;
 	ofts->direction  = -1;
@@ -97,22 +92,37 @@ static int pathlen_from_ftse(int fts_pathlen, int fts_namelen)
 
 static OVAL_FTSENT *OVAL_FTSENT_new(OVAL_FTS *ofts, FTSENT *fts_ent)
 {
-	OVAL_FTSENT *ofts_ent;
-
-	ofts_ent = oscap_talloc(OVAL_FTSENT);
+	OVAL_FTSENT *ofts_ent = calloc(1, sizeof(OVAL_FTSENT));
 
 	ofts_ent->fts_info = fts_ent->fts_info;
+	/* The 'shift' variable stores length of the prefix if the prefix
+	 * is defined, otherwise it is set to 0. The value of 'shift' gives
+	 * us information how many characters of the path string are part of
+	 * the prefix and also where the actual path begins.
+	 * We use it to remove the prefix from the path.
+	 */
+	const size_t shift = ofts->prefix ? strlen(ofts->prefix) : 0;
 	if (ofts->ofts_sfilename || ofts->ofts_sfilepath) {
-		ofts_ent->path_len = pathlen_from_ftse(fts_ent->fts_pathlen, fts_ent->fts_namelen);
-		ofts_ent->path = malloc(ofts_ent->path_len + 1);
-		strncpy(ofts_ent->path, fts_ent->fts_path, ofts_ent->path_len);
-		ofts_ent->path[ofts_ent->path_len] = '\0';
+		ofts_ent->path_len = pathlen_from_ftse(fts_ent->fts_pathlen, fts_ent->fts_namelen) - shift;
+		if (ofts_ent->path_len > 0) {
+			ofts_ent->path = malloc(ofts_ent->path_len + 1);
+			strncpy(ofts_ent->path, fts_ent->fts_path + shift, ofts_ent->path_len);
+			ofts_ent->path[ofts_ent->path_len] = '\0';
+		} else {
+			ofts_ent->path_len = 1;
+			ofts_ent->path = strdup("/");
+		}
 
 		ofts_ent->file_len = fts_ent->fts_namelen;
 		ofts_ent->file = strdup(fts_ent->fts_name);
 	} else {
-		ofts_ent->path_len = fts_ent->fts_pathlen;
-		ofts_ent->path = strdup(fts_ent->fts_path);
+		ofts_ent->path_len = fts_ent->fts_pathlen - shift;
+		if (ofts_ent->path_len > 0) {
+			ofts_ent->path = strdup(fts_ent->fts_path + shift);
+		} else {
+			ofts_ent->path_len = 1;
+			ofts_ent->path = strdup("/");
+		}
 
 		ofts_ent->file_len = -1;
 		ofts_ent->file = NULL;
@@ -132,7 +142,7 @@ static void OVAL_FTSENT_free(OVAL_FTSENT *ofts_ent)
 	return;
 }
 
-#if defined(__SVR4) && defined(__sun)
+#if defined(OS_SOLARIS)
 #ifndef MNTTYPE_SMB
 #define MNTTYPE_SMB	"smb"
 #endif
@@ -255,7 +265,7 @@ static bool valid_local_zone(const char *path)
 
 static bool OVAL_FTS_localp(OVAL_FTS *ofts, const char *path, void *id)
 {
-#if defined(__SVR4) && defined(__sun)
+#if defined(OS_SOLARIS)
 	if (id != NULL && (*(char*)id) != '\0') {
 		/* if not a valid local fs skip */
 		if (valid_local_fs((char*)id)) {
@@ -652,6 +662,11 @@ static int process_pattern_match(const char *path, pcre **regex_out)
 
 OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t *behaviors, SEXP_t* result)
 {
+	return oval_fts_open_prefixed(NULL, path, filename, filepath, behaviors, result);
+}
+
+OVAL_FTS *oval_fts_open_prefixed(const char *prefix, SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t *behaviors, SEXP_t* result)
+{
 	OVAL_FTS *ofts;
 
 	char cstr_path[PATH_MAX+1];
@@ -673,9 +688,13 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 	pcre *regex = NULL;
 	struct stat st;
 
-	assume_d((path == NULL && filename == NULL && filepath != NULL)
-		 || (path != NULL && filepath == NULL), NULL);
-	assume_d(behaviors != NULL, NULL);
+	if ((path != NULL || filename != NULL || filepath == NULL)
+			&& (path == NULL || filepath != NULL)) {
+		return NULL;
+	}
+	if (behaviors == NULL) {
+		return NULL;
+	}
 
 	if (path)
 		PROBE_ENT_AREF(path, r0, "operation", /**/);
@@ -811,6 +830,12 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		paths[0] = strdup("/");
 	}
 
+	if (prefix != NULL) {
+		char *path_with_prefix = oscap_path_join(prefix, paths[0]);
+		free((void *) paths[0]);
+		paths[0] = path_with_prefix;
+	}
+	dI("Opening file '%s'.", paths[0]);
 	/* Fail if the provided path doensn't actually exist. Symlinks
 	   without targets are accepted. */
 	if (lstat(paths[0], &st) == -1) {
@@ -822,9 +847,9 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		return NULL;
 	}
 
-	dI("Opening file '%s'.", paths[0]);
-
 	ofts = OVAL_FTS_new();
+	ofts->prefix = prefix;
+
 	/* reset errno as fts_open() doesn't do it itself. */
 	errno = 0;
 	ofts->ofts_match_path_fts = fts_open((char * const *) paths, mtc_fts_options, NULL);
@@ -847,10 +872,10 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 	}
 
 	if (filesystem == OVAL_RECURSE_FS_LOCAL) {
-#if   defined(__SVR4) && defined(__sun)
+#if defined(OS_SOLARIS)
 		ofts->localdevs = NULL;
 #else
-		ofts->localdevs = fsdev_init(NULL, 0);
+		ofts->localdevs = fsdev_init();
 		if (ofts->localdevs == NULL) {
 			dE("fsdev_init() failed.");
 			/* One dummy read to get rid of an uninitialized
@@ -886,7 +911,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 		ofts->ofts_sfilepath = SEXP_ref(filepath);
 	}
 
-#if defined(__SVR4) && defined(__sun)
+#if defined(OS_SOLARIS)
 	if (load_zones_path_list() != 0) {
 		dE("Failed to load zones path info. Recursing non-global zones.");
 		free_zones_path_list();
@@ -899,7 +924,7 @@ OVAL_FTS *oval_fts_open(SEXP_t *path, SEXP_t *filename, SEXP_t *filepath, SEXP_t
 }
 
 static inline int _oval_fts_is_local(OVAL_FTS *ofts, FTSENT *fts_ent) {
-# if defined (__SVR4) && defined(__sun)
+# if defined(OS_SOLARIS)
 	/* pseudo filesystems will be skipped */
 	/* don't recurse into remote fs if local is specified */
 	return ((fts_ent->fts_info == FTS_D || fts_ent->fts_info == FTS_SL)
@@ -991,7 +1016,9 @@ static FTSENT *oval_fts_read_match_path(OVAL_FTS *ofts)
 		    || (!ofts->ofts_sfilepath && fts_ent->fts_info != FTS_D))
 			continue;
 
-		stmp = SEXP_string_newf("%s", fts_ent->fts_path);
+		const size_t shift = ofts->prefix ? strlen(ofts->prefix) : 0;
+		stmp = SEXP_string_newf("%s", fts_ent->fts_path + shift);
+
 		if (ofts->ofts_sfilepath)
 			/* try to match filepath */
 			ores = probe_entobj_cmp(ofts->ofts_sfilepath, stmp);
@@ -1216,12 +1243,12 @@ static FTSENT *oval_fts_read_recurse_path(OVAL_FTS *ofts)
 				   it would be more accurate to obtain the device
 				   id here, but for the sake of supporting the
 				   comparison also in oval_fts_read_match_path(),
-				   the device id is obtained in oval_fts_open()
+				   the device id is obtained in oval_fts_open_prefixed()
 
 				if (ofts->ofts_recurse_path_curdepth == 0)
 					ofts->ofts_recurse_path_devid = fts_ent->fts_statp->st_dev;
 				*/
-#if   defined(__SVR4) && defined(__sun)
+#if defined(OS_SOLARIS)
 				if ((!OVAL_FTS_localp(ofts, fts_ent->fts_path,
 				    (fts_ent->fts_statp != NULL) ?
 				    &fts_ent->fts_statp->st_fstype : NULL)))
@@ -1272,7 +1299,7 @@ static FTSENT *oval_fts_read_recurse_path(OVAL_FTS *ofts)
 			if (!strcmp(ofts->ofts_recurse_path_curpth, "/"))
 				break;
 
-			ofts->ofts_recurse_path_curpth = dirname(ofts->ofts_recurse_path_curpth);
+			ofts->ofts_recurse_path_curpth = oscap_dirname(ofts->ofts_recurse_path_curpth);
 			ofts->ofts_recurse_path_curdepth++;
 		}
 
@@ -1351,7 +1378,7 @@ int oval_fts_close(OVAL_FTS *ofts)
 	fsdev_free(ofts->localdevs);
 
 	OVAL_FTS_free(ofts);
-#if defined(__SVR4) && defined(__sun)
+#if defined(OS_SOLARIS)
 	free_zones_path_list();
 #endif
 

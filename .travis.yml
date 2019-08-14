@@ -1,0 +1,68 @@
+language: c
+
+matrix:
+  include:
+    - os: linux
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - cmake
+            - lcov
+            - libdbus-1-dev
+            - libdbus-glib-1-dev
+            - libcurl4-openssl-dev
+            - libgcrypt-dev
+            - libselinux1-dev
+            - libgconf2-dev
+            - libacl1-dev
+            - libblkid-dev
+            - libcap-dev
+            - libxml2-dev
+            - swig
+            - libxml-parser-perl
+            - libxml-xpath-perl
+            - libperl-dev
+            - librpm-dev
+            - swig
+            - librtmp-dev
+            - xsltproc
+            - gcc-7
+      before_script:
+        - export CC=gcc-7 GCOV=gcov-7
+        - cd build
+      script:
+        - cmake -DCMAKE_BUILD_TYPE=Debug ../
+        - build-wrapper-linux-x86-64 --out-dir bw-output make all || true  # Will always fail builds on forked repositories.
+        - cd .. && sonar-scanner || true  # Will always fail builds on forked repositories.
+      after_success:
+        - curl -s https://codecov.io/bash > cov.sh && bash cov.sh -x "$GCOV"
+    - os: osx
+      osx_image: xcode8.3
+      before_install:
+        - brew update
+        - brew upgrade python
+        - brew install doxygen
+        - brew install opendbx
+        - brew install popt
+        - brew install swig
+      before_script:
+        - cd build
+      script:
+        - cmake -DENABLE_PROBES=false ../
+        - make -j 4
+
+addons:
+  sonarcloud:
+    organization: "openscap"
+  apt:
+    sources:
+      - ubuntu-toolchain-r-test
+    packages:
+      - gcc-7
+
+
+cache:
+  directories:
+    - '$HOME/.sonar/cache'
